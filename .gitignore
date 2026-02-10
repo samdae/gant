@@ -1,0 +1,8 @@
+# Docs
+docs/
+*.log
+*.sqlite
+__pycache__/
+.env
+.venv/
+.DS_Store

@@ -1,0 +1,145 @@
+[Antigravity] Please authenticate via browser: https://accounts.google.com/o/oauth2/v2/auth?client_id=1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A51121%2Foauth-callback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcclog+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fexperimentsandconfigs&code_challenge=5TQuimbYBuNh-rliflpfkXHQiOn9hM6UUJk_vtEMcU0&code_challenge_method=S256&state=624eca2e073dc5fc7b7d735d07e762da&access_type=offline&prompt=consent
+
+[Antigravity] Probing Payload Variant #1 on https://cloudcode-pa.googleapis.com/v1internal:generateContent
+[Antigravity] Failed Payload #1: 400 - {
+  "error": {
+    "code": 400,
+    "message": "Invalid JSON payload received. Unknown name \"contents\": Cannot find field.\nInvalid JSON payload received. Unknown name \"generationConfig\": Cannot find field.\nInvalid JSON payload received. Unknown name \"metadata\": Cannot find field.",
+    "status": "INVALID_ARGUMENT",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.BadRequest",
+        "fieldViolations": [
+          {
+            "description": "Invalid JSON payload received. Unknown name \"contents\": Cannot find field."
+          },
+          {
+            "description": "Invalid JSON payload received. Unknown name \"generationConfig\": Cannot find field."
+          },
+          {
+            "description": "Invalid JSON payload received. Unknown name \"metadata\": Cannot find field."
+          }
+        ]
+      }
+    ]
+  }
+}
+
+[Antigravity] Probing Payload Variant #2 on https://cloudcode-pa.googleapis.com/v1internal:generateContent
+[Antigravity] Failed Payload #2: 400 - {
+  "error": {
+    "code": 400,
+    "message": "Invalid JSON payload received. Unknown name \"messages\": Cannot find field.\nInvalid JSON payload received. Unknown name \"generationConfig\": Cannot find field.\nInvalid JSON payload received. Unknown name \"metadata\": Cannot find field.",
+    "status": "INVALID_ARGUMENT",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.BadRequest",
+        "fieldViolations": [
+          {
+            "description": "Invalid JSON payload received. Unknown name \"messages\": Cannot find field."
+          },
+          {
+            "description": "Invalid JSON payload received. Unknown name \"generationConfig\": Cannot find field."
+          },
+          {
+            "description": "Invalid JSON payload received. Unknown name \"metadata\": Cannot find field."
+          }
+        ]
+      }
+    ]
+  }
+}
+
+[Antigravity] Probing Payload Variant #3 on https://cloudcode-pa.googleapis.com/v1internal:generateContent
+[Antigravity] Failed Payload #3: 400 - {
+  "error": {
+    "code": 400,
+    "message": "Invalid JSON payload received. Unknown name \"contents\": Cannot find field.\nInvalid JSON payload received. Unknown name \"generationConfig\": Cannot find field.",
+    "status": "INVALID_ARGUMENT",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.BadRequest",
+        "fieldViolations": [
+          {
+            "description": "Invalid JSON payload received. Unknown name \"contents\": Cannot find field."
+          },
+          {
+            "description": "Invalid JSON payload received. Unknown name \"generationConfig\": Cannot find field."
+          }
+        ]
+      }
+    ]
+  }
+}
+
+
+💥 CRASHED: All Antigravity payloads failed. Last error: 400 - {
+  "error": {
+    "code": 400,
+    "message": "Invalid JSON payload received. Unknown name \"contents\": Cannot find field.\nInvalid JSON payload received. Unknown name \"generationConfig\": Cannot find field.",
+    "status": "INVALID_ARGUMENT",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.BadRequest",
+        "fieldViolations": [
+          {
+            "description": "Invalid JSON payload received. Unknown name \"contents\": Cannot find field."
+          },
+          {
+            "description": "Invalid JSON payload received. Unknown name \"generationConfig\": Cannot find field."
+          }
+        ]
+      }
+    ]
+  }
+}
+
+Traceback (most recent call last):
+  File "/home/azdev/.openclaw/workspace/TradingAgents/run_antigravity.py", line 50, in main
+    final_state, processed_signal = system.propagate(ticker, target_date)
+  File "/home/azdev/.openclaw/workspace/TradingAgents/tradingagents/graph/trading_graph.py", line 200, in propagate
+    for chunk in self.graph.stream(init_agent_state, **args):
+  File "/home/azdev/.virtualenvs/TradingAgents/lib/python3.10/site-packages/langgraph/pregel/main.py", line 2646, in stream
+    for _ in runner.tick(
+  File "/home/azdev/.virtualenvs/TradingAgents/lib/python3.10/site-packages/langgraph/pregel/_runner.py", line 167, in tick
+    run_with_retry(
+  File "/home/azdev/.virtualenvs/TradingAgents/lib/python3.10/site-packages/langgraph/pregel/_retry.py", line 42, in run_with_retry
+    return task.proc.invoke(task.input, config)
+  File "/home/azdev/.virtualenvs/TradingAgents/lib/python3.10/site-packages/langgraph/_internal/_runnable.py", line 656, in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+  File "/home/azdev/.virtualenvs/TradingAgents/lib/python3.10/site-packages/langgraph/_internal/_runnable.py", line 400, in invoke
+    ret = self.func(*args, **kwargs)
+  File "/home/azdev/.openclaw/workspace/TradingAgents/tradingagents/agents/analysts/market_analyst.py", line 73, in market_analyst_node
+    result = chain.invoke(state["messages"])
+  File "/home/azdev/.virtualenvs/TradingAgents/lib/python3.10/site-packages/langchain_core/runnables/base.py", line 3153, in invoke
+    input_ = context.run(step.invoke, input_, config)
+  File "/home/azdev/.virtualenvs/TradingAgents/lib/python3.10/site-packages/langchain_core/language_models/chat_models.py", line 402, in invoke
+    self.generate_prompt(
+  File "/home/azdev/.virtualenvs/TradingAgents/lib/python3.10/site-packages/langchain_core/language_models/chat_models.py", line 1121, in generate_prompt
+    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
+  File "/home/azdev/.virtualenvs/TradingAgents/lib/python3.10/site-packages/langchain_core/language_models/chat_models.py", line 931, in generate
+    self._generate_with_cache(
+  File "/home/azdev/.virtualenvs/TradingAgents/lib/python3.10/site-packages/langchain_core/language_models/chat_models.py", line 1233, in _generate_with_cache
+    result = self._generate(
+  File "/home/azdev/.openclaw/workspace/TradingAgents/tradingagents/llm_clients/antigravity_client.py", line 320, in _generate
+    raise Exception(f"All Antigravity payloads failed. Last error: {last_error}")
+Exception: All Antigravity payloads failed. Last error: 400 - {
+  "error": {
+    "code": 400,
+    "message": "Invalid JSON payload received. Unknown name \"contents\": Cannot find field.\nInvalid JSON payload received. Unknown name \"generationConfig\": Cannot find field.",
+    "status": "INVALID_ARGUMENT",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.BadRequest",
+        "fieldViolations": [
+          {
+            "description": "Invalid JSON payload received. Unknown name \"contents\": Cannot find field."
+          },
+          {
+            "description": "Invalid JSON payload received. Unknown name \"generationConfig\": Cannot find field."
+          }
+        ]
+      }
+    ]
+  }
+}
