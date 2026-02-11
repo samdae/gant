@@ -144,11 +144,37 @@ virtual_trade/
 }
 ```
 
-→ `reflect_and_remember(15.7)` 자동 호출
+→ `reflect_and_remember()` 자동 호출 (구조화된 입력):
+
+```python
+reflect_and_remember({
+    "ticker": "NVDA",
+    "return_pct": 15.7,
+    "holding_days": 22,
+    "analysis_count": 3,          # 몇 번 분석 후 청산했는지
+    "market_condition": "bullish", # 분석 시점 시장 요약
+    "has_memory": True,            # RAG 참조 여부 (부트스트랩 기간 비교용)
+})
+```
+
+> ⚠️ 이 입력 구조는 **처음부터 확정**. 나중에 바꾸면 기존 Memory 데이터와 호환 불가.
+> 안 쓰더라도 데이터가 있으면 나중에 활용 가능하지만, 없으면 과거 데이터를 다시 만들 수 없다.
 
 ---
 
 ## Portfolio Agent 동작 규칙
+
+### 프롬프트 판단 프레임
+
+Portfolio Agent 프롬프트에 다음 판단 기준을 명시적으로 포함해야 한다:
+
+| 조건 | 트리거 | 행동 |
+| ---- | ------ | ---- |
+| **전략 유지** | 새 분석의 방향성이 기존과 동일 | 기존 전략 유지, 확신 강화 기록 |
+| **전략 수정** | 방향 전환 권고, stop-loss 근접, 또는 확신도 하락 | 전략 필드 업데이트 (비중/타점/목표가 조정) |
+| **전략 폐기** | 새 분석이 SELL이거나 근본적 전제가 무너짐 | 전량 청산 → 수익률 → Memory 학습 |
+
+> 확신도 변화도 판단 기준에 포함: 방향은 같지만 확신이 약해진 경우(예: "강력 매수" → "약한 매수")는 전략 수정으로 분류.
 
 ### 첫 실행 (trade.json 없음)
 
@@ -172,12 +198,13 @@ virtual_trade/
 | SELL       | 있음        | 전량 청산 → 수익률 → Memory 학습            |
 | SELL       | 없음        | 무시 (팔 게 없음)                           |
 
+> ⚠️ Phase 0~3에서는 SELL = 전량 청산. Phase 4에서 비중 조절 SELL로 전환 (아래 참조).
+
 ### BUY/SELL = 방향, 전략 = 디테일
 
 > **BUY/SELL은 방향성**이고, **전략이 실제 행동의 디테일**(금액, 비중, 타점)을 결정한다.
 > 첫 BUY의 전략이 마스터 플랜. 이후 BUY는 "확신 강화"로 기록.
 > 상황이 급변하면 (예: 풀백 발생, 목표가 변경) Portfolio Agent가 전략을 수정하고 투자금 산정.
-> SELL이 나오면 전량 청산 — 부분 청산 없음. 청산 시점은 시스템이 결정.
 
 ---
 
@@ -232,6 +259,14 @@ virtual_trade/
 4. 이후 분석부터: RAG READ로 과거 학습 시작   ← 여기서부터 진짜 가치
 ```
 
+### 부트스트랩 기간 태깅
+
+초기 몇 달은 RAG가 비어있어 Memory 기반 통찰이 없다. 이 기간의 분석 품질이 낮을 수 있는데, **그게 정상**이다.
+
+- 모든 분석 결과에 `has_memory: true/false` 플래그를 추가
+- 이 초기 데이터가 "Memory 없이 판단했을 때 vs Memory 있을 때"의 **비교 기준선**
+- 나중에 Memory 시스템의 실제 효과를 정량 측정 가능
+
 ### Embedding
 
 - 로컬 모델 (`sentence-transformers`) 사용. API 호출 비용 없음, 품질 차이 미미.
@@ -241,7 +276,7 @@ virtual_trade/
 
 ## 구현 단계
 
-> ⚠️ 분석 플로우, Portfolio Agent, RAG는 상호 의존적이므로 순차 개발이 아닌 **동시 진행**.
+> 순차 진행: RAG가 데이터를 받아야 Portfolio Agent가 의미 있는 테스트를 할 수 있으므로 **Phase 순서를 지키되, 중간 검증 단계를 포함**한다.
 
 ### Phase 0: RAG 검색기 (선행 조건, 1일)
 
@@ -257,19 +292,37 @@ virtual_trade/
 
 - [ ] `propagate()` 완료 후 분석 결과를 RAG에 자동 ADD
   - 상황 (시장 상태 요약) + 추천 (BUY/HOLD/SELL + 전략) 저장
+  - `has_memory` 플래그 포함 (부트스트랩 기간 태깅)
 - [ ] `trade.json` 읽기/쓰기 유틸리티 구현
+- [ ] `reflect_and_remember()` 입력을 구조체로 확장 (ticker, return_pct, holding_days, analysis_count, market_condition, has_memory)
+
+> **🔍 중간 검증**: Phase 1까지 완료 후 실제 `propagate()` 1~2회 실행하여 "분석 → RAG 저장"이 동작하는지 확인. 이 데이터가 Phase 2 테스트의 기반이 된다.
 
 ### Phase 2: Portfolio Agent (2~3일)
 
+- [ ] Portfolio Agent 프롬프트 설계 (코드보다 프롬프트가 먼저)
+  - 전략 유지 / 수정 / 폐기 판단 프레임 포함
+  - 확신도 변화 기준 포함
 - [ ] Portfolio Agent 구현 (deep_think_llm)
   - trade.json 읽기 → G-ANT 결과 읽기 → RAG 조회 → 행동 결정 → trade.json 업데이트
 - [ ] BUY 연속 규칙: 첫 전략이 마스터 플랜, 이후는 확신 강화 or 전략 수정
-- [ ] SELL 시: 청산 → 수익률 계산 → RAG에 WRITE → reflect_and_remember()
+- [ ] SELL 시: 전량 청산 → 수익률 계산 → RAG에 WRITE → reflect_and_remember(구조체)
 
 ### Phase 3: 스케줄링 (반나절)
 
 - [ ] Windows Task Scheduler 설정 (1 스케줄 = 1 티커, 주기 개별 설정)
 - [ ] 실행 로그 저장
+
+### Phase 4: 포지션 인식 분석 + 비중 조절 SELL (1~2일)
+
+> ⚠️ 기존 에이전트 코드를 수정하는 유일한 Phase. 위험도가 높으므로 **가장 마지막에 진행**.
+
+- [ ] `AgentState`에 `current_position: str` 필드 추가
+- [ ] `propagate()` 호출 전 trade.json → 포지션 요약 문자열 생성
+- [ ] Research Manager / Trader / Risk Judge 프롬프트에 포지션 컨텍스트 주입
+  - Analyst 4명은 시장 데이터 분석이므로 수정 불필요
+- [ ] Portfolio Agent의 SELL 로직: 전량 청산 → **전략 기반 비중 조절**로 변경
+- [ ] Phase 0~3 동안의 "전량 청산" 데이터 vs Phase 4 이후 "비중 조절" 데이터 비교 가능
 
 ---
 
@@ -277,9 +330,13 @@ virtual_trade/
 
 1. **초기 자금**: 사용자 설정, 기본값 $1,000. 스케줄 등록 시 지정.
 2. **멀티 티커 자금 공유: 없음**. 목적은 가상 투자가 아닌 **분석 정확도 검증**. 종목별 독립 자금.
-3. **BUY/SELL = 방향, 전략 = 디테일**: BUY/SELL은 방향을 의미하고, 구매 금액/비중/타점은 전략이 결정. SELL 시 전량 청산 (부분 청산 없음). 청산 시점은 시스템이 결정하므로 수동 개입 불필요.
+3. **SELL 정책 (단계적 진화)**:
+   - Phase 0~3: SELL = **전량 청산**. 단순하게 시작하여 시스템 안정성 확보.
+   - Phase 4: SELL도 **전략 기반 비중 조절**로 전환. "전략 정확도 검증"이 목적이므로 BUY/HOLD/SELL 모두 전략 테스팅 대상.
 4. **Embedding**: 로컬 모델 (`sentence-transformers`). API 호출 비용 없음, 품질 차이 미미.
 5. **메모리 구조**: 에이전트별 메모리 파일이지만 **티커 구분 없이 통합**. 매매 인사이트는 종목 불문 축적.
+6. **reflect_and_remember 입력 구조화**: 처음부터 구조체 (ticker, return_pct, holding_days, analysis_count, market_condition, has_memory). 나중에 변경 시 기존 데이터와 호환 불가하므로 초기 확정.
+7. **부트스트랩 기간 태깅**: 모든 분석에 `has_memory` 플래그. Memory 유무에 따른 수익률 비교 기준선.
 
 ### 크로스 티커 학습
 
