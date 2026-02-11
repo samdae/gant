@@ -156,210 +156,115 @@ ALPHA_VANTAGE_API_KEY=<your-key>
 
 ## 분석 파이프라인 상세
 
-### 전체 흐름도
+> **(A)** = 에이전트 (LLM), **(T)** = 도구 (데이터 수집 함수)
 
-```mermaid
-graph TD
-    START --> MA["Market Analyst"]
-    MA -->|tool call| T1["get_stock_data / get_indicators"]
-    T1 --> MA
-    MA -->|보고서| SA["Sentiment Analyst"]
-    SA -->|tool call| T2["get_news"]
-    T2 --> SA
-    SA -->|보고서| NA["News Analyst"]
-    NA -->|tool call| T3["get_news / get_global_news / get_insider_transactions"]
-    T3 --> NA
-    NA -->|보고서| FA["Fundamentals Analyst"]
-    FA -->|tool call| T4["get_fundamentals / get_balance_sheet / get_cashflow / get_income_statement"]
-    T4 --> FA
-    FA -->|4개 보고서| BULL["Bull Researcher"]
-    BULL <-->|토론| BEAR["Bear Researcher"]
-    BULL --> RM["Research Manager"]
-    BEAR --> RM
-    RM -->|투자 계획| TRADER["Trader"]
-    TRADER -->|매매 판단| AGG["Aggressive Analyst"]
-    AGG <-->|리스크 토론| CON["Conservative Analyst"]
-    CON <-->|리스크 토론| NEU["Neutral Analyst"]
-    NEU --> AGG
-    AGG --> RJ["Risk Judge"]
-    CON --> RJ
-    NEU --> RJ
-    RJ --> END["최종 판단: BUY / HOLD / SELL"]
+### Step 1. 데이터 수집 → 보고서 작성
+
+```
+주가수집기(T) + 지표수집기(T)
+→ 시장 분석가(A) → 시장분석 보고서
+
+종목 뉴스 수집기(T) [뉴스의 감정분석]
+→ 센티먼트 분석가(A) → 센티먼트 보고서
+  ※ 실제 SNS(Twitter/Reddit) 수집 아님. 뉴스 기사를 감정 관점으로 분석
+
+종목 뉴스 수집기(T) + 글로벌 매크로 뉴스(T) + 내부자 거래(T)
+→ 뉴스 분석가(A) → 뉴스 보고서
+
+28 주요지표 수집기(T) + 대차대조표(T) + 현금흐름표(T) + 손익계산서(T)
+→ 펀더멘탈 분석가(A) → 펀더멘탈 보고서
 ```
 
-### Phase 1: 데이터 수집 및 분석 (4종 Analyst)
+4개 분석가 모두 `quick_think_llm` 사용. 각 분석가는 LLM이 직접 어떤 tool을 호출할지 판단합니다.
 
-모든 Analyst는 `quick_think_llm` (기본: `gemini-3-flash`)을 사용합니다. 각 Analyst는 LLM에 tool이 바인딩되어, **LLM이 직접 어떤 tool을 어떤 파라미터로 호출할지 판단**합니다.
+<details>
+<summary><b>지표수집기 상세: 15개 기술 지표</b></summary>
 
-#### Market Analyst
+LLM에게 15개 지표 목록이 주어지고, **"상호 보완적인 최대 8개를 선택하라"** 고 지시. LLM이 시장 상황 판단하여 자율 선택 후, 지표 1개당 1회씩 tool call.
 
-주가와 기술 지표를 분석합니다.
+| 카테고리 | 지표            | 설명                                            |
+| -------- | --------------- | ----------------------------------------------- |
+| 이동평균 | `close_50_sma`  | 50일 단순이동평균 — 중기 추세                   |
+|          | `close_200_sma` | 200일 단순이동평균 — 장기 추세, 골든/데드크로스 |
+|          | `close_10_ema`  | 10일 지수이동평균 — 단기 모멘텀                 |
+| MACD     | `macd`          | EMA 차이 기반 모멘텀                            |
+|          | `macds`         | MACD 시그널 라인                                |
+|          | `macdh`         | MACD 히스토그램 — 모멘텀 강도                   |
+| 모멘텀   | `rsi`           | RSI — 과매수(70↑)/과매도(30↓)                   |
+| 변동성   | `boll`          | 볼린저 밴드 중간선 (20 SMA)                     |
+|          | `boll_ub`       | 볼린저 상단밴드 (+2σ)                           |
+|          | `boll_lb`       | 볼린저 하단밴드 (-2σ)                           |
+|          | `atr`           | ATR — 평균 진폭                                 |
+| 거래량   | `vwma`          | 거래량 가중 이동평균                            |
+|          | `mfi`           | MFI — 매수/매도 압력                            |
 
-**바인딩된 Tools:**
+백룩 기간: `look_back_days` 파라미터 (기본 30일, LLM이 결정)
 
-| Tool             | 시그니처                                            | 반환 데이터                                |
-| ---------------- | --------------------------------------------------- | ------------------------------------------ |
-| `get_stock_data` | `(symbol, start_date, end_date)`                    | OHLCV CSV (Open, High, Low, Close, Volume) |
-| `get_indicators` | `(symbol, indicator, curr_date, look_back_days=30)` | 지정 기간의 일별 지표값 + 지표 설명        |
+</details>
 
-**인디케이터 선택 방식:**
+<details>
+<summary><b>펀더멘탈 28개 지표 목록</b></summary>
 
-시스템 프롬프트에 15개 지표 목록과 각 지표의 용도/주의사항이 주어지고, LLM에게 **"상호 보완적인 최대 8개를 선택하라, 중복을 피하라"** 고 지시합니다. LLM은 시장 상황을 판단하여 자율적으로 선택하고, `get_indicators` tool을 **지표 1개당 1회씩 호출**합니다.
+시가총액, P/E(TTM), Forward P/E, PEG, P/B, EPS(TTM), Forward EPS, 배당수익률, Beta, 52주 고가/저가, 50/200일 평균가, 매출(TTM), 매출총이익, EBITDA, 순이익, 이익률, 영업이익률, ROE, ROA, 부채비율, 유동비율, 장부가치, FCF
 
-**사용 가능한 15개 지표:**
-
-| 카테고리 | 지표            | 설명                                                  |
-| -------- | --------------- | ----------------------------------------------------- |
-| 이동평균 | `close_50_sma`  | 50일 단순이동평균 — 중기 추세                         |
-|          | `close_200_sma` | 200일 단순이동평균 — 장기 추세, 골든크로스/데드크로스 |
-|          | `close_10_ema`  | 10일 지수이동평균 — 단기 모멘텀                       |
-| MACD     | `macd`          | EMA 차이 기반 모멘텀                                  |
-|          | `macds`         | MACD 시그널 라인                                      |
-|          | `macdh`         | MACD 히스토그램 — 모멘텀 강도 시각화                  |
-| 모멘텀   | `rsi`           | RSI — 과매수(70↑)/과매도(30↓)                         |
-| 변동성   | `boll`          | 볼린저 밴드 중간선 (20 SMA)                           |
-|          | `boll_ub`       | 볼린저 상단밴드 (+2σ)                                 |
-|          | `boll_lb`       | 볼린저 하단밴드 (-2σ)                                 |
-|          | `atr`           | ATR — 평균 진폭, 변동성 측정                          |
-| 거래량   | `vwma`          | 거래량 가중 이동평균                                  |
-|          | `mfi`           | MFI — 매수/매도 압력 (가격+거래량)                    |
-
-**백룩 기간:** tool의 `look_back_days` 파라미터로 LLM이 결정 (기본값 30일).
-
-**출력:** 각 지표의 일별 값과 추세를 종합한 상세 보고서 + Markdown 테이블.
-
-#### Sentiment Analyst (코드명: Social Media Analyst)
-
-뉴스 기사를 **센티먼트(감정) 관점**으로 분석합니다.
-
-> ⚠️ 이름은 "Social Media Analyst"이지만, **실제로 Twitter/Reddit 등 SNS를 수집하지 않습니다.** News Analyst와 동일한 `get_news` tool (yfinance 뉴스 API)을 사용하며, LLM 프롬프트만 센티먼트 분석 관점으로 다릅니다.
-
-**바인딩된 Tool:**
-
-| Tool       | 시그니처                         | 반환 데이터                                      |
-| ---------- | -------------------------------- | ------------------------------------------------ |
-| `get_news` | `(ticker, start_date, end_date)` | yfinance 뉴스 최대 20건 (제목, 요약, 출처, 링크) |
-
-**News Analyst와의 차이:** 데이터 소스는 동일하지만, 프롬프트가 "사람들이 이 종목에 대해 어떻게 느끼는가"를 분석하도록 지시합니다. 즉 LLM이 기사 톤에서 긍정/부정 센티먼트를 추론합니다.
-
-**출력:** 센티먼트 보고서 (`sentiment_report`).
-
-#### News Analyst
-
-글로벌 매크로 뉴스, 종목 뉴스, 내부자 거래를 종합 분석합니다.
-
-**바인딩된 Tools:**
-
-| Tool                       | 시그니처                                 | 반환 데이터                                                                         |
-| -------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------- |
-| `get_news`                 | `(ticker, start_date, end_date)`         | 종목별 뉴스 최대 20건                                                               |
-| `get_global_news`          | `(curr_date, look_back_days=7, limit=5)` | 글로벌 매크로 뉴스 (4가지 주제 검색: 증시/경제, 연준/금리, 인플레이션, 글로벌 시장) |
-| `get_insider_transactions` | `(ticker)`                               | 임원/내부자의 주식 매매 내역                                                        |
-
-**출력:** 뉴스 보고서 (`news_report`).
-
-#### Fundamentals Analyst
-
-재무제표와 기업 기본 정보를 분석합니다.
-
-**바인딩된 Tools:**
-
-| Tool                   | 시그니처                     | 반환 데이터                                                                                     |
-| ---------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------- |
-| `get_fundamentals`     | `(ticker)`                   | 28개 핵심 지표 (시가총액, P/E, PEG, ROE, ROA, 매출, 순이익, 이익률, 부채비율, 유동비율, FCF 등) |
-| `get_balance_sheet`    | `(ticker, freq="quarterly")` | 대차대조표 CSV (분기/연간)                                                                      |
-| `get_cashflow`         | `(ticker, freq="quarterly")` | 현금흐름표 CSV (분기/연간)                                                                      |
-| `get_income_statement` | `(ticker, freq="quarterly")` | 손익계산서 CSV (분기/연간)                                                                      |
-
-**`get_fundamentals`가 반환하는 28개 지표:**
-시가총액, P/E(TTM), Forward P/E, PEG, P/B, EPS(TTM), Forward EPS, 배당수익률, Beta, 52주 고가/저가, 50/200일 평균가, 매출(TTM), 매출총이익, EBITDA, 순이익, 이익률, 영업이익률, ROE, ROA, 부채비율, 유동비율, 장부가치, FCF.
-
-**출력:** 재무 보고서 (`fundamentals_report`).
+</details>
 
 ---
 
-### Phase 2: 투자 토론 (Bull vs Bear)
+### Step 2. 투자 토론
 
-4개 보고서(`market_report`, `sentiment_report`, `news_report`, `fundamentals_report`)가 Bull/Bear Researcher에게 전달됩니다.
+```
+시장분석 보고서 + 센티먼트 보고서 + 뉴스 보고서 + 펀더멘탈 보고서
 
-| 에이전트            | 역할                                                    | LLM               |
-| ------------------- | ------------------------------------------------------- | ----------------- |
-| **Bull Researcher** | 매수 논거 제시 — 성장 잠재력, 경쟁 우위, 긍정 지표 강조 | `quick_think_llm` |
-| **Bear Researcher** | 매도 논거 제시 — 리스크, 경쟁 약점, 부정 지표 강조      | `quick_think_llm` |
-
-**토론 구조:**
-
-1. Bull이 먼저 주장 → Bear가 반박 → Bull이 재반박 ...
-2. `max_debate_rounds` 만큼 반복 (기본: 1라운드 = Bull 1회 + Bear 1회)
-3. 각 라운드에서 상대방의 이전 주장(`current_response`)과 전체 토론 히스토리(`history`)를 참조
-4. **Memory 시스템**: 과거 유사 상황에서의 판단과 그 결과를 `memory.get_memories()`로 조회하여 과거 실수에서 학습
+→ 낙관론자(A) ↔ 비관론자(A) 토론
+  N회 반복 가능 (max_debate_rounds, 기본 1)
+  Memory를 통해 과거 유사 상황의 판단과 실수를 복기
+```
 
 ---
 
-### Phase 3: Research Manager (투자 계획 수립)
+### Step 3. 투자 계획 수립 ← `deep_think_llm` (고급 추론)
 
-Bull/Bear 토론 결과를 종합하여 구체적인 투자 계획(`investment_plan`)을 수립합니다.
-
-| 항목 | 값                                                            |
-| ---- | ------------------------------------------------------------- |
-| LLM  | `deep_think_llm` (기본: `gemini-3-pro-high`) — 심층 분석 필요 |
-| 입력 | Bull/Bear 토론 히스토리 + 4개 보고서 + 과거 Memory            |
-| 출력 | `investment_plan` — Trader에게 전달                           |
+```
+→ 리서치 매니저(A)
+  토론 결과를 종합하여 구체적인 투자 계획(investment_plan) 수립
+```
 
 ---
 
-### Phase 4: Trader (매매 판단)
+### Step 4. 매매 판단
 
-Research Manager의 투자 계획을 받아 **BUY / HOLD / SELL** 결정을 내립니다.
-
-| 항목 | 값                                                                                            |
-| ---- | --------------------------------------------------------------------------------------------- |
-| LLM  | `quick_think_llm`                                                                             |
-| 입력 | `investment_plan` + 과거 Memory                                                               |
-| 출력 | `trader_investment_plan` — 구체적 매매 근거 + `FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**` |
+```
+→ 트레이더(A)
+  투자 계획 기반으로 BUY / HOLD / SELL 판단
+  Memory를 통해 과거 매매 실수 복기
+```
 
 ---
 
-### Phase 5: 리스크 토론 (3인 토론)
+### Step 5. 리스크 토론
 
-Trader의 매매 판단에 대해 3가지 관점의 리스크 분석가가 토론합니다.
-
-| 에이전트                 | 관점   | 역할                                      |
-| ------------------------ | ------ | ----------------------------------------- |
-| **Aggressive Analyst**   | 공격적 | 고위험-고수익 기회 옹호, 보수적 관점 반박 |
-| **Conservative Analyst** | 보수적 | 리스크 강조, 안전 마진/헤지 전략 제안     |
-| **Neutral Analyst**      | 중립   | 양쪽 균형, 데이터 기반 중재               |
-
-**토론 구조:**
-
-1. Aggressive → Conservative → Neutral → Aggressive ... 순환
-2. `max_risk_discuss_rounds` 만큼 반복 (기본: 1라운드 = 3인 각 1회)
-3. 각 분석가는 4개 보고서 + Trader 판단 + 다른 분석가의 이전 주장을 참조
+```
+→ 공격적 분석가(A) ↔ 보수적 분석가(A) ↔ 중립적 분석가(A) 순환 토론
+  트레이더가 내린 결정에 대해 3가지 관점으로 토론
+  N회 반복 가능 (max_risk_discuss_rounds, 기본 1)
+```
 
 ---
 
-### Phase 6: Risk Judge (최종 판결)
+### Step 6. 최종 결정 ← `deep_think_llm` (고급 추론)
 
-리스크 토론 결과를 최종 종합하여 **투자 결정을 확정**합니다.
-
-| 항목 | 값                                                            |
-| ---- | ------------------------------------------------------------- |
-| LLM  | `deep_think_llm` (기본: `gemini-3-pro-high`) — 최종 심층 판단 |
-| 입력 | 리스크 토론 히스토리 + 4개 보고서 + Trader 판단 + 과거 Memory |
-| 출력 | `final_trade_decision` — **BUY / HOLD / SELL** + 근거         |
+```
+→ 최종 판결자(A)
+  리스크 토론 결과를 종합하여 투자 결정 확정
+  출력: BUY / HOLD / SELL + 근거
+```
 
 ---
-
-### 모델 배정 요약
-
-| LLM                                  | 용도                         | 사용 에이전트                            |
-| ------------------------------------ | ---------------------------- | ---------------------------------------- |
-| `quick_think_llm` (gemini-3-flash)   | 데이터 수집, 빠른 분석, 토론 | 4종 Analyst, Bull/Bear, Trader, Risk 3인 |
-| `deep_think_llm` (gemini-3-pro-high) | 심층 종합 판단               | Research Manager, Risk Judge             |
 
 ### Memory 시스템
 
-Bull, Bear, Trader, Research Manager, Risk Judge에는 각각 독립된 Memory가 있습니다. `reflect_and_remember(returns)` 호출 시 실제 수익/손실 데이터를 기반으로 과거 판단을 반성하고, 다음 분석에서 유사 상황 조회 시 활용합니다.
+Bull, Bear, Trader, Research Manager, Risk Judge에 각각 독립된 Memory가 있습니다. `reflect_and_remember(returns)` 호출 시 실제 수익/손실을 기반으로 과거 판단을 반성하고, 다음 분석에서 유사 상황 조회 시 활용합니다.
 
 ---
 
