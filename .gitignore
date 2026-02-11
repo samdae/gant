@@ -1,5 +1,5 @@
 # Docs
-docs/
+
 *.log
 *.sqlite
 __pycache__/
