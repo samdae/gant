@@ -180,8 +180,20 @@ class TradingAgentsGraph:
             ),
         }
 
-    def propagate(self, company_name, trade_date):
-        """Run the trading agents graph for a company on a specific date."""
+    def propagate(self, company_name, trade_date, depth=None):
+        """Run the trading agents graph for a company on a specific date.
+
+        Args:
+            company_name: Ticker symbol (e.g. "NVDA")
+            trade_date: Analysis date "YYYY-MM-DD"
+            depth: Optional debate rounds (1=shallow, 3=medium, 5=deep).
+                   Sets both max_debate_rounds and max_risk_discuss_rounds.
+                   If None, uses config defaults.
+        """
+
+        if depth is not None:
+            self.config["max_debate_rounds"] = depth
+            self.config["max_risk_discuss_rounds"] = depth
 
         self.ticker = company_name
 

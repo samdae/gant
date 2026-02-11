@@ -5,36 +5,62 @@
 [TradingAgents](https://github.com/virattt/TradingAgents) 프레임워크를 기반으로, Google Antigravity 엔진(Gemini 3 Pro / Gemini 2.5 Pro)을 탑재한 무료 AI 주식 분석 시스템입니다. 여러 전문 에이전트가 토론과 리스크 분석을 거쳐 매수/매도/관망 판단을 내립니다.
 
 ---
+## 심플 시스템플로우
+```
+Input: TickerSymbol, StandardDate, debate_round
+default data vendors: yfinace  
+fallback:  30s delay retry & model downgrade
+Indicator, Lookback : Auto selected by AGENTS 
+
+# A는 에이전트 T는 툴 
+
+START -> 
+
+주가수집기(T) + 지표수집기(T) -> 시장 분석가(A) -> 시장분석 보고서
+종목 별 뉴스 수집기(T)[뉴스의 감정분석] -> 소셜미디어 분석가(A) -> 소셜 보고서
+종목 별 뉴스 수집기(T) + 글로벌 뉴스(T) + 임직원 뉴스(T) -> 뉴스 분석가(A) -> 뉴스 보고서
+28 주요지표 수집기(T) + 대차대조 수집기(T) + 현금흐름 수집기(T) + 손익계산 수집기(T) -> 펀더멘탈 분석가 -> 펀더멘탈 보고서
+
+시장분석 보고서 + 소셜 보고서 +뉴스 보고서 + 펀더멘탈 보고서 
+
+-> 낙관(A) / 비관(A) 토론(N회 반복 가능, memory 통해 과거 실수 복기 가능) 
+-> 리서치 매니저(A) ( 토론 결과를 종합하여 구체적인 투자 계획 수립) ------------ 고급 추론 모델
+-> 트레이더(A) ( 매매판단 매수,매도,홀드 판단을 내림 )
+-> 리스크 트론(A) ( 트레이더가 내린 결정을 판단으로 공격적(A) / 방어적(A) / 중립적(A) 분석가가 토론. N회 반복가능)
+-> 최종 결정(A) ( 리스크 토론 결과를 종합하여 최종 결정을 확정 ) -------------- 고급 추론 모델
+
+-> END 
+```
+
+---
 
 ## 아키텍처
 
-### 멀티 에이전트 시스템 (12개 에이전트)
+### Agents (12)
 
 이 시스템은 하나의 AI가 아닌 **역할이 다른 12개 에이전트**의 협업으로 의사결정을 내립니다.
 
 | Phase       | 에이전트                 | 역할                                                      | LLM   |
 | ----------- | ------------------------ | --------------------------------------------------------- | ----- |
-| 데이터 수집 | **Market Analyst**       | 주가 + 기술 지표 분석                                     | quick |
-|             | **Sentiment Analyst**    | 뉴스 기사를 센티먼트 관점으로 분석 (※ 실제 SNS 수집 아님) | quick |
-|             | **News Analyst**         | 종목뉴스 + 글로벌 매크로 + 내부자 거래                    | quick |
-|             | **Fundamentals Analyst** | 재무제표 + 기업 기본 지표 28개                            | quick |
-| 투자 토론   | **Bull Researcher**      | 매수 논거 주장                                            | quick |
-|             | **Bear Researcher**      | 매도 논거 주장                                            | quick |
+| 데이터 수집 | **Market Analyst**       | 주가 + 기술 지표 분석                                     |  |
+|             | **Sentiment Analyst**    | 뉴스 기사를 센티먼트 관점으로 분석 (※ 실제 SNS 수집 아님) |  |
+|             | **News Analyst**         | 종목뉴스 + 글로벌 매크로 + 내부자 거래                    |  |
+|             | **Fundamentals Analyst** | 재무제표 + 기업 기본 지표 28개                            |  |
+| 투자 토론   | **Bull Researcher**      | 매수 논거 주장                                            |  |
+|             | **Bear Researcher**      | 매도 논거 주장                                            |  |
 | 종합        | **Research Manager**     | 토론 결과 종합 → 투자 계획                                | deep  |
-| 매매        | **Trader**               | BUY/HOLD/SELL 매매 판단                                   | quick |
-| 리스크      | **Aggressive Analyst**   | 고위험-고수익 옹호                                        | quick |
-|             | **Conservative Analyst** | 리스크 경고, 보수적 접근                                  | quick |
-|             | **Neutral Analyst**      | 양쪽 균형, 데이터 중재                                    | quick |
+| 매매        | **Trader**               | BUY/HOLD/SELL 매매 판단                                   |  |
+| 리스크      | **Aggressive Analyst**   | 고위험-고수익 옹호                                        |  |
+|             | **Conservative Analyst** | 리스크 경고, 보수적 접근                                  |  |
+|             | **Neutral Analyst**      | 양쪽 균형, 데이터 중재                                    |  |
 | 최종        | **Risk Judge**           | 리스크 토론 종합 → 최종 판결                              | deep  |
 
-> `quick` = `quick_think_llm` (gemini-3-flash), `deep` = `deep_think_llm` (gemini-3-pro-high)
+
+### Memory 시스템
+
+Bull, Bear, Trader, Research Manager, Risk Judge에 각각 독립된 Memory가 있습니다. `reflect_and_remember(returns)` 호출 시 실제 수익/손실을 기반으로 과거 판단을 반성하고, 다음 분석에서 유사 상황 조회 시 활용합니다.
 
 ### 분석 흐름
-
-```
-[4 Analyst 보고서 작성] → [Bull vs Bear 토론] → [Research Manager 투자 계획]
-  → [Trader 매매 판단] → [3인 리스크 토론] → [Risk Judge 최종 판결]
-```
 
 토론 라운드 수는 `max_debate_rounds`와 `max_risk_discuss_rounds`로 조절됩니다 (기본: 1라운드).
 
@@ -84,6 +110,56 @@ API 호출 실패 시 자동 복구:
 
 - **429 (Rate Limit)**: 30초 대기 후 동일 모델로 재시도 (최대 5회)
 - **503 (Capacity)**: 폴백 모델로 자동 전환 (`2.5-pro → 2.5-flash`, `3-pro-high → 3-pro-low → 3-flash`)
+
+---
+
+## 주요 설정 (default_config.py)
+
+| 키                        | 기본값                             | 설명                          |
+| ------------------------- | ---------------------------------- | ----------------------------- |
+| `llm_provider`            | `gemini-cli` (env: `LLM_PROVIDER`) | LLM provider 선택             |
+| `deep_think_llm`          | `gemini-3-pro-high`                | 심층 분석용 모델              |
+| `quick_think_llm`         | `gemini-3-flash`                   | 빠른 판단용 모델              |
+| `max_debate_rounds`       | 1                                  | Bull vs Bear 토론 라운드 수   |
+| `max_risk_discuss_rounds` | 1                                  | 리스크 논의 라운드 수         |
+| `data_vendors`            | 모두 `yfinance`                    | 데이터 소스 벤더 (카테고리별) |
+
+
+---
+
+## 수집 상세
+
+<details>
+<summary><b>지표수집기 상세: 15개 기술 지표</b></summary>
+
+LLM에게 15개 지표 목록이 주어지고, **"상호 보완적인 최대 8개를 선택하라"** 고 지시. LLM이 시장 상황 판단하여 자율 선택 후, 지표 1개당 1회씩 tool call.
+
+| 카테고리 | 지표            | 설명                                            |
+| -------- | --------------- | ----------------------------------------------- |
+| 이동평균 | `close_50_sma`  | 50일 단순이동평균 — 중기 추세                   |
+|          | `close_200_sma` | 200일 단순이동평균 — 장기 추세, 골든/데드크로스 |
+|          | `close_10_ema`  | 10일 지수이동평균 — 단기 모멘텀                 |
+| MACD     | `macd`          | EMA 차이 기반 모멘텀                            |
+|          | `macds`         | MACD 시그널 라인                                |
+|          | `macdh`         | MACD 히스토그램 — 모멘텀 강도                   |
+| 모멘텀   | `rsi`           | RSI — 과매수(70↑)/과매도(30↓)                   |
+| 변동성   | `boll`          | 볼린저 밴드 중간선 (20 SMA)                     |
+|          | `boll_ub`       | 볼린저 상단밴드 (+2σ)                           |
+|          | `boll_lb`       | 볼린저 하단밴드 (-2σ)                           |
+|          | `atr`           | ATR — 평균 진폭                                 |
+| 거래량   | `vwma`          | 거래량 가중 이동평균                            |
+|          | `mfi`           | MFI — 매수/매도 압력                            |
+
+백룩 기간: `look_back_days` 파라미터 (기본 30일, LLM이 결정)
+
+</details>
+
+<details>
+<summary><b>펀더멘탈 28개 지표 목록</b></summary>
+
+시가총액, P/E(TTM), Forward P/E, PEG, P/B, EPS(TTM), Forward EPS, 배당수익률, Beta, 52주 고가/저가, 50/200일 평균가, 매출(TTM), 매출총이익, EBITDA, 순이익, 이익률, 영업이익률, ROE, ROA, 부채비율, 유동비율, 장부가치, FCF
+
+</details>
 
 ---
 
@@ -139,140 +215,3 @@ ANTIGRAVITY_REFRESH_TOKEN=<your-token>
 ALPHA_VANTAGE_API_KEY=<your-key>
 ```
 
----
-
-## 주요 설정 (default_config.py)
-
-| 키                        | 기본값                             | 설명                          |
-| ------------------------- | ---------------------------------- | ----------------------------- |
-| `llm_provider`            | `gemini-cli` (env: `LLM_PROVIDER`) | LLM provider 선택             |
-| `deep_think_llm`          | `gemini-3-pro-high`                | 심층 분석용 모델              |
-| `quick_think_llm`         | `gemini-3-flash`                   | 빠른 판단용 모델              |
-| `max_debate_rounds`       | 1                                  | Bull vs Bear 토론 라운드 수   |
-| `max_risk_discuss_rounds` | 1                                  | 리스크 논의 라운드 수         |
-| `data_vendors`            | 모두 `yfinance`                    | 데이터 소스 벤더 (카테고리별) |
-
----
-
-## 분석 파이프라인 상세
-
-> **(A)** = 에이전트 (LLM), **(T)** = 도구 (데이터 수집 함수)
-
-### Step 1. 데이터 수집 → 보고서 작성
-
-```
-주가수집기(T) + 지표수집기(T)
-→ 시장 분석가(A) → 시장분석 보고서
-
-종목 뉴스 수집기(T) [뉴스의 감정분석]
-→ 센티먼트 분석가(A) → 센티먼트 보고서
-  ※ 실제 SNS(Twitter/Reddit) 수집 아님. 뉴스 기사를 감정 관점으로 분석
-
-종목 뉴스 수집기(T) + 글로벌 매크로 뉴스(T) + 내부자 거래(T)
-→ 뉴스 분석가(A) → 뉴스 보고서
-
-28 주요지표 수집기(T) + 대차대조표(T) + 현금흐름표(T) + 손익계산서(T)
-→ 펀더멘탈 분석가(A) → 펀더멘탈 보고서
-```
-
-4개 분석가 모두 `quick_think_llm` 사용. 각 분석가는 LLM이 직접 어떤 tool을 호출할지 판단합니다.
-
-<details>
-<summary><b>지표수집기 상세: 15개 기술 지표</b></summary>
-
-LLM에게 15개 지표 목록이 주어지고, **"상호 보완적인 최대 8개를 선택하라"** 고 지시. LLM이 시장 상황 판단하여 자율 선택 후, 지표 1개당 1회씩 tool call.
-
-| 카테고리 | 지표            | 설명                                            |
-| -------- | --------------- | ----------------------------------------------- |
-| 이동평균 | `close_50_sma`  | 50일 단순이동평균 — 중기 추세                   |
-|          | `close_200_sma` | 200일 단순이동평균 — 장기 추세, 골든/데드크로스 |
-|          | `close_10_ema`  | 10일 지수이동평균 — 단기 모멘텀                 |
-| MACD     | `macd`          | EMA 차이 기반 모멘텀                            |
-|          | `macds`         | MACD 시그널 라인                                |
-|          | `macdh`         | MACD 히스토그램 — 모멘텀 강도                   |
-| 모멘텀   | `rsi`           | RSI — 과매수(70↑)/과매도(30↓)                   |
-| 변동성   | `boll`          | 볼린저 밴드 중간선 (20 SMA)                     |
-|          | `boll_ub`       | 볼린저 상단밴드 (+2σ)                           |
-|          | `boll_lb`       | 볼린저 하단밴드 (-2σ)                           |
-|          | `atr`           | ATR — 평균 진폭                                 |
-| 거래량   | `vwma`          | 거래량 가중 이동평균                            |
-|          | `mfi`           | MFI — 매수/매도 압력                            |
-
-백룩 기간: `look_back_days` 파라미터 (기본 30일, LLM이 결정)
-
-</details>
-
-<details>
-<summary><b>펀더멘탈 28개 지표 목록</b></summary>
-
-시가총액, P/E(TTM), Forward P/E, PEG, P/B, EPS(TTM), Forward EPS, 배당수익률, Beta, 52주 고가/저가, 50/200일 평균가, 매출(TTM), 매출총이익, EBITDA, 순이익, 이익률, 영업이익률, ROE, ROA, 부채비율, 유동비율, 장부가치, FCF
-
-</details>
-
----
-
-### Step 2. 투자 토론
-
-```
-시장분석 보고서 + 센티먼트 보고서 + 뉴스 보고서 + 펀더멘탈 보고서
-
-→ 낙관론자(A) ↔ 비관론자(A) 토론
-  N회 반복 가능 (max_debate_rounds, 기본 1)
-  Memory를 통해 과거 유사 상황의 판단과 실수를 복기
-```
-
----
-
-### Step 3. 투자 계획 수립 ← `deep_think_llm` (고급 추론)
-
-```
-→ 리서치 매니저(A)
-  토론 결과를 종합하여 구체적인 투자 계획(investment_plan) 수립
-```
-
----
-
-### Step 4. 매매 판단
-
-```
-→ 트레이더(A)
-  투자 계획 기반으로 BUY / HOLD / SELL 판단
-  Memory를 통해 과거 매매 실수 복기
-```
-
----
-
-### Step 5. 리스크 토론
-
-```
-→ 공격적 분석가(A) ↔ 보수적 분석가(A) ↔ 중립적 분석가(A) 순환 토론
-  트레이더가 내린 결정에 대해 3가지 관점으로 토론
-  N회 반복 가능 (max_risk_discuss_rounds, 기본 1)
-```
-
----
-
-### Step 6. 최종 결정 ← `deep_think_llm` (고급 추론)
-
-```
-→ 최종 판결자(A)
-  리스크 토론 결과를 종합하여 투자 결정 확정
-  출력: BUY / HOLD / SELL + 근거
-```
-
----
-
-### Memory 시스템
-
-Bull, Bear, Trader, Research Manager, Risk Judge에 각각 독립된 Memory가 있습니다. `reflect_and_remember(returns)` 호출 시 실제 수익/손실을 기반으로 과거 판단을 반성하고, 다음 분석에서 유사 상황 조회 시 활용합니다.
-
----
-
-## ⚠️ Disclaimer
-
-이 소프트웨어는 교육 및 연구 목적으로만 제공됩니다. 실제 투자에 대한 책임은 전적으로 사용자에게 있습니다.
-**Antigravity API 사용은 Google의 정책에 따라 제한될 수 있습니다.**
-
----
-
-_Maintained by DH & Deuk-gu_
