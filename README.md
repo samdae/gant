@@ -8,22 +8,32 @@
 
 ## 아키텍처
 
-### 멀티 에이전트 시스템
+### 멀티 에이전트 시스템 (12개 에이전트)
 
-이 시스템은 하나의 AI가 아닌 **역할이 다른 여러 에이전트**의 협업으로 의사결정을 내립니다.
+이 시스템은 하나의 AI가 아닌 **역할이 다른 12개 에이전트**의 협업으로 의사결정을 내립니다.
 
-| 역할             | 에이전트                              | 설명                                                   |
-| ---------------- | ------------------------------------- | ------------------------------------------------------ |
-| **Analyst**      | Market / Social / News / Fundamentals | 각각 시장 데이터, 소셜 센티먼트, 뉴스, 재무제표를 분석 |
-| **Researcher**   | Bull / Bear                           | 낙관/비관 시나리오를 각각 옹호하며 토론                |
-| **Risk Manager** | Risk Analyst                          | 포지션 리스크, 변동성, 최대 손실을 평가                |
-| **Trader**       | Portfolio Trader                      | 최종 매수/매도/관망 판단과 비중 결정                   |
+| Phase       | 에이전트                 | 역할                                                      | LLM   |
+| ----------- | ------------------------ | --------------------------------------------------------- | ----- |
+| 데이터 수집 | **Market Analyst**       | 주가 + 기술 지표 분석                                     | quick |
+|             | **Sentiment Analyst**    | 뉴스 기사를 센티먼트 관점으로 분석 (※ 실제 SNS 수집 아님) | quick |
+|             | **News Analyst**         | 종목뉴스 + 글로벌 매크로 + 내부자 거래                    | quick |
+|             | **Fundamentals Analyst** | 재무제표 + 기업 기본 지표 28개                            | quick |
+| 투자 토론   | **Bull Researcher**      | 매수 논거 주장                                            | quick |
+|             | **Bear Researcher**      | 매도 논거 주장                                            | quick |
+| 종합        | **Research Manager**     | 토론 결과 종합 → 투자 계획                                | deep  |
+| 매매        | **Trader**               | BUY/HOLD/SELL 매매 판단                                   | quick |
+| 리스크      | **Aggressive Analyst**   | 고위험-고수익 옹호                                        | quick |
+|             | **Conservative Analyst** | 리스크 경고, 보수적 접근                                  | quick |
+|             | **Neutral Analyst**      | 양쪽 균형, 데이터 중재                                    | quick |
+| 최종        | **Risk Judge**           | 리스크 토론 종합 → 최종 판결                              | deep  |
+
+> `quick` = `quick_think_llm` (gemini-3-flash), `deep` = `deep_think_llm` (gemini-3-pro-high)
 
 ### 분석 흐름
 
 ```
-[데이터 수집] → [4종 Analyst 보고서] → [Bull vs Bear 토론]
-      → [Risk Manager 평가] → [Trader 최종 판단] → [결과 리포트]
+[4 Analyst 보고서 작성] → [Bull vs Bear 토론] → [Research Manager 투자 계획]
+  → [Trader 매매 판단] → [3인 리스크 토론] → [Risk Judge 최종 판결]
 ```
 
 토론 라운드 수는 `max_debate_rounds`와 `max_risk_discuss_rounds`로 조절됩니다 (기본: 1라운드).
@@ -153,7 +163,7 @@ graph TD
     START --> MA["Market Analyst"]
     MA -->|tool call| T1["get_stock_data / get_indicators"]
     T1 --> MA
-    MA -->|보고서| SA["Social Analyst"]
+    MA -->|보고서| SA["Sentiment Analyst"]
     SA -->|tool call| T2["get_news"]
     T2 --> SA
     SA -->|보고서| NA["News Analyst"]
@@ -218,9 +228,11 @@ graph TD
 
 **출력:** 각 지표의 일별 값과 추세를 종합한 상세 보고서 + Markdown 테이블.
 
-#### Social Media Analyst
+#### Sentiment Analyst (코드명: Social Media Analyst)
 
-소셜미디어와 개별 종목 뉴스를 분석하여 센티먼트를 평가합니다.
+뉴스 기사를 **센티먼트(감정) 관점**으로 분석합니다.
+
+> ⚠️ 이름은 "Social Media Analyst"이지만, **실제로 Twitter/Reddit 등 SNS를 수집하지 않습니다.** News Analyst와 동일한 `get_news` tool (yfinance 뉴스 API)을 사용하며, LLM 프롬프트만 센티먼트 분석 관점으로 다릅니다.
 
 **바인딩된 Tool:**
 
@@ -228,7 +240,7 @@ graph TD
 | ---------- | -------------------------------- | ------------------------------------------------ |
 | `get_news` | `(ticker, start_date, end_date)` | yfinance 뉴스 최대 20건 (제목, 요약, 출처, 링크) |
 
-**분석 관점:** 종목 관련 소셜미디어 논의, 일별 투자 센티먼트 변화, 기업 관련 최신 뉴스. 같은 `get_news` tool이지만 프롬프트가 소셜/센티먼트 분석 관점으로 작성됨.
+**News Analyst와의 차이:** 데이터 소스는 동일하지만, 프롬프트가 "사람들이 이 종목에 대해 어떻게 느끼는가"를 분석하도록 지시합니다. 즉 LLM이 기사 톤에서 긍정/부정 센티먼트를 추론합니다.
 
 **출력:** 센티먼트 보고서 (`sentiment_report`).
 
