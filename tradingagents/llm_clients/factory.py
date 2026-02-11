@@ -1,10 +1,8 @@
-from typing import Optional
+from typing import Any, Optional
 
 from .base_client import BaseLLMClient
-from .openai_client import OpenAIClient
-from .anthropic_client import AnthropicClient
-from .google_client import GoogleClient
 from .antigravity_client import AntigravityClient
+from .gemini_cli_client import GeminiCLIClient
 
 
 def create_llm_client(
@@ -13,35 +11,26 @@ def create_llm_client(
     base_url: Optional[str] = None,
     **kwargs,
 ) -> BaseLLMClient:
-    """Create an LLM client for the specified provider.
+    """Create an LLM client instance.
 
     Args:
-        provider: LLM provider (openai, anthropic, google, xai, ollama, openrouter, antigravity)
-        model: Model name/identifier
-        base_url: Optional base URL for API endpoint
-        **kwargs: Additional provider-specific arguments
+        provider: "gemini-cli" (default) or "antigravity"
+        model: Model name (e.g. gemini-3-pro-high)
+        base_url: Not used, kept for interface compatibility
+        **kwargs: Additional arguments
 
     Returns:
-        Configured BaseLLMClient instance
-
-    Raises:
-        ValueError: If provider is not supported
+        Configured LLM client
     """
     provider_lower = provider.lower()
 
-    if provider_lower in ("openai", "ollama", "openrouter"):
-        return OpenAIClient(model, base_url, provider=provider_lower, **kwargs)
-
-    if provider_lower == "xai":
-        return OpenAIClient(model, base_url, provider="xai", **kwargs)
-
-    if provider_lower == "anthropic":
-        return AnthropicClient(model, base_url, **kwargs)
-
-    if provider_lower == "google":
-        return GoogleClient(model, base_url, **kwargs)
+    if provider_lower == "gemini-cli":
+        return GeminiCLIClient(model, base_url, **kwargs)
 
     if provider_lower == "antigravity":
         return AntigravityClient(model, base_url, **kwargs)
 
-    raise ValueError(f"Unsupported LLM provider: {provider}")
+    raise ValueError(
+        f"Unsupported LLM provider: '{provider}'. "
+        f"Supported: 'gemini-cli', 'antigravity'."
+    )

@@ -7,14 +7,12 @@ DEFAULT_CONFIG = {
         os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
         "dataflows/data_cache",
     ),
-    # LLM settings
-    "llm_provider": "antigravity",
+    # LLM settings — uses Google OAuth, no API keys
+    # Providers: "gemini-cli" (default, uses ~/.gemini creds) or "antigravity"
+    "llm_provider": "gemini-cli",
     "deep_think_llm": "gemini-3-pro-high",
     "quick_think_llm": "gemini-3-flash",
     "backend_url": None,
-    # Provider-specific thinking configuration
-    "google_thinking_level": None,      # "high", "minimal", etc.
-    "openai_reasoning_effort": None,    # "medium", "high", "low"
     # Debate and discussion settings
     "max_debate_rounds": 1,
     "max_risk_discuss_rounds": 1,
@@ -22,10 +20,10 @@ DEFAULT_CONFIG = {
     # Data vendor configuration
     # Category-level configuration (default for all tools in category)
     "data_vendors": {
-        "core_stock_apis": "yfinance",       # Options: alpha_vantage, yfinance
+        "core_stock_apis": "yfinance",  # Options: alpha_vantage, yfinance
         "technical_indicators": "yfinance",  # Options: alpha_vantage, yfinance
-        "fundamental_data": "yfinance",      # Options: alpha_vantage, yfinance
-        "news_data": "yfinance",             # Options: alpha_vantage, yfinance
+        "fundamental_data": "yfinance",  # Options: alpha_vantage, yfinance
+        "news_data": "yfinance",  # Options: alpha_vantage, yfinance
     },
     # Tool-level configuration (takes precedence over category-level)
     "tool_vendors": {

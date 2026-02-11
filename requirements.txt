@@ -1,6 +1,5 @@
 typing-extensions
 langchain-core
-langchain-openai
 langchain-experimental
 pandas
 yfinance
@@ -18,5 +17,3 @@ chainlit
 rich
 typer
 questionary
-langchain_anthropic
-langchain-google-genai

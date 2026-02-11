@@ -30,7 +30,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_income_statement,
     get_news,
     get_insider_transactions,
-    get_global_news
+    get_global_news,
 )
 
 from .conditional_logic import ConditionalLogic
@@ -93,13 +93,17 @@ class TradingAgentsGraph:
 
         self.deep_thinking_llm = deep_client.get_llm()
         self.quick_thinking_llm = quick_client.get_llm()
-        
+
         # Initialize memories
         self.bull_memory = FinancialSituationMemory("bull_memory", self.config)
         self.bear_memory = FinancialSituationMemory("bear_memory", self.config)
         self.trader_memory = FinancialSituationMemory("trader_memory", self.config)
-        self.invest_judge_memory = FinancialSituationMemory("invest_judge_memory", self.config)
-        self.risk_manager_memory = FinancialSituationMemory("risk_manager_memory", self.config)
+        self.invest_judge_memory = FinancialSituationMemory(
+            "invest_judge_memory", self.config
+        )
+        self.risk_manager_memory = FinancialSituationMemory(
+            "risk_manager_memory", self.config
+        )
 
         # Create tool nodes
         self.tool_nodes = self._create_tool_nodes()
@@ -133,21 +137,10 @@ class TradingAgentsGraph:
     def _get_provider_kwargs(self) -> Dict[str, Any]:
         """Get provider-specific kwargs for LLM client creation."""
         kwargs = {}
-        provider = self.config.get("llm_provider", "").lower()
 
-        if provider == "google":
-            thinking_level = self.config.get("google_thinking_level")
-            if thinking_level:
-                kwargs["thinking_level"] = thinking_level
-
-        elif provider == "openai":
-            reasoning_effort = self.config.get("openai_reasoning_effort")
-            if reasoning_effort:
-                kwargs["reasoning_effort"] = reasoning_effort
-
-        elif provider == "antigravity":
-            auth_mode = self.config.get("auth_mode", "antigravity")
-            kwargs["auth_mode"] = auth_mode
+        # Provider name doubles as auth_mode
+        provider = self.config.get("llm_provider", "gemini-cli")
+        kwargs["auth_mode"] = provider
 
         return kwargs
 
@@ -208,13 +201,14 @@ class TradingAgentsGraph:
                     msg = chunk["messages"][-1]
                     # Compact pretty_print: collapse excessive blank lines
                     import re, io, sys
+
                     buf = io.StringIO()
                     old_stdout = sys.stdout
                     sys.stdout = buf
                     msg.pretty_print()
                     sys.stdout = old_stdout
-                    output = re.sub(r'\n{3,}', '\n\n', buf.getvalue())
-                    print(output, end='')
+                    output = re.sub(r"\n{3,}", "\n\n", buf.getvalue())
+                    print(output, end="")
                     trace.append(chunk)
 
             final_state = trace[-1]
@@ -253,8 +247,12 @@ class TradingAgentsGraph:
             },
             "trader_investment_decision": final_state["trader_investment_plan"],
             "risk_debate_state": {
-                "aggressive_history": final_state["risk_debate_state"]["aggressive_history"],
-                "conservative_history": final_state["risk_debate_state"]["conservative_history"],
+                "aggressive_history": final_state["risk_debate_state"][
+                    "aggressive_history"
+                ],
+                "conservative_history": final_state["risk_debate_state"][
+                    "conservative_history"
+                ],
                 "neutral_history": final_state["risk_debate_state"]["neutral_history"],
                 "history": final_state["risk_debate_state"]["history"],
                 "judge_decision": final_state["risk_debate_state"]["judge_decision"],

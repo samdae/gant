@@ -1,5 +1,3 @@
- azdev on  ~/.openclaw/workspace/TradingAgents master
-# python3 run_antigravity.py
 🥊 [Antigravity] Trading System Initializing... 🥊
    Provider: antigravity
    Deep Model: gemini-3-pro-high
