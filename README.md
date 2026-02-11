@@ -99,14 +99,12 @@ pip install -r requirements.txt
 ### Run
 
 ```bash
-# pip install로 설치한 경우
-tradingagents
-
-# 또는 직접 실행
-python -m cli.main
+python main.py
 ```
 
-CLI wizard가 6단계로 분석을 설정합니다:
+`main.py`에서 종목, 날짜, 모델 등을 직접 설정합니다. 기본 설정은 `default_config.py`에서 읽고, `.env`로 override할 수 있습니다.
+
+CLI wizard를 사용하려면 `python -m cli.main` 또는 `tradingagents` 명령을 실행하세요. wizard는 6단계로 분석을 설정합니다:
 
 1. **종목 선택** — 티커 심볼 입력 (예: AAPL, TSLA)
 2. **분석 날짜** — 분석 기준일 선택
