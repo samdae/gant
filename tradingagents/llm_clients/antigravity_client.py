@@ -85,7 +85,6 @@ class AntigravityAuth:
         try:
             with open(TOKEN_FILE, "w") as f:
                 json.dump(data, f, indent=2)
-            print(f"[Antigravity] Tokens saved to {TOKEN_FILE}")
         except Exception as e:
             logger.warning(f"[Antigravity] Failed to save tokens: {e}")
 
@@ -106,7 +105,7 @@ class AntigravityAuth:
             self.refresh_token = data.get("refresh_token")
             self.project_id = data.get("project_id")
             if self.refresh_token:
-                print(f"[Antigravity] Loaded saved tokens from {TOKEN_FILE}")
+                logger.debug(f"[Antigravity] Loaded tokens from {TOKEN_FILE}")
         except Exception as e:
             logger.warning(f"[Antigravity] Failed to load tokens: {e}")
 
@@ -131,7 +130,7 @@ class AntigravityAuth:
             if tokens.get("refresh_token"):
                 self.refresh_token = tokens["refresh_token"]
                 self._save_tokens()
-            print("[Antigravity] Token refreshed (no browser needed)")
+            logger.debug("[Antigravity] Token refreshed")
             return True
         except Exception as e:
             logger.warning(f"[Antigravity] Refresh failed, will try browser auth: {e}")
@@ -330,8 +329,8 @@ class GeminiCLIAuth:
                 # gemini-cli stores expiry_date as epoch millis
                 self.expires_at = data["expiry_date"] / 1000
             if self.refresh_token:
-                print(
-                    f"[GeminiCLI Auth] Loaded gemini-cli tokens from {GEMINI_CLI_TOKEN_FILE}"
+                logger.debug(
+                    f"[GeminiCLI Auth] Loaded tokens from {GEMINI_CLI_TOKEN_FILE}"
                 )
         except Exception as e:
             logger.warning(f"[GeminiCLI Auth] Failed to load tokens: {e}")
@@ -355,7 +354,7 @@ class GeminiCLIAuth:
             self.expires_at = time.time() + tokens.get("expires_in", 3600) - 300
             if tokens.get("refresh_token"):
                 self.refresh_token = tokens["refresh_token"]
-            print("[GeminiCLI Auth] Token refreshed successfully")
+            logger.debug("[GeminiCLI Auth] Token refreshed")
             return True
         except Exception as e:
             logger.warning(f"[GeminiCLI Auth] Refresh failed: {e}")
@@ -451,7 +450,7 @@ class GeminiCLIAuth:
             os.makedirs(os.path.dirname(GEMINI_CLI_TOKEN_FILE), exist_ok=True)
             with open(GEMINI_CLI_TOKEN_FILE, "w") as f:
                 json.dump(save_data, f, indent=2)
-            print(f"[GeminiCLI Auth] Tokens saved to {GEMINI_CLI_TOKEN_FILE}")
+            logger.debug(f"[GeminiCLI Auth] Tokens saved to {GEMINI_CLI_TOKEN_FILE}")
         except Exception as e:
             logger.warning(f"[GeminiCLI Auth] Failed to save tokens: {e}")
 
@@ -505,7 +504,6 @@ class GeminiCLIAuth:
         # Always ensure project_id is set
         if not self.project_id:
             self.project_id = self._fetch_project_id()
-            print(f"[GeminiCLI Auth] Project: {self.project_id}")
 
 
 def get_auth(auth_mode: str = "antigravity"):
@@ -590,7 +588,7 @@ class ChatAntigravity(BaseChatModel):
         new_instance.gemini_tools = [{"functionDeclarations": gemini_decls}]
 
         tool_names = [d.get("name", "?") for d in gemini_decls]
-        print(f"[Antigravity] Tools bound: {tool_names}")
+        logger.debug(f"[Antigravity] Tools bound: {tool_names}")
         return new_instance
 
     def _generate(
@@ -680,7 +678,9 @@ class ChatAntigravity(BaseChatModel):
             }
             mapped_model = GEMINI_CLI_MODEL_MAP.get(clean_model, clean_model)
             if mapped_model != clean_model:
-                print(f"[GeminiCLI Auth] Model mapped: {clean_model} -> {mapped_model}")
+                logger.debug(
+                    f"[GeminiCLI] Model mapped: {clean_model} -> {mapped_model}"
+                )
             clean_model = mapped_model
 
         # Prepare headers — gemini-cli uses different headers than antigravity
@@ -737,9 +737,7 @@ class ChatAntigravity(BaseChatModel):
                 logger.info(
                     f"[Antigravity] Calling {url} with model={current_model} (attempt {attempt+1})"
                 )
-                print(
-                    f"[Antigravity] Calling cloudcode-pa generateContent (model={current_model})..."
-                )
+                logger.debug(f"[Antigravity] generateContent (model={current_model})")
 
                 req = urllib.request.Request(
                     url,
@@ -750,8 +748,7 @@ class ChatAntigravity(BaseChatModel):
 
                 with urllib.request.urlopen(req) as response:
                     resp_data = json.loads(response.read().decode("utf-8"))
-                    logger.info(f"[Antigravity] SUCCESS!")
-                    print(f"[Antigravity] SUCCESS!")
+                    logger.debug("[Antigravity] Response received")
 
                     # Parse response
                     try:
@@ -786,7 +783,7 @@ class ChatAntigravity(BaseChatModel):
                         if tool_calls:
                             # Model wants to call tools
                             text = "\n".join(text_parts) if text_parts else ""
-                            print(
+                            logger.debug(
                                 f"[Antigravity] Tool calls: {[tc['name'] for tc in tool_calls]}"
                             )
                             additional_kwargs = {}

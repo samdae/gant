@@ -9,7 +9,8 @@ DEFAULT_CONFIG = {
     ),
     # LLM settings — uses Google OAuth, no API keys
     # Providers: "gemini-cli" (default, uses ~/.gemini creds) or "antigravity"
-    "llm_provider": "gemini-cli",
+    # Override via LLM_PROVIDER env var
+    "llm_provider": os.getenv("LLM_PROVIDER", "gemini-cli"),
     "deep_think_llm": "gemini-3-pro-high",
     "quick_think_llm": "gemini-3-flash",
     "backend_url": None,
