@@ -56,66 +56,187 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
         return f"{curr_market_report}\n\n{curr_sentiment_report}\n\n{curr_news_report}\n\n{curr_fundamentals_report}"
 
     def _reflect_on_component(
-        self, component_type: str, report: str, situation: str, returns_losses
+        self, component_type: str, report: str, situation: str, context: dict
     ) -> str:
-        """Generate reflection for a component."""
+        """Generate reflection for a component.
+
+        Args:
+            component_type: Type of component (BULL, BEAR, TRADER, etc.)
+            report: Analysis/decision text from the component
+            situation: Objective market reports for reference
+            context: Structured context dict with keys:
+                - return_pct (float, required)
+                - ticker (str, optional)
+                - holding_days (int, optional)
+                - analysis_count (int, optional)
+                - market_condition (str, optional)
+                - has_memory (bool, optional)
+        """
+        # Build structured context block (FR-018)
+        context_lines = [f"Returns: {context.get('return_pct', 'N/A')}%"]
+
+        if "ticker" in context:
+            context_lines.append(f"Ticker: {context['ticker']}")
+
+        if "holding_days" in context:
+            context_lines.append(f"Holding Period: {context['holding_days']} days")
+
+        if "analysis_count" in context:
+            context_lines.append(
+                f"Analysis Count: {context['analysis_count']} (number of times analyzed)"
+            )
+
+        if "market_condition" in context:
+            context_lines.append(f"Market Condition: {context['market_condition']}")
+
+        if "has_memory" in context:
+            memory_status = "Had prior memories" if context["has_memory"] else "No prior memories (bootstrap)"
+            context_lines.append(f"Memory Status: {memory_status}")
+
+        structured_context = "\n".join(context_lines)
+
         messages = [
             ("system", self.reflection_system_prompt),
             (
                 "human",
-                f"Returns: {returns_losses}\n\nAnalysis/Decision: {report}\n\nObjective Market Reports for Reference: {situation}",
+                f"Structured Context:\n{structured_context}\n\nAnalysis/Decision: {report}\n\nObjective Market Reports for Reference: {situation}",
             ),
         ]
 
         result = self.quick_thinking_llm.invoke(messages).content
         return result
 
-    def reflect_bull_researcher(self, current_state, returns_losses, bull_memory):
-        """Reflect on bull researcher's analysis and update memory."""
+    def reflect_bull_researcher(self, current_state, context, bull_memory):
+        """Reflect on bull researcher's analysis and update memory.
+
+        Args:
+            current_state: Current agent state
+            context: Structured context dict (from FR-018)
+            bull_memory: Memory instance to update
+        """
         situation = self._extract_current_situation(current_state)
         bull_debate_history = current_state["investment_debate_state"]["bull_history"]
 
         result = self._reflect_on_component(
-            "BULL", bull_debate_history, situation, returns_losses
+            "BULL", bull_debate_history, situation, context
         )
-        bull_memory.add_situations([(situation, result)])
 
-    def reflect_bear_researcher(self, current_state, returns_losses, bear_memory):
-        """Reflect on bear researcher's analysis and update memory."""
+        # Extract metadata for JSONL storage (FR-018)
+        metadata = {
+            "ticker": context.get("ticker"),
+            "return_pct": context.get("return_pct"),
+            "has_memory": context.get("has_memory", False),
+            "schema_version": context.get("schema_version", 1),
+            "holding_days": context.get("holding_days"),
+            "analysis_count": context.get("analysis_count"),
+        }
+
+        bull_memory.add_situations([(situation, result)], metadata=metadata)
+
+    def reflect_bear_researcher(self, current_state, context, bear_memory):
+        """Reflect on bear researcher's analysis and update memory.
+
+        Args:
+            current_state: Current agent state
+            context: Structured context dict (from FR-018)
+            bear_memory: Memory instance to update
+        """
         situation = self._extract_current_situation(current_state)
         bear_debate_history = current_state["investment_debate_state"]["bear_history"]
 
         result = self._reflect_on_component(
-            "BEAR", bear_debate_history, situation, returns_losses
+            "BEAR", bear_debate_history, situation, context
         )
-        bear_memory.add_situations([(situation, result)])
 
-    def reflect_trader(self, current_state, returns_losses, trader_memory):
-        """Reflect on trader's decision and update memory."""
+        # Extract metadata for JSONL storage (FR-018)
+        metadata = {
+            "ticker": context.get("ticker"),
+            "return_pct": context.get("return_pct"),
+            "has_memory": context.get("has_memory", False),
+            "schema_version": context.get("schema_version", 1),
+            "holding_days": context.get("holding_days"),
+            "analysis_count": context.get("analysis_count"),
+        }
+
+        bear_memory.add_situations([(situation, result)], metadata=metadata)
+
+    def reflect_trader(self, current_state, context, trader_memory):
+        """Reflect on trader's decision and update memory.
+
+        Args:
+            current_state: Current agent state
+            context: Structured context dict (from FR-018)
+            trader_memory: Memory instance to update
+        """
         situation = self._extract_current_situation(current_state)
         trader_decision = current_state["trader_investment_plan"]
 
         result = self._reflect_on_component(
-            "TRADER", trader_decision, situation, returns_losses
+            "TRADER", trader_decision, situation, context
         )
-        trader_memory.add_situations([(situation, result)])
 
-    def reflect_invest_judge(self, current_state, returns_losses, invest_judge_memory):
-        """Reflect on investment judge's decision and update memory."""
+        # Extract metadata for JSONL storage (FR-018)
+        metadata = {
+            "ticker": context.get("ticker"),
+            "return_pct": context.get("return_pct"),
+            "has_memory": context.get("has_memory", False),
+            "schema_version": context.get("schema_version", 1),
+            "holding_days": context.get("holding_days"),
+            "analysis_count": context.get("analysis_count"),
+        }
+
+        trader_memory.add_situations([(situation, result)], metadata=metadata)
+
+    def reflect_invest_judge(self, current_state, context, invest_judge_memory):
+        """Reflect on investment judge's decision and update memory.
+
+        Args:
+            current_state: Current agent state
+            context: Structured context dict (from FR-018)
+            invest_judge_memory: Memory instance to update
+        """
         situation = self._extract_current_situation(current_state)
         judge_decision = current_state["investment_debate_state"]["judge_decision"]
 
         result = self._reflect_on_component(
-            "INVEST JUDGE", judge_decision, situation, returns_losses
+            "INVEST JUDGE", judge_decision, situation, context
         )
-        invest_judge_memory.add_situations([(situation, result)])
 
-    def reflect_risk_manager(self, current_state, returns_losses, risk_manager_memory):
-        """Reflect on risk manager's decision and update memory."""
+        # Extract metadata for JSONL storage (FR-018)
+        metadata = {
+            "ticker": context.get("ticker"),
+            "return_pct": context.get("return_pct"),
+            "has_memory": context.get("has_memory", False),
+            "schema_version": context.get("schema_version", 1),
+            "holding_days": context.get("holding_days"),
+            "analysis_count": context.get("analysis_count"),
+        }
+
+        invest_judge_memory.add_situations([(situation, result)], metadata=metadata)
+
+    def reflect_risk_manager(self, current_state, context, risk_manager_memory):
+        """Reflect on risk manager's decision and update memory.
+
+        Args:
+            current_state: Current agent state
+            context: Structured context dict (from FR-018)
+            risk_manager_memory: Memory instance to update
+        """
         situation = self._extract_current_situation(current_state)
         judge_decision = current_state["risk_debate_state"]["judge_decision"]
 
         result = self._reflect_on_component(
-            "RISK JUDGE", judge_decision, situation, returns_losses
+            "RISK JUDGE", judge_decision, situation, context
         )
-        risk_manager_memory.add_situations([(situation, result)])
+
+        # Extract metadata for JSONL storage (FR-018)
+        metadata = {
+            "ticker": context.get("ticker"),
+            "return_pct": context.get("return_pct"),
+            "has_memory": context.get("has_memory", False),
+            "schema_version": context.get("schema_version", 1),
+            "holding_days": context.get("holding_days"),
+            "analysis_count": context.get("analysis_count"),
+        }
+
+        risk_manager_memory.add_situations([(situation, result)], metadata=metadata)

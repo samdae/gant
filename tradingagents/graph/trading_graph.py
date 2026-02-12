@@ -106,6 +106,9 @@ class TradingAgentsGraph:
             "risk_manager_memory", self.config
         )
 
+        # Bootstrap tagging flag (FR-019)
+        self._last_had_memory = False
+
         # Create tool nodes
         self.tool_nodes = self._create_tool_nodes()
 
@@ -232,6 +235,16 @@ class TradingAgentsGraph:
         # Store current state for reflection
         self.curr_state = final_state
 
+        # Set bootstrap tagging flag (FR-019)
+        # Check if any memory query had results during this propagation
+        self._last_had_memory = (
+            self.bull_memory.last_query_had_results
+            or self.bear_memory.last_query_had_results
+            or self.trader_memory.last_query_had_results
+            or self.invest_judge_memory.last_query_had_results
+            or self.risk_manager_memory.last_query_had_results
+        )
+
         # Log state
         self._log_state(trade_date, final_state)
 
@@ -285,21 +298,57 @@ class TradingAgentsGraph:
             json.dump(self.log_states_dict, f, indent=4)
 
     def reflect_and_remember(self, returns_losses):
-        """Reflect on decisions and update memory based on returns."""
+        """Reflect on decisions and update memory based on returns.
+
+        Args:
+            returns_losses: Union[int, float, dict]
+                - If int/float: Backward compat - wrapped as {"return_pct": value}
+                - If dict: Structured input with keys:
+                    - ticker (str, optional)
+                    - return_pct (float, required)
+                    - holding_days (int, optional)
+                    - analysis_count (int, optional)
+                    - market_condition (str, optional)
+                    - has_memory (bool, optional) - defaults to self._last_had_memory
+                    - schema_version (int, optional) - defaults to 1
+        """
+        # Normalize input to structured dict (FR-018)
+        if isinstance(returns_losses, (int, float)):
+            # Backward compatibility: wrap numeric input
+            structured_context = {
+                "return_pct": float(returns_losses),
+                "has_memory": self._last_had_memory,
+            }
+        elif isinstance(returns_losses, dict):
+            # Structured input
+            structured_context = returns_losses.copy()
+            # Auto-fill has_memory if not provided
+            if "has_memory" not in structured_context:
+                structured_context["has_memory"] = self._last_had_memory
+        else:
+            raise TypeError(
+                f"returns_losses must be int, float, or dict, got {type(returns_losses)}"
+            )
+
+        # Ensure schema_version
+        if "schema_version" not in structured_context:
+            structured_context["schema_version"] = 1
+
+        # Call reflector with structured context
         self.reflector.reflect_bull_researcher(
-            self.curr_state, returns_losses, self.bull_memory
+            self.curr_state, structured_context, self.bull_memory
         )
         self.reflector.reflect_bear_researcher(
-            self.curr_state, returns_losses, self.bear_memory
+            self.curr_state, structured_context, self.bear_memory
         )
         self.reflector.reflect_trader(
-            self.curr_state, returns_losses, self.trader_memory
+            self.curr_state, structured_context, self.trader_memory
         )
         self.reflector.reflect_invest_judge(
-            self.curr_state, returns_losses, self.invest_judge_memory
+            self.curr_state, structured_context, self.invest_judge_memory
         )
         self.reflector.reflect_risk_manager(
-            self.curr_state, returns_losses, self.risk_manager_memory
+            self.curr_state, structured_context, self.risk_manager_memory
         )
 
     def process_signal(self, full_signal):
