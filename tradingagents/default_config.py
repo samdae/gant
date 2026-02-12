@@ -30,4 +30,18 @@ DEFAULT_CONFIG = {
     "tool_vendors": {
         # Example: "get_stock_data": "alpha_vantage",  # Override category default
     },
+    # FR-015: Hybrid RAG Memory
+    "memory_dir": os.getenv(
+        "TRADINGAGENTS_MEMORY_DIR",
+        os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")), "memory", "data")
+    ),
+    # FR-013: Virtual Trading
+    "virtual_trade_dir": os.getenv(
+        "TRADINGAGENTS_TRADE_DIR",
+        os.path.join(os.path.dirname(os.path.abspath(os.path.join(os.path.dirname(__file__), "."))), "virtual_trade", "tickers")
+    ),
+    "default_initial_capital": 1000.0,
+    # FR-016: Scheduler
+    "schedules": [],  # List[{"ticker": str, "interval_days": int, "initial_capital": float}]
+    "scheduler_enabled": False,
 }
