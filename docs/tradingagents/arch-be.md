@@ -800,6 +800,8 @@ python_api:
 | SQLiteJobStore (APScheduler)     | 스케줄은 config에 정의. 재시작 시 config에서 재생성. SQLite 불필요                    |
 | TypedDict V1→V2 버저닝           | AgentState는 일시적 (propagate 동안만 존재). 영속 데이터 아님                         |
 | ThreadPoolExecutor 병렬화        | TradingAgentsGraph에 공유 mutable state (curr_state, ticker 등). 스레드 안전성 미확보 |
+| multiprocessing (API 분석)     | 에이전트 플로우는 I/O-bound(LLM API 대기). GIL 경합 없음. IPC/pickle 복잡성 대비 이득 없음 |
+| 별도 스케줄러 프로세스          | FastAPI lifespan으로 동일 프로세스에서 APScheduler 기동 가능. IPC 불필요      |
 | Per-role LLM Config              | 현재 2-tier (deep/quick) 모델로 충분. 10+개 config 키 추가는 불필요한 복잡성          |
 | Linear alpha blending (메모리)   | BM25/cosine 스코어 분포 비대칭 문제. RRF가 파라미터 프리로 우월                       |
 
@@ -816,6 +818,7 @@ python_api:
 - **Confirmed**: ChromaDB PersistentClient는 HNSW 기반, 1M 문서까지 스케일
 - **Estimated**: 포지션 주입이 Research Manager/Trader/Risk Manager에만 필요 (분석가는 객관성 유지). 실제 프롬프트 테스트로 검증 필요
 - **Estimated**: Portfolio Agent 프롬프트 품질은 수동 테스트 후 스케줄러에 연결해야 함
+- **Confirmed**: 에이전트 플로우는 I/O-bound — LLM API 대기(99%+) + 파일 I/O. GIL 경합 없으므로 스레드 안전
 
 ---
 
@@ -933,6 +936,38 @@ python_api:
 - **서버 실행**: `uv run uvicorn tradingagents.api.app:app --port 8000`
 - **분석 중복 실행 방지**: 기존 per-ticker Lock 활용, Lock 획득 실패 시 409 Conflict 반환
 
+### 배포 및 동시성 모델 (FR-025)
+
+- **배포**: 단일 프로세스 — `uvicorn` → FastAPI `lifespan` 이벤트로 APScheduler 자동 기동/종료
+  - APScheduler는 내부적으로 자체 백그라운드 스레드를 생성. uvicorn 이벤트 루프 블로킹 없음
+  - 별도 스케줄러 프로세스 불필요. 실행 명령어 단일: `uv run uvicorn tradingagents.api.app:app --port 8000`
+  ```python
+  # tradingagents/api/app.py
+  @asynccontextmanager
+  async def lifespan(app: FastAPI):
+      scheduler.start()
+      yield
+      scheduler.shutdown()
+  app = FastAPI(lifespan=lifespan)
+  ```
+
+- **동시성**: `asyncio.to_thread()` — 동기 분석 함수를 스레드풀에서 실행
+  - **GIL 이슈 없음**: 에이전트 플로우는 I/O-bound (LLM API 대기 99%+). GIL은 I/O 대기 중 자동 해제
+  - **멀티프로세싱 불채택 사유**: IPC 복잡성, pickle 제약, Lock/상태 공유 불가. I/O-bound 작업에 실질적 이득 없음
+  - **per-ticker Lock**: 동일 ticker 동시 분석 방지 (스케줄러 ↔ 수동 요청 충돌 방지)
+  ```python
+  # tradingagents/api/routes.py
+  @router.post("/analyze/{ticker}")
+  async def analyze_ticker(ticker: str):
+      if not ticker_locks[ticker].acquire(blocking=False):
+          raise HTTPException(409, "Analysis already in progress")
+      try:
+          result = await asyncio.to_thread(run_analysis_cycle, ticker)
+          return result
+      finally:
+          ticker_locks[ticker].release()
+  ```
+
 ---
 
 ## 11. Pre-build Preparation (from Pre-build Check)
@@ -987,3 +1022,4 @@ python_api:
 | 2026-02-13 | update  | arch      | FR-021~024 Code Mapping 추가 (#28-#31), #20-#22 Superseded. Implementation Plan Step 9 추가 |
 | 2026-02-13 | update  | reinforce | proposal_v2.md 반영: FR-023~024 경로 수정 (trade/archive), #30-31 경로 수정, #32-35 추가 (웹 API), Step 9 경로 수정 + Step 10 추가, Non-goals 수정 |
 | 2026-02-13 | review  | check     | FR-025~028 설계 완성도 검증 — 경로 불일치 4곳 수정, §2 Components/§7 Env/§9 Auth·Error 갱신, API 디테일 8개 결정 (CORS, pagination, WS schema, 서버 포트, 중복 방지 등) |
+| 2026-02-13 | update  | manual    | 배포/동시성 모델 추가: 단일 프로세스(lifespan), asyncio.to_thread(), multiprocessing 불채택 사유. §8 Rejected Alternatives + §10 API 디테일 + Assumptions 갱신 |

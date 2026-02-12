@@ -75,7 +75,8 @@ memory/
 ### 6-1. 프레임워크
 
 - **FastAPI** 기반 REST API + WebSocket
-- APScheduler와 동일 프로세스에서 실행 (기존 스케줄러 구조 활용)
+- 단일 프로세스 배포: FastAPI lifespan 이벤트로 스케줄러 자동 기동/종료
+- 분석 요청 시 `asyncio.to_thread()`로 동기 분석 함수를 스레드풀에서 실행 (논블로킹)
 
 ### 6-2. 보안
 
@@ -123,6 +124,8 @@ memory/
 11. **웹 프레임워크**: FastAPI + Cloudflare Tunnel.
 12. **보안 모델**: READ 공개 + WRITE 인증 (Bearer token). 단일 사용자 전용.
 13. **에이전트 진행현황**: 실시간 스트리밍만, 영속화 안 함.
+14. **배포 모델**: 단일 프로세스 (uvicorn → FastAPI lifespan → APScheduler). 별도 스케줄러 프로세스 불필요.
+15. **동시성 모델**: `asyncio.to_thread()` (스레드풀). 에이전트 플로우는 I/O-bound(LLM API 대기)이므로 GIL 경합 없음. 멀티프로세싱 불필요.
 
 ---
 
