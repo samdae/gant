@@ -304,7 +304,7 @@ class TickerScheduler:
         final_state, pipeline_decision = self.graph.propagate(
             company_name=ticker,
             trade_date=today,
-            # Pass current_position when FR-017 is implemented
+            current_position=position_summary  # FR-017
         )
 
         logger.info(f"{ticker}: Pipeline decision: {pipeline_decision}")

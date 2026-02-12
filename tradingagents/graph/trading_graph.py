@@ -184,7 +184,7 @@ class TradingAgentsGraph:
             ),
         }
 
-    def propagate(self, company_name, trade_date, depth=None):
+    def propagate(self, company_name, trade_date, depth=None, current_position=""):
         """Run the trading agents graph for a company on a specific date.
 
         Args:
@@ -193,6 +193,8 @@ class TradingAgentsGraph:
             depth: Optional debate rounds (1=shallow, 3=medium, 5=deep).
                    Sets both max_debate_rounds and max_risk_discuss_rounds.
                    If None, uses config defaults.
+            current_position: Current trading position summary (FR-017)
+                             (e.g., "Holding 2 shares NVDA avg $257.50")
         """
 
         if depth is not None:
@@ -201,9 +203,9 @@ class TradingAgentsGraph:
 
         self.ticker = company_name
 
-        # Initialize state
+        # Initialize state with current_position (FR-017)
         init_agent_state = self.propagator.create_initial_state(
-            company_name, trade_date
+            company_name, trade_date, current_position
         )
         args = self.propagator.get_graph_args()
 

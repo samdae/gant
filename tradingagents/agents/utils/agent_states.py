@@ -51,6 +51,9 @@ class AgentState(MessagesState):
 
     sender: Annotated[str, "Agent that sent this message"]
 
+    # FR-017: Position-aware analysis
+    current_position: Annotated[str, "Current virtual trading position summary"]
+
     # research step
     market_report: Annotated[str, "Report from the Market Analyst"]
     sentiment_report: Annotated[str, "Report from the Social Media Analyst"]
