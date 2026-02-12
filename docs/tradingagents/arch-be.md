@@ -15,9 +15,10 @@
 ### Non-goals
 
 - 실제 증권사 API 연동 (가상 매매만)
-- 웹 UI/대시보드 (CLI 기반 유지)
+- ~~웹 UI/대시보드 (CLI 기반 유지)~~ → **웹 API 제공 (FR-025)**
 - 멀티유저/멀티전략 지원 (단일 사용자)
 - 실시간 데이터 스트리밍 (분석 시점 1회성 fetch 유지)
+- 에이전트 진행현황 영속화 (실시간 스트리밍만, report에는 최종 결과만 저장)
 
 ### Success metrics
 
@@ -39,6 +40,15 @@
 - FR-014: Portfolio Agent (독립 에이전트, LangGraph 외부)
 - FR-016: APScheduler 기반 티커별 스케줄링
 - FR-017: AgentState에 current_position 추가, 에이전트 프롬프트 주입
+- FR-020: 전략 기반 매매 실행 — TradeManager 부분 매도, PA 매도 수량 전략 결정
+- FR-021: 분석플로우 객관성 확보 — 12에이전트에서 포지션 주입 제거 (FR-017 축소)
+- FR-022: PA 프롬프트 강화 — 가중치 기반 판단, 디바이어싱, HybridMemory 연결
+- FR-023: 저장 경로 통합 + 아카이빙 — close 시 trade/→archive/{TICKER}/{n}/ 이동
+- FR-024: 저장 경로 개편 — memory/ 아래 experience + trade + archive 3분류 통합
+- FR-025: FastAPI 웹 백엔드 — REST API + WebSocket
+- FR-026: READ 공개 + WRITE 인증 (Bearer token)
+- FR-027: 파일명 변경 (reports.json → report.json)
+- FR-028: 저장 경로 명칭 변경 (memory/data/ → memory/experience/, virtual_trade/tickers/ → memory/trade/)
 
 ### Out of scope
 
@@ -67,6 +77,8 @@ tech_stack:
     - "rank-bm25 (BM25 Search)"
     - "yfinance (Market Data)"
     - "langchain-core (LLM Abstraction)"
+    - "fastapi (Web API Framework)"
+    - "uvicorn (ASGI Server)"
   infra: "Local / WSL2 Ubuntu 22.04"
 ```
 
@@ -108,6 +120,16 @@ dependencies:
     version: ">=3.11.2"
     purpose: "티커별 주기적 분석 스케줄링"
     status: "approved"
+
+  # NEW — FR-025: Web API
+  - name: "fastapi"
+    version: ">=0.115.0"
+    purpose: "REST API + WebSocket 웹 백엔드"
+    status: "approved"
+  - name: "uvicorn"
+    version: ">=0.34.0"
+    purpose: "ASGI 서버"
+    status: "approved"
 ```
 
 ---
@@ -130,7 +152,8 @@ dependencies:
 | `tradingagents/agents/managers/risk_manager.py`     | 포지션 컨텍스트 프롬프트 주입                                                  | modify      |
 | `tradingagents/agents/__init__.py`                  | HybridMemory 재수출 (backward compat)                                          | modify      |
 | `tradingagents/default_config.py`                   | 메모리/가상매매/스케줄러 설정 추가                                             | modify      |
-| `pyproject.toml`                                    | chromadb, apscheduler 의존성                                                   | modify      |
+| `pyproject.toml`                                    | chromadb, apscheduler, fastapi, uvicorn 의존성                                 | modify      |
+| `tradingagents/api/`                                | FastAPI 웹 백엔드 — REST API + WebSocket + Bearer token 인증                   | **new**     |
 
 ### Data
 
@@ -140,9 +163,9 @@ dependencies:
 
 ```yaml
 file_storage:
-  # FR-015: Hybrid RAG Memory
+  # FR-015, FR-028: Hybrid RAG Memory
   memory_files:
-    - path: "memory/data/{agent_name}.jsonl"
+    - path: "memory/experience/{agent_name}.jsonl"
       format: "JSONL (append-only)"
       description: "BM25 corpus — source of truth. 한 줄 = 하나의 situation+recommendation"
       schema_per_line:
@@ -154,13 +177,13 @@ file_storage:
           has_memory: "boolean (optional)"
           created_at: "ISO 8601 timestamp"
           schema_version: "int (1)"
-    - path: "memory/data/chroma/{agent_name}/"
+    - path: "memory/experience/chroma/{agent_name}/"
       format: "ChromaDB PersistentClient directory"
       description: "Vector index — derived data. JSONL에서 재구축 가능"
 
-  # FR-013: Virtual Trading
+  # FR-013, FR-027, FR-028: Virtual Trading (경로·파일명 변경됨)
   trade_files:
-    - path: "virtual_trade/tickers/{TICKER}/trade.json"
+    - path: "memory/trade/{TICKER}/trade.json"
       format: "JSON"
       description: "티커별 매매 상태 + 이력"
       schema:
@@ -190,7 +213,7 @@ file_storage:
         total_returned: "float (nullable)"
         profit: "float (nullable)"
 
-    - path: "virtual_trade/tickers/{TICKER}/reports.json"
+    - path: "memory/trade/{TICKER}/report.json"
       format: "JSON array"
       description: "분석 이력. G-ANT 파이프라인 1회 실행의 요약"
       schema_per_entry:
@@ -202,6 +225,15 @@ file_storage:
         state_summary:
           market_report_excerpt: "string (first 500 chars)"
           final_decision_excerpt: "string (first 500 chars)"
+
+  # FR-023: Archive (완료된 매매 사이클 보관)
+  archive_files:
+    - path: "memory/archive/{TICKER}/{n}/trade.json"
+      format: "JSON"
+      description: "완료된 매매 사이클의 trade 스냅샷 (trade_files와 동일 스키마)"
+    - path: "memory/archive/{TICKER}/{n}/report.json"
+      format: "JSON array"
+      description: "완료된 매매 사이클의 분석 이력 스냅샷"
 
   # Agent name enumeration
   agent_names:
@@ -215,30 +247,34 @@ file_storage:
 #### Directory Structure (Runtime)
 
 ```
-tradingagents/
-├── memory/
-│   └── data/
-│       ├── bull_memory.jsonl
-│       ├── bear_memory.jsonl
-│       ├── trader_memory.jsonl
-│       ├── invest_judge_memory.jsonl
-│       ├── risk_manager_memory.jsonl
-│       └── chroma/
-│           ├── bull_memory/
-│           ├── bear_memory/
-│           ├── trader_memory/
-│           ├── invest_judge_memory/
-│           └── risk_manager_memory/
-│
-└── (project_root)/
-    └── virtual_trade/
-        └── tickers/
-            ├── NVDA/
-            │   ├── trade.json
-            │   └── reports.json
-            └── AAPL/
-                ├── trade.json
-                └── reports.json
+memory/
+├── experience/                      ← 반성문 JSONL + ChromaDB (RAG 학습)
+│   ├── bull_memory.jsonl
+│   ├── bear_memory.jsonl
+│   ├── trader_memory.jsonl
+│   ├── invest_judge_memory.jsonl
+│   ├── risk_manager_memory.jsonl
+│   └── chroma/
+│       ├── bull_memory/
+│       ├── bear_memory/
+│       ├── trader_memory/
+│       ├── invest_judge_memory/
+│       └── risk_manager_memory/
+├── trade/                           ← 활성 매매 (진행 중)
+│   ├── NVDA/
+│   │   ├── trade.json
+│   │   └── report.json
+│   └── AAPL/
+│       ├── trade.json
+│       └── report.json
+└── archive/                         ← 완료된 매매 기록 (보관)
+    └── AAPL/
+        ├── 1/
+        │   ├── trade.json
+        │   └── report.json
+        └── 2/
+            ├── trade.json
+            └── report.json
 ```
 
 ---
@@ -258,22 +294,34 @@ tradingagents/
 | 9   | FR-019   | Bootstrap 태깅                 | `tradingagents/graph/trading_graph.py`              | `TradingAgentsGraph` | `propagate`                                                                                                                                                       | 실행 후 `self._last_had_memory` 플래그 설정 (메모리 쿼리 결과 기반)                                                    | [x]  |
 | 10  | FR-019   | 메모리 쿼리 결과 추적          | `tradingagents/memory/hybrid_memory.py`             | `HybridMemory`       | `get_memories`                                                                                                                                                    | 반환값에 결과 수 포함 + `self.last_query_had_results: bool` 플래그 설정                                                | [x]  |
 | 11  | FR-013   | TradeManager 모듈              | `tradingagents/virtual_trade/__init__.py`           | —                    | —                                                                                                                                                                 | 새 모듈 생성                                                                                                           | [x]  |
-| 12  | FR-013   | TradeManager 클래스            | `tradingagents/virtual_trade/trade_manager.py`      | `TradeManager`       | `__init__`, `load`, `save`, `create_initial_trade`, `open_position`, `close_all_positions`, `get_position_summary`, `calculate_realized_return`, `append_history` | 새 파일: trade.json CRUD, 원자적 쓰기 (tmp+rename)                                                                     | [x]  |
+| ~~12~~ | ~~FR-013~~ | ~~TradeManager 클래스~~ | ~~`tradingagents/virtual_trade/trade_manager.py`~~ | ~~`TradeManager`~~ | ~~`__init__`, `load`, `save`, `create_initial_trade`, `open_position`, `close_all_positions`, `get_position_summary`, `calculate_realized_return`, `append_history`~~ | ~~새 파일: trade.json CRUD, 원자적 쓰기 (tmp+rename)~~ | Superseded by #25 |
 | 13  | FR-013   | ReportStore 클래스             | `tradingagents/virtual_trade/report_store.py`       | `ReportStore`        | `__init__`, `append`, `load`, `get_analysis_count`                                                                                                                | 새 파일: reports.json 관리 (JSON array append)                                                                         | [x]  |
-| 14  | FR-014   | Portfolio Agent                | `tradingagents/virtual_trade/portfolio_agent.py`    | `PortfolioAgent`     | `__init__`, `decide`                                                                                                                                              | 새 파일: deep_think_llm 사용, trade.json+reports.json 읽기, maintain/modify/abandon 결정                               | [x]  |
+| ~~14~~ | ~~FR-014~~ | ~~Portfolio Agent~~ | ~~`tradingagents/virtual_trade/portfolio_agent.py`~~ | ~~`PortfolioAgent`~~ | ~~`__init__`, `decide`~~ | ~~새 파일: deep_think_llm 사용, maintain/modify/abandon 결정~~ | Superseded by #26 |
 | 15  | FR-016   | TickerScheduler 모듈           | `tradingagents/scheduler/__init__.py`               | —                    | —                                                                                                                                                                 | 새 모듈 생성                                                                                                           | [x]  |
 | 16  | FR-016   | TickerScheduler 클래스         | `tradingagents/scheduler/ticker_scheduler.py`       | `TickerScheduler`    | `__init__`, `add_ticker`, `remove_ticker`, `start`, `stop`, `list_schedules`, `_run_analysis_cycle`, `_self_heal`                                                 | 새 파일: APScheduler BackgroundScheduler 래퍼, per-ticker IntervalTrigger                                              | [x]  |
 | 17  | FR-016   | 의존성 추가                    | `pyproject.toml`                                    | —                    | —                                                                                                                                                                 | dependencies에 `apscheduler` 추가                                                                                      | [x]  |
 | 18  | FR-017   | AgentState 필드 추가           | `tradingagents/agents/utils/agent_states.py`        | `AgentState`         | —                                                                                                                                                                 | `current_position: Annotated[str, "Current virtual trading position summary"]` 추가                                    | [x]  |
 | 19  | FR-017   | Propagator 파라미터 추가       | `tradingagents/graph/propagation.py`                | `Propagator`         | `create_initial_state`                                                                                                                                            | `current_position: str = ""` 파라미터 추가, initial state dict에 포함                                                  | [x]  |
-| 20  | FR-017   | Research Manager 포지션 주입   | `tradingagents/agents/managers/research_manager.py` | —                    | `research_manager_node`                                                                                                                                           | 프롬프트에 `state.get("current_position", "")` 주입: "Current Trading Position: {position}"                            | [x]  |
-| 21  | FR-017   | Trader 포지션 주입             | `tradingagents/agents/trader/trader.py`             | —                    | `trader_node`                                                                                                                                                     | system prompt에 current_position 컨텍스트 추가                                                                         | [x]  |
-| 22  | FR-017   | Risk Manager 포지션 주입       | `tradingagents/agents/managers/risk_manager.py`     | —                    | `risk_manager_node`                                                                                                                                               | 프롬프트에 current_position 컨텍스트 추가                                                                              | [x]  |
+| ~~20~~  | ~~FR-017~~   | ~~Research Manager 포지션 주입~~   | ~~`tradingagents/agents/managers/research_manager.py`~~ | ~~—~~                    | ~~`research_manager_node`~~                                                                                                                                           | ~~프롬프트에 `state.get("current_position", "")` 주입~~ → **#28으로 대체**                            | [x]  |
+| ~~21~~  | ~~FR-017~~   | ~~Trader 포지션 주입~~             | ~~`tradingagents/agents/trader/trader.py`~~             | ~~—~~                    | ~~`trader_node`~~                                                                                                                                                     | ~~system prompt에 current_position 컨텍스트 추가~~ → **#28으로 대체**                                                                         | [x]  |
+| ~~22~~  | ~~FR-017~~   | ~~Risk Manager 포지션 주입~~       | ~~`tradingagents/agents/managers/risk_manager.py`~~     | ~~—~~                    | ~~`risk_manager_node`~~                                                                                                                                               | ~~프롬프트에 current_position 컨텍스트 추가~~ → **#28으로 대체**                                                                              | [x]  |
 | 23  | FR-017   | TradingAgentsGraph 포지션 전달 | `tradingagents/graph/trading_graph.py`              | `TradingAgentsGraph` | `propagate`                                                                                                                                                       | `current_position` 파라미터 추가, Propagator에 전달                                                                    | [x]  |
 | 24  | ALL      | DEFAULT_CONFIG 확장            | `tradingagents/default_config.py`                   | —                    | —                                                                                                                                                                 | memory_dir, virtual_trade_dir, default_initial_capital, schedules, scheduler_enabled 추가                              | [x]  |
+| 25  | FR-020   | TradeManager 부분 매도         | `tradingagents/virtual_trade/trade_manager.py`      | `TradeManager`       | `close_positions`                                                                                                                                                 | 새 메서드: `close_positions(ticker, shares, current_price, date)` — 평균단가 기준 부분 청산. remaining_shares 반환. `close_all_positions`는 이 메서드의 래퍼로 리팩터링 | [x]  |
+| 26  | FR-020   | PA 매도 수량 전략 결정         | `tradingagents/virtual_trade/portfolio_agent.py`    | `PortfolioAgent`     | `decide`, `_build_prompt`, `_parse_decision`, `_fallback_decision`                                                                                                | `decide()` 반환값의 `shares` 필드를 BUY·SELL 공통으로 확장. 프롬프트에 전량/분할 매도 가이드 + 보유 수량 명시. `_parse_decision`: SELL shares=0 → 전량 매도 fallback. `_fallback_decision`: SELL 시 전량 매도 | [x]  |
+| 27  | FR-020   | 스케줄러 부분 매도 분기        | `tradingagents/scheduler/ticker_scheduler.py`       | `TickerScheduler`    | `_run_analysis_cycle_impl`                                                                                                                                        | SELL 분기: `shares > 0 and shares < total` → `close_positions()` (부분 매도, reflect 안 함), `shares >= total` → `close_all_positions()` (전량 청산 + reflect). 기존 `close_all_positions` 직접 호출을 분기로 교체 | [x]  |
+| 28  | FR-021   | 12에이전트 포지션 주입 제거   | `tradingagents/agents/managers/research_manager.py`, `tradingagents/agents/trader/trader.py`, `tradingagents/agents/managers/risk_manager.py` | — | `research_manager_node`, `trader_node`, `risk_manager_node` | #20-22에서 추가한 current_position 프롬프트 주입 제거. `propagate()`의 current_position 파라미터는 유지 (PA에서 사용) | [ ] |
+| 29  | FR-022   | PA 프롬프트 강화 + 메모리 연결   | `tradingagents/virtual_trade/portfolio_agent.py`    | `PortfolioAgent`     | `decide`, `_build_prompt`                                                                                                                                         | 프롬프트: 분석 결과(가중치 6) > 경험(가중치 4) 기반 판단 안내 + 디바이어싱 지시. `decide()`에서 HybridMemory 검색하여 과거 매매 기억 참조 | [ ] |
+| 30  | FR-023   | 아카이빙 처리                  | `tradingagents/virtual_trade/trade_manager.py`      | `TradeManager`       | `archive_to_experience`                                                                                                                                           | 새 메서드: close 시 `memory/trade/{TICKER}/` 데이터를 `memory/archive/{TICKER}/{n}/`으로 이동 + trade/ 초기화. 순번(n)은 디렉터리 카운팅으로 자동 결정 | [ ] |
+| 31  | FR-024,FR-028 | 저장 경로 통합·명칭 변경 | `tradingagents/default_config.py`, `tradingagents/memory/hybrid_memory.py`, `tradingagents/virtual_trade/trade_manager.py` | — | — | config: `memory_dir` → `memory/experience/`, `virtual_trade_dir` → `memory/trade/`. JSONL·ChromaDB 경로 `memory/experience/`로 이동. `reports.json` → `report.json` 변경 (FR-027) | [ ] |
+| 32  | FR-025   | FastAPI 앱 초기화               | `tradingagents/api/app.py` [NEW]                    | —                    | `create_app`                                                                                                                                                      | FastAPI 앱 생성, 라우터 등록, CORS 설정, APScheduler 통합 | [ ] |
+| 33  | FR-025   | API 라우트                       | `tradingagents/api/routes.py` [NEW]                 | —                    | schedules CRUD, trade 조회, archive 조회, 수동 분석, positions 조회, RAG 검색 | REST 엔드포인트: GET/POST/DELETE /schedules, GET /trade/{ticker}, GET /archive/{ticker}, POST /analyze/{ticker}, GET /positions, GET /search | [ ] |
+| 34  | FR-025   | WebSocket 진행현황 스트리밍    | `tradingagents/api/ws.py` [NEW]                     | —                    | `analyze_ws`                                                                                                                                                      | WS /ws/analyze/{ticker}: 분석 실행 시 에이전트 상태 실시간 스트리밍 (저장 안 함) | [ ] |
+| 35  | FR-026   | 인증 미들웨어                   | `tradingagents/api/auth.py` [NEW]                   | —                    | `check_admin_token`                                                                                                                                               | POST/PUT/DELETE 요청 시 `Authorization: Bearer {ADMIN_TOKEN}` 헤더 검증. `.env`에서 ADMIN_TOKEN 로드 | [ ] |
 
 > **Spec Ref**: spec.md의 Req ID에 대응 (1 Req ID → 복수 Code Mapping 가능)
 > **Impl column**: `[ ]` = not implemented, `[x]` = implemented (build 후 업데이트)
+> **삭선(~~#~~)**: Superseded — 새 # 항목이 대체. 기존 코드는 새 항목 구현 시 교체됨
 
 ---
 
@@ -351,6 +399,53 @@ tradingagents/
 7. **Step 7: Config 업데이트**
    - `tradingagents/default_config.py` — 모든 새 설정 키 추가
 
+8. **Step 8: 전략 기반 매매 실행 (FR-020)**
+   - `tradingagents/virtual_trade/trade_manager.py` — `close_positions()` 새 메서드 추가
+     - **평균단가** 기준 수익률 계산 (`avg_price = total_invested / total_shares`)
+     - positions 배열에서 shares만큼 차감 (선입 순 제거, 수익률은 평균단가 기준)
+     - 잔여 수량(remaining_shares) 반환
+     - `close_all_positions()`를 `close_positions()` 래퍼로 리팩터링 (반환값은 기존 스키마 유지)
+   - `tradingagents/virtual_trade/portfolio_agent.py` — PA 매도 수량 확장
+     - `_build_prompt()`: 전량/분할 매도 가이드 명시 + 보유 수량(total_shares) 포함
+     - `_parse_decision()`: SELL shares 추출 + shares=0 → 전량 매도 fallback
+     - `_fallback_decision()`: SELL 시 전량 매도 (기존 shares=0 → total_shares)
+     - `decide()` 반환값 shares 필드: BUY·SELL 공통
+   - `tradingagents/scheduler/ticker_scheduler.py` — SELL 분기 변경
+     - `shares > 0 and shares < total` → `close_positions()` (부분 매도)
+     - `shares >= total` → `close_all_positions()` (전량 청산 + reflect)
+
+9. **Step 9: PA 객관성 + Experience 아키텍처 (FR-021~024)**
+   - `tradingagents/agents/managers/research_manager.py`, `trader.py`, `risk_manager.py` — 포지션 주입 제거
+     - #20-22에서 추가한 current_position 프롬프트 주입 삭제
+     - `propagate()`의 current_position 파라미터는 유지 (PA에서 사용)
+   - `tradingagents/virtual_trade/portfolio_agent.py` — PA 프롬프트 강화
+     - 분석 결과(가중치 6) > 경험(가중치 4) 기반 판단 안내
+     - 디바이어싱 지시 추가 ("포지션 때문에 편향되지 마라")
+     - HybridMemory에서 과거 매매 기억 검색하여 판단에 활용
+   - `tradingagents/virtual_trade/trade_manager.py` — 아카이빙 + 경로 변경
+     - 새 메서드 `archive_to_experience()`: close 시 `memory/trade/` → `memory/archive/` 이동
+     - 디렉터리 구조: `memory/archive/{TICKER}/{n}/trade.json, report.json`
+     - 순번(n)은 기존 디렉터리 카운팅으로 자동 결정
+     - `memory/trade/{TICKER}/` 초기화 (다음 매매 사이클 준비)
+   - `tradingagents/default_config.py` + 관련 파일들 — 경로 변경
+     - `memory_dir`: `memory/data/` → `memory/experience/`
+     - `virtual_trade_dir`: `virtual_trade/tickers/` → `memory/trade/`
+     - 파일명: `reports.json` → `report.json`
+
+10. **Step 10: 웹 백엔드 API (FR-025~026)**
+    - `tradingagents/api/app.py` [NEW] — FastAPI 앱 초기화
+      - `create_app()`: 라우터 등록, CORS, lifespan에서 APScheduler 시작
+    - `tradingagents/api/routes.py` [NEW] — REST 엔드포인트
+      - GET /schedules, POST /schedules, DELETE /schedules/{ticker}
+      - GET /trade/{ticker}, GET /trade/{ticker}/report
+      - GET /archive/{ticker}, GET /archive/{ticker}/{n}
+      - POST /analyze/{ticker}, GET /positions, GET /search
+    - `tradingagents/api/ws.py` [NEW] — WebSocket
+      - WS /ws/analyze/{ticker}: 에이전트 상태 실시간 스트리밍 (report 저장 안 함)
+    - `tradingagents/api/auth.py` [NEW] — 인증 미들웨어
+      - POST/PUT/DELETE 요청 시 Bearer {ADMIN_TOKEN} 검증
+      - `.env`에서 ADMIN_TOKEN 로드
+
 ---
 
 ## 5. Sequence Diagram
@@ -386,7 +481,11 @@ sequenceDiagram
     alt action = BUY
         Scheduler->>TM: open_position(shares, price, date)
         TM-->>Scheduler: updated trade_state
-    else action = SELL
+    else action = SELL (partial)
+        Scheduler->>TM: close_positions(ticker, shares, current_price, date)
+        TM-->>Scheduler: {realized_return_pct, profit}
+        Note over Scheduler: 잔여 포지션 있으면 학습 생략
+    else action = SELL (full close)
         Scheduler->>TM: close_all_positions(current_price, date)
         TM-->>Scheduler: realized_return
         Scheduler->>Graph: reflect_and_remember(structured_dict)
@@ -428,8 +527,7 @@ sequenceDiagram
 
 ## 6. API Specification
 
-> 이 프로젝트는 HTTP API 서버가 아닌 Python 라이브러리입니다.
-> 아래는 공개 Python 인터페이스 명세입니다.
+> 아래는 공개 Python 인터페이스 명세입니다. HTTP API 명세는 §6.6을 참조하세요.
 
 ### 6.1 HybridMemory (FR-015)
 
@@ -547,12 +645,21 @@ python_api:
           - { name: "price", type: "float" }
           - { name: "date", type: "str" }
         returns: "dict — updated trade state"
+      - name: "close_positions"
+        params:
+          - { name: "ticker", type: "str" }
+          - { name: "shares", type: "int", description: "매도 수량 (PA가 전략에 따라 결정)" }
+          - { name: "current_price", type: "float" }
+          - { name: "date", type: "str" }
+        returns: "dict — {realized_return_pct, profit, remaining_shares}"
+        description: "부분 매도. 평균단가 기준 수익률 계산. positions 배열에서 shares 차감"
       - name: "close_all_positions"
         params:
           - { name: "ticker", type: "str" }
           - { name: "current_price", type: "float" }
           - { name: "date", type: "str" }
         returns: "dict — {realized_return_pct, profit, total_invested, total_returned}"
+        description: "전량 청산. close_positions(ticker, total_shares, price, date)와 동일"
       - name: "get_position_summary"
         params: [{ name: "ticker", type: "str" }]
         returns: "str — 포지션 요약 (e.g., 'Holding 2 shares NVDA avg $257.50')"
@@ -583,17 +690,24 @@ python_api:
               type: "dict",
               description: "propagate() 반환 final_state",
             }
+          - {
+              name: "current_price",
+              type: "float",
+              description: "yfinance 당일 종가",
+            }
         returns: |
           dict — {
             "action": "BUY | SELL | HOLD | MODIFY",
-            "shares": int,           # BUY 시 매수 수량 (LLM이 cash 잔고 기반으로 결정)
+            "shares": int,           # BUY 시 매수 수량, SELL 시 매도 수량 (PA가 전략 기반으로 결정)
             "rationale": str,
             "strategy_update": dict
           }
         notes: |
-          매수 수량은 PortfolioAgent LLM이 결정.
-          프롬프트에 현재 cash 잔고 + 현재가를 포함하여 LLM이 적정 수량 산출.
-          current_price는 yfinance 당일 종가: yf.Ticker(ticker).history(period="1d")["Close"].iloc[-1]
+          매매 수량은 PortfolioAgent LLM이 결정.
+          프롬프트에 현재 cash 잔고 + 현재가 + 보유 수량을 포함하여 LLM이 적정 수량 산출.
+          BUY: 전략에 따라 부분 매수 (e.g., 25% 선매수, 풀백 시 50% 추가매수)
+          SELL: 전략에 따라 부분 매도 (e.g., 목표가 근접 시 50% 매도, 나머지 트레일링)
+          current_price: yfinance 당일 종가 — yf.Ticker(ticker).history(period="1d")["Close"].iloc[-1]
 ```
 
 ### 6.5 TickerScheduler (FR-016)
@@ -636,29 +750,37 @@ python_api:
 | --------------------------- | --------------------------------------------- | -------------------------------------- |
 | `LLM_PROVIDER`              | LLM 프로바이더 (`gemini-cli` / `antigravity`) | `gemini-cli`                           |
 | `TRADINGAGENTS_RESULTS_DIR` | 분석 결과 저장 경로                           | `./results`                            |
-| `TRADINGAGENTS_MEMORY_DIR`  | 메모리 데이터 경로 (override)                 | `<project_dir>/memory/data`            |
-| `TRADINGAGENTS_TRADE_DIR`   | 가상 매매 데이터 경로 (override)              | `<project_root>/virtual_trade/tickers` |
+| `TRADINGAGENTS_MEMORY_DIR`  | 메모리 데이터 경로 (override)                 | `<project_dir>/memory/experience`      |
+| `TRADINGAGENTS_TRADE_DIR`   | 가상 매매 데이터 경로 (override)              | `<project_dir>/memory/trade`           |
+| `ADMIN_TOKEN`               | API 쓰기 인증 토큰 (FR-026)                  | — (필수, `.env`에서 로드)              |
 
 ### Config 추가 키 (DEFAULT_CONFIG)
 
 ```python
-# Memory (FR-015)
-"memory_dir": os.path.join(PROJECT_DIR, "memory/data"),
+# Memory (FR-015, FR-028)
+"memory_dir": os.path.join(PROJECT_DIR, "memory/experience"),
 
-# Virtual Trading (FR-013)
-"virtual_trade_dir": os.path.join(os.path.dirname(PROJECT_DIR), "virtual_trade/tickers"),
+# Virtual Trading (FR-013, FR-028)
+"virtual_trade_dir": os.path.join(PROJECT_DIR, "memory/trade"),
 "default_initial_capital": 1000.0,
+
+# Archive (FR-023)
+"archive_dir": os.path.join(PROJECT_DIR, "memory/archive"),
 
 # Scheduler (FR-016)
 "schedules": [],  # List[{"ticker": str, "interval_days": int, "initial_capital": float}]
 "scheduler_enabled": False,
+
+# API (FR-025, FR-026)
+"api_port": 8000,
 ```
 
 ### Deployment Changes
 
-- `uv add chromadb apscheduler` 실행 필요 (완료)
+- `uv add chromadb apscheduler fastapi uvicorn[standard]` 실행 필요
 - 첫 실행 시 ChromaDB가 `all-MiniLM-L6-v2` ONNX 모델 자동 다운로드 (~80MB, 1회)
-- `memory/data/` 및 `virtual_trade/tickers/` 디렉토리는 자동 생성 (makedirs)
+- `memory/experience/`, `memory/trade/`, `memory/archive/` 디렉토리는 자동 생성 (makedirs)
+- API 서버 실행: `uv run uvicorn tradingagents.api.app:app --port 8000`
 
 ---
 
@@ -713,6 +835,9 @@ python_api:
 | 스케줄러 분석 실패                             | `TickerScheduler._run_analysis_cycle`    | 1회 재시도, 실패 시 해당 ticker만 skip + 다음 주기에 재시도              | 다른 티커 스케줄 영향 없음                                                  |
 | yfinance 데이터 fetch 실패                     | `dataflows/interface.py` (기존)          | Alpha Vantage fallback (기존 동작)                                       | fallback 벤더로 자동 전환                                                   |
 | yfinance 현재가 fetch 실패                     | `TickerScheduler._run_analysis_cycle`    | close_all_positions 시 당일 종가 fetch 실패 → 해당 주기 SELL skip + 로깅 | 다음 주기에 재시도                                                          |
+| 잘못된 ADMIN_TOKEN                             | `tradingagents/api/auth.py`              | Bearer 헤더 불일치                                                       | 401 Unauthorized — `{"detail": "Invalid or missing token"}`                 |
+| 존재하지 않는 ticker 요청                      | `tradingagents/api/routes.py`            | trade.json 미존재 시                                                     | 404 Not Found — `{"detail": "Ticker not found"}`                            |
+| 분석 중복 실행                                  | `tradingagents/api/routes.py`            | per-ticker Lock 획득 실패                                                | 409 Conflict — `{"detail": "Analysis already in progress for {ticker}"}`    |
 
 ### Authorization
 
@@ -720,9 +845,11 @@ python_api:
 | ---------------- | ------------------------------------- | ---------------------------------- | ------------------------------------- |
 | Gemini LLM 호출  | OAuth token (`~/.gemini` credentials) | `llm_clients/gemini_cli_client.py` | 자동 token refresh, 실패 시 분석 중단 |
 | 파일 시스템 쓰기 | 로컬 파일 권한                        | OS level                           | `PermissionError` → 로깅 + 작업 중단  |
+| API WRITE (POST/PUT/DELETE) | `Authorization: Bearer {ADMIN_TOKEN}` | `tradingagents/api/auth.py`        | 401 Unauthorized 반환                 |
+| API READ (GET)   | 없음 (공개 접근)                      | —                                  | —                                     |
 
-> 이 프로젝트는 HTTP API 서버가 아니므로 전통적 인증/인가(RBAC)는 해당 없음.
-> 모든 보안은 OAuth 기반 LLM 접근 + 로컬 파일 시스템 권한으로 처리.
+> **API 보안 모델 (FR-026)**: READ 공개 + WRITE 인증. 단일 사용자 전용.
+> ADMIN_TOKEN은 `.env`에서 로드, Bearer 헤더로 검증. Cloudflare Tunnel 뒤에서 운영.
 
 ### Data Integrity
 
@@ -731,6 +858,7 @@ python_api:
 | trade.json 필수 필드 존재 (ticker, cash, status) | `TradeManager.load()` 시                        | KeyError → `create_initial_trade()` 로 재초기화 + 경고               |
 | positions 배열 유효성 (shares > 0, price > 0)    | `TradeManager.open_position()` 시               | `ValueError` → 포지션 미개설, 로깅                                   |
 | cash 잔고 충분 여부                              | `TradeManager.open_position()` 시               | `ValueError("Insufficient cash")` → 매수 거부                        |
+| 보유 수량 초과 매도 방지                         | `TradeManager.close_positions()` 시             | `ValueError("Insufficient shares")` → 매도 거부, 로깅                |
 | JSONL 엔트리 schema_version 확인                 | `HybridMemory._load_corpus()` 시                | 미인식 버전 → skip + 경고 (미래 호환성)                              |
 | reports.json 중복 analysis_no                    | `ReportStore.append()` 시                       | 마지막 analysis_no + 1 자동 채번 (중복 방지)                         |
 | 스케줄러 동시 실행 방지                          | `TickerScheduler._run_analysis_cycle()` 진입 시 | per-ticker `threading.Lock(timeout=600)` → timeout 시 해당 주기 skip |
@@ -741,11 +869,27 @@ python_api:
 
 ## 10. Additional Design Details (from Review)
 
-### 매수 수량 결정
+### 매매 수량 결정
 
-- **결정**: PortfolioAgent LLM이 매수 수량 결정
-- 프롬프트에 현재 cash 잔고 + 현재가 포함 → LLM이 적정 수량 산출
-- `decide()` 반환 dict에 `shares: int` 필드 포함
+- **결정**: PortfolioAgent LLM이 매수·매도 수량 모두 결정
+- BUY/SELL = 방향성, 전략이 실행 디테일(수량, 타점, 비중)을 결정
+- 프롬프트에 현재 cash 잔고 + 현재가 + 보유 수량 포함 → LLM이 적정 수량 산출
+- `decide()` 반환 dict에 `shares: int` 필드 포함 (매수·매도 공통)
+
+### 부분 매도 수익률 계산 (FR-020)
+
+- **결정**: **평균단가** 방식 (FIFO 아님)
+- `avg_price = total_invested / total_shares` → 전체 보유 평균 매입가
+- 부분 매도 수익률: `(current_price - avg_price) / avg_price × 100`
+- positions 배열: 매수 이력 추적용으로 유지, 수익률 계산에는 사용하지 않음
+- 사유: 가상 매매라 세금/회계 이슈 없음, 평균단가가 직관적이고 구현 간결
+
+### PA SELL Fallback 정책 (FR-020)
+
+- **결정**: SELL + shares=0 → **전량 매도 fallback**
+- `_parse_decision()`: SELL 시 shares=0이면 보유 전체 수량으로 대체
+- `_fallback_decision()`: LLM timeout 시 SELL → 전량 매도 (shares = total_shares)
+- 프롬프트에 전량/분할 매도 가이드 명시하여 shares=0 사례 최소화
 
 ### 현재가 소스
 
@@ -771,6 +915,23 @@ python_api:
 - **LLM timeout**: 600초 일률 적용
 - **Caching**: 불필요 (30일 lookback 기준 데이터 양이 적음, 1회성 분석)
 - **Prompt versioning**: 현재 에이전트 파일 내 하드코딩 유지 (향후 분리 검토)
+
+### API 설계 디테일 (FR-025~026)
+
+- **CORS**: `*` 전체 허용 — Cloudflare Tunnel 뒤에서 운영, 추가 제한 불필요
+- **POST /schedules Body**: `{"ticker": str, "interval_days": int, "initial_capital": float}` (기존 config 구조 재사용)
+- **Error Response 형식**: `{"detail": str}` — FastAPI 기본 HTTPException 형식
+- **Pagination**: GET /archive/{ticker} 에 offset/limit 파라미터 지원
+  - Default: offset=0, limit=20, max limit=100
+  - 파일 기반 구현: `sorted(os.listdir(archive_dir))[offset:offset+limit]`
+- **WebSocket Message Schema**: `{"agent": str, "status": str, "message": str, "timestamp": str}`
+  - agent: 현재 실행 중인 에이전트 이름
+  - status: `running` | `completed` | `error`
+  - message: 에이전트 출력 요약
+  - timestamp: ISO 8601
+- **WebSocket Timeout**: 3600초 (분석 1시간 제한과 동일)
+- **서버 실행**: `uv run uvicorn tradingagents.api.app:app --port 8000`
+- **분석 중복 실행 방지**: 기존 per-ticker Lock 활용, Lock 획득 실패 시 409 Conflict 반환
 
 ---
 
@@ -803,7 +964,8 @@ python_api:
 | 수익률 (realized_return_pct) | `(total_returned - total_invested) / total_invested × 100` |
 | total_invested               | `Σ(shares × entry_price)` for all positions                |
 | total_returned               | `Σ(shares × current_price)` for all positions              |
-| 평균단가                     | N/A — positions 배열에 매수 건별 분리 저장, 개별 청산      |
+| 평균단가 (avg_price)         | `total_invested / total_shares` — 부분 매도 시 수익률 계산 기준 |
+| 부분 매도 수익률             | `(current_price - avg_price) / avg_price × 100`            |
 
 ### Mock Data Status
 
@@ -819,3 +981,9 @@ python_api:
 | 2026-02-12 | review  | check     | 설계 완성도 검증 — 8개 gap 발견, 3개 결정(매수수량/현재가/PA timeout), 5개 skip   |
 | 2026-02-12 | prepare | pre-build | 구현 준비 검증 — 외부서비스/인프라 all clear, 수익률 수식 확정                    |
 | 2026-02-12 | update  | manual    | ChromaDB 자체 임베딩 엔진으로 통일, #5/#17 완료 마킹, embedding_model config 삭제 |
+| 2026-02-12 | sync    | manual    | 매매 원칙 변경: 전량 청산→전략 기반 비중 조절. close_positions(부분 매도) 추가. PA에 current_price 파라미터 추가. 매매 수량 결정 확장 |
+| 2026-02-12 | update  | arch      | FR-020 Code Mapping 추가 (#25-#27), #12/#14 Superseded. Implementation Plan Step 8 추가 |
+| 2026-02-12 | review  | check     | FR-020 gap 4개 결정: 평균단가(not FIFO), close_all_positions 반환값 유지, SELL shares=0→전량매도, PA 프롬프트 전량/분할 매도 가이드 |
+| 2026-02-13 | update  | arch      | FR-021~024 Code Mapping 추가 (#28-#31), #20-#22 Superseded. Implementation Plan Step 9 추가 |
+| 2026-02-13 | update  | reinforce | proposal_v2.md 반영: FR-023~024 경로 수정 (trade/archive), #30-31 경로 수정, #32-35 추가 (웹 API), Step 9 경로 수정 + Step 10 추가, Non-goals 수정 |
+| 2026-02-13 | review  | check     | FR-025~028 설계 완성도 검증 — 경로 불일치 4곳 수정, §2 Components/§7 Env/§9 Auth·Error 갱신, API 디테일 8개 결정 (CORS, pagination, WS schema, 서버 포트, 중복 방지 등) |
