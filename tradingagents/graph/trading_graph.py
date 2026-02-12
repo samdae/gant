@@ -12,7 +12,8 @@ from tradingagents.llm_clients import create_llm_client
 
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.agents.utils.memory import FinancialSituationMemory
+# Use HybridMemory (backward compat re-exported as FinancialSituationMemory)
+from tradingagents.memory.hybrid_memory import HybridMemory as FinancialSituationMemory
 from tradingagents.agents.utils.agent_states import (
     AgentState,
     InvestDebateState,
