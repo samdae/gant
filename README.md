@@ -219,3 +219,109 @@ ANTIGRAVITY_REFRESH_TOKEN=<your-token>
 ALPHA_VANTAGE_API_KEY=<your-key>
 ```
 
+---
+
+## 반성문(Reflection) 로직 레퍼런스
+
+> 에이전트가 매매 경험에서 학습하는 핵심 메커니즘입니다.
+
+### 트리거 조건
+
+| 상황 | Reflect 실행 |
+|------|-------------|
+| **전량 청산** (`shares >= total_shares` or `shares == 0`) | ✅ 실행 |
+| **부분 매도** | ❌ 미실행 (포지션 미완료) |
+| **BUY / HOLD** | ❌ 미실행 |
+
+### 실행 흐름
+
+```
+전량 청산 완료
+  └── close_all_positions() → realized_return_pct 계산
+        └── structured_context 구성
+              {ticker, return_pct, analysis_count, has_memory, schema_version}
+              └── graph.reflect_and_remember(structured_context)
+                    └── 5개 에이전트 각각 반성 실행:
+                          ├── reflect_bull_researcher()
+                          ├── reflect_bear_researcher()
+                          ├── reflect_trader()
+                          ├── reflect_invest_judge()
+                          └── reflect_risk_manager()
+```
+
+### 개별 반성 처리 (`reflect_*()` 내부)
+
+```
+1. situation = current_state에서 market report 추출 (객관적 시장 상황)
+2. report = 해당 에이전트가 이번 분석에서 내린 판단 텍스트
+3. LLM(quick_think)에게 반성문 생성 요청
+4. memory.add_situations([(situation, 반성문)], metadata)
+   ├── JSONL 파일에 append (memory/experience/{agent_name}.jsonl)
+   └── ChromaDB에 벡터 인덱싱
+```
+
+### 반성 프롬프트 4단계 구조
+
+LLM에게 다음 순서로 반성을 지시합니다:
+
+| 단계 | 지시 | 기대 출력 |
+|------|------|----------|
+| **1. Reasoning** | 각 결정이 맞았는지/틀렸는지 판단. 기여 요인 분석 | 시장 인텔리전스, 기술 지표, 뉴스, 센티멘트 등 요인별 가중 |
+| **2. Improvement** | 틀린 결정에 대해 수정안 제시 | 구체적 행동 권고 (예: "HOLD 대신 BUY 했어야") |
+| **3. Summary** | 성공/실패에서 배운 교훈 정리 | 향후 유사 상황에 적용할 인사이트 |
+| **4. Query** | 핵심 인사이트를 1000토큰 이내 압축 | RAG 검색에 최적화된 밀도 높은 텍스트 |
+
+### LLM 입력 구성
+
+```
+[System] 위 4단계 반성 프롬프트
+
+[Human]
+  Structured Context:
+    Returns: {return_pct}%
+    Ticker: {ticker}
+    Holding Period: {holding_days} days
+    Analysis Count: {analysis_count}
+    Memory Status: Had prior memories / No prior memories (bootstrap)
+
+  Analysis/Decision: {해당 에이전트의 분석 텍스트}
+  Objective Market Reports for Reference: {시장 보고서}
+```
+
+### 저장 형식 (JSONL)
+
+```jsonl
+{
+  "situation": "시장 상황 텍스트 (market report 기반)",
+  "recommendation": "LLM이 생성한 반성문",
+  "metadata": {
+    "ticker": "NVDA",
+    "return_pct": -3.42,
+    "has_memory": true,
+    "schema_version": 1,
+    "holding_days": 12,
+    "analysis_count": 3,
+    "created_at": "2026-02-13T01:30:00"
+  }
+}
+```
+
+### 다음 분석에서 활용
+
+```
+다음 분석 시 → HybridMemory.get_memories(current_situation)
+  ├── BM25: situation 텍스트 유사도 검색
+  ├── Vector: ChromaDB 임베딩 유사도 검색
+  └── RRF Fusion → 가장 관련 높은 과거 반성문 반환
+      → 에이전트 프롬프트에 주입 ("과거 이런 실수를 한 적 있다...")
+```
+
+### 핵심 파일
+
+| 파일 | 역할 |
+|------|------|
+| `tradingagents/graph/reflection.py` | `Reflector` 클래스 — 반성 프롬프트 + LLM 호출 |
+| `tradingagents/graph/trading_graph.py` | `reflect_and_remember()` — 5개 에이전트 반성 오케스트레이션 |
+| `tradingagents/memory/hybrid_memory.py` | `HybridMemory` — JSONL 저장 + ChromaDB 인덱싱 + RAG 검색 |
+| `tradingagents/scheduler/ticker_scheduler.py` | 전량 청산 시 reflect 트리거 (L396~422) |
+
