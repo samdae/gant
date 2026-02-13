@@ -312,6 +312,10 @@ class TradingAgentsGraph:
                     - analysis_count (int, optional)
                     - market_condition (str, optional)
                     - has_memory (bool, optional) - defaults to self._last_had_memory
+                    - outcome (str, optional) - auto-calculated from return_pct
+                    - market (str, optional) - auto-fetched from yfinance
+                    - sector (str, optional) - auto-fetched from yfinance
+                    - industry (str, optional) - auto-fetched from yfinance
                     - schema_version (int, optional) - defaults to 1
         """
         # Normalize input to structured dict (FR-018)
@@ -335,6 +339,59 @@ class TradingAgentsGraph:
         # Ensure schema_version
         if "schema_version" not in structured_context:
             structured_context["schema_version"] = 1
+
+        # FR-029: Auto-tag metadata (outcome, market, sector, industry)
+        # 1. Outcome: win/lose based on return_pct
+        if "outcome" not in structured_context and "return_pct" in structured_context:
+            structured_context["outcome"] = (
+                "win" if structured_context["return_pct"] >= 0 else "lose"
+            )
+
+        # 2. Fetch market/sector/industry from yfinance (if ticker provided)
+        ticker = structured_context.get("ticker")
+        if ticker:
+            try:
+                import yfinance as yf
+                
+                yf_ticker = yf.Ticker(ticker)
+                info = yf_ticker.info
+
+                # Market: fullExchangeName (e.g., "NasdaqGS", "KSE")
+                if "market" not in structured_context:
+                    structured_context["market"] = info.get("fullExchangeName")
+
+                # Sector: sector (e.g., "Technology")
+                if "sector" not in structured_context:
+                    structured_context["sector"] = info.get("sector")
+
+                # Industry: industry (e.g., "Semiconductors")
+                if "industry" not in structured_context:
+                    structured_context["industry"] = info.get("industry")
+
+                # Crypto fallback: quoteType == "CRYPTOCURRENCY"
+                quote_type = info.get("quoteType")
+                if quote_type == "CRYPTOCURRENCY":
+                    if not structured_context.get("sector"):
+                        structured_context["sector"] = "Cryptocurrency"
+                    if not structured_context.get("industry"):
+                        structured_context["industry"] = "Cryptocurrency"
+                    if not structured_context.get("market"):
+                        structured_context["market"] = "Crypto"
+
+            except Exception as e:
+                # Graceful degradation: log warning, set to null
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Failed to fetch metadata for {ticker}: {e}, "
+                    "setting market/sector/industry to null"
+                )
+                if "market" not in structured_context:
+                    structured_context["market"] = None
+                if "sector" not in structured_context:
+                    structured_context["sector"] = None
+                if "industry" not in structured_context:
+                    structured_context["industry"] = None
 
         # Call reflector with structured context
         self.reflector.reflect_bull_researcher(

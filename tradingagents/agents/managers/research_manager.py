@@ -17,7 +17,15 @@ def create_research_manager(llm, memory):
 
         past_memory_str = ""
         for i, rec in enumerate(past_memories, 1):
-            past_memory_str += rec["recommendation"] + "\n\n"
+            # FR-029: Add outcome-based label prefix
+            outcome = rec.get("metadata", {}).get("outcome")
+            label = ""
+            if outcome == "win":
+                label = "[✅ 성공 사례] "
+            elif outcome == "lose":
+                label = "[⚠️ 실패 사례] "
+            
+            past_memory_str += label + rec["recommendation"] + "\n\n"
 
         prompt = f"""As the portfolio manager and debate facilitator, your role is to critically evaluate this round of debate and make a definitive decision: align with the bear analyst, the bull analyst, or choose Hold only if it is strongly justified based on the arguments presented.
 
@@ -29,6 +37,8 @@ Your Recommendation: A decisive stance supported by the most convincing argument
 Rationale: An explanation of why these arguments lead to your conclusion.
 Strategic Actions: Concrete steps for implementing the recommendation.
 Take into account your past mistakes on similar situations. Use these insights to refine your decision-making and ensure you are learning and improving. Present your analysis conversationally, as if speaking naturally, without special formatting.
+
+Note: If you see failure case labels (⚠️), treat them as cautionary tales to avoid repeating mistakes.
 
 Here are your past reflections on mistakes:
 \"{past_memory_str}\"

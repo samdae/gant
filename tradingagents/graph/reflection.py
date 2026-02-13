@@ -121,7 +121,7 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
             "BULL", bull_debate_history, situation, context
         )
 
-        # Extract metadata for JSONL storage (FR-018)
+        # Extract metadata for JSONL storage (FR-018, FR-029)
         metadata = {
             "ticker": context.get("ticker"),
             "return_pct": context.get("return_pct"),
@@ -129,6 +129,11 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
             "schema_version": context.get("schema_version", 1),
             "holding_days": context.get("holding_days"),
             "analysis_count": context.get("analysis_count"),
+            # FR-029: Include outcome, market, sector, industry
+            "outcome": context.get("outcome"),
+            "market": context.get("market"),
+            "sector": context.get("sector"),
+            "industry": context.get("industry"),
         }
 
         bull_memory.add_situations([(situation, result)], metadata=metadata)
@@ -148,7 +153,7 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
             "BEAR", bear_debate_history, situation, context
         )
 
-        # Extract metadata for JSONL storage (FR-018)
+        # Extract metadata for JSONL storage (FR-018, FR-029)
         metadata = {
             "ticker": context.get("ticker"),
             "return_pct": context.get("return_pct"),
@@ -156,6 +161,11 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
             "schema_version": context.get("schema_version", 1),
             "holding_days": context.get("holding_days"),
             "analysis_count": context.get("analysis_count"),
+            # FR-029: Include outcome, market, sector, industry
+            "outcome": context.get("outcome"),
+            "market": context.get("market"),
+            "sector": context.get("sector"),
+            "industry": context.get("industry"),
         }
 
         bear_memory.add_situations([(situation, result)], metadata=metadata)

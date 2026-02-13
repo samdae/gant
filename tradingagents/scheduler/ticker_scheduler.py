@@ -8,6 +8,7 @@ Features:
 - Self-healing: Scans config + virtual_trade/tickers/ on start
 - Simple retry: 1 retry on failure
 - Full analysis cycle: load → propagate → report → portfolio → trade → reflect
+- Global queue for sequential execution (FR-025)
 
 Integration Flow:
 1. Load trade state (TradeManager)
@@ -22,6 +23,7 @@ Integration Flow:
 import os
 import logging
 import threading
+import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
@@ -29,6 +31,21 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 logger = logging.getLogger(__name__)
+
+# FR-025: Global queue for sequential analysis execution
+analysis_queue: Optional[asyncio.Queue] = None
+
+
+def _initialize_queue():
+    """Initialize global queue if not already done."""
+    global analysis_queue
+    if analysis_queue is None:
+        try:
+            loop = asyncio.get_running_loop()
+            analysis_queue = asyncio.Queue()
+        except RuntimeError:
+            # No event loop running — will be initialized by FastAPI
+            pass
 
 
 class TickerScheduler:

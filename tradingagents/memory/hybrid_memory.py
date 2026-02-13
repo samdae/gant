@@ -366,8 +366,8 @@ class HybridMemory:
             n_matches: Number of top matches to return
 
         Returns:
-            List of dicts with matched_situation, recommendation, rrf_score
-            (or similarity_score for backward compat if BM25-only)
+            List of dicts with matched_situation, recommendation, rrf_score, metadata
+            (FR-029: metadata includes outcome, market, sector, industry for RAG labeling)
 
         Side effect: Sets self.last_query_had_results flag (FR-019)
         """
@@ -395,7 +395,7 @@ class HybridMemory:
             # BM25-only fallback
             fused_results = [(idx, score) for idx, score in bm25_results]
 
-        # Build final results
+        # Build final results (FR-029: include metadata)
         results = []
         for doc_idx, rrf_score in fused_results[:n_matches]:
             results.append({
@@ -404,6 +404,8 @@ class HybridMemory:
                 "rrf_score": rrf_score,
                 # Backward compat: also provide similarity_score alias
                 "similarity_score": rrf_score,
+                # FR-029: Include metadata (outcome, market, sector, industry)
+                "metadata": self.metadata_list[doc_idx],
             })
 
         # Set flag for bootstrap tagging (FR-019)
