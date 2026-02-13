@@ -4,6 +4,7 @@ Independent agent (not part of LangGraph pipeline) that reviews:
 - Current trading position (trade.json)
 - Analysis history (reports.json)
 - Latest pipeline decision
+- Past trading memories (HybridMemory) — FR-022
 
 Makes portfolio-level decision:
 - BUY: Open new position or add to existing
@@ -33,7 +34,8 @@ class PortfolioAgent:
         self,
         llm: BaseChatModel,
         trade_manager: TradeManager,
-        report_store: ReportStore
+        report_store: ReportStore,
+        hybrid_memory=None  # FR-022: Optional HybridMemory instance
     ):
         """Initialize the portfolio agent.
 
@@ -41,10 +43,12 @@ class PortfolioAgent:
             llm: LLM for decision making (should be deep_think_llm)
             trade_manager: TradeManager instance
             report_store: ReportStore instance
+            hybrid_memory: HybridMemory instance for past trading experience (optional)
         """
         self.llm = llm
         self.trade_manager = trade_manager
         self.report_store = report_store
+        self.hybrid_memory = hybrid_memory  # FR-022
 
     def decide(
         self,
@@ -154,7 +158,30 @@ class PortfolioAgent:
         sentiment_excerpt = pipeline_state.get("sentiment_report", "")[:500]
         final_decision_excerpt = pipeline_state.get("final_trade_decision", "")[:500]
 
-        prompt = f"""You are a Portfolio Manager for a virtual trading system. Your role is to review the current portfolio state, recent analysis history, and the latest AI pipeline recommendation to make a final trading decision.
+        # FR-022: Query HybridMemory for past trading experience
+        past_experience_text = ""
+        if self.hybrid_memory:
+            # Build query from current situation
+            situation_query = f"{market_excerpt}\n{sentiment_excerpt}"
+            past_memories = self.hybrid_memory.get_memories(situation_query, n_matches=2)
+            
+            if past_memories:
+                past_experience_text = "\n\n**Past Trading Experience:**"
+                for i, mem in enumerate(past_memories, 1):
+                    past_experience_text += f"\n{i}. Situation: {mem.get('matched_situation', '')[:200]}"
+                    past_experience_text += f"\n   Lesson: {mem.get('recommendation', '')[:200]}"
+            else:
+                past_experience_text = "\n\n**Past Trading Experience:** No similar situations found."
+        else:
+            past_experience_text = ""
+
+        prompt = f"""You are a Portfolio Manager for a virtual trading system. Your role is to review the current portfolio state, recent analysis history, past trading experience, and the latest AI pipeline recommendation to make a final trading decision.
+
+**IMPORTANT: Decision-Making Framework (FR-022):**
+- Weight analysis results (current market data, sentiment, fundamentals): 60%
+- Weight past trading experience (lessons learned from similar situations): 40%
+- Avoid position bias: Do not let current holdings influence your judgment unfairly
+- Learn from past mistakes: Use past experience to avoid repeating failures
 
 **Current Portfolio State:**
 - Ticker: {ticker}
@@ -165,7 +192,7 @@ class PortfolioAgent:
 - Unrealized Return: {unrealized_return_pct:.2f}%
 - Portfolio Status: {trade_state['status']}
 
-**Recent Analysis History:**{history_text}
+**Recent Analysis History:**{history_text}{past_experience_text}
 
 **Latest G-ANT Pipeline Recommendation:**
 - Decision: {pipeline_decision}
@@ -176,15 +203,19 @@ class PortfolioAgent:
 **Your Task:**
 1. Review the current position and recent performance
 2. Consider the analysis history and whether past decisions were successful
-3. Evaluate the latest pipeline recommendation in context
-4. Make a portfolio-level decision: BUY, SELL, HOLD, or MODIFY
+3. Learn from past trading experience (if available) — use failures as cautionary tales
+4. Evaluate the latest pipeline recommendation in context
+5. Make a portfolio-level decision: BUY, SELL, HOLD, or MODIFY
 
 **Decision Guidelines:**
 - BUY: If pipeline recommends BUY and we have cash available
   * Decide how many shares to buy based on available cash and current price
   * Suggest position sizing (e.g., 25%, 50%, 75% of available cash)
+  * For partial buy strategies, specify exact shares (not 0)
 - SELL: If pipeline recommends SELL or if stop-loss/target conditions are met
-  * Close all positions and realize gains/losses
+  * Decide whether to close all positions or partial sell
+  * Specify shares: 0 or missing = close all positions (전량 매도)
+  * Specify exact shares > 0 for partial sell (e.g., 50% of holdings for profit-taking)
 - HOLD: If maintaining current position is prudent
   * No new trades, continue monitoring
 - MODIFY: If strategy parameters need adjustment
@@ -192,14 +223,14 @@ class PortfolioAgent:
 
 **Output Format (STRICT):**
 ACTION: [BUY|SELL|HOLD|MODIFY]
-SHARES: [number of shares if BUY, 0 otherwise]
-RATIONALE: [2-3 sentences explaining your decision]
+SHARES: [number of shares if BUY or partial SELL, 0 or omit for full SELL]
+RATIONALE: [2-3 sentences explaining your decision, referencing both current analysis (60%) and past experience (40%) if available]
 STRATEGY_UPDATE:
   stop_loss: [price or null]
   target: [price or null]
   next_action: [BUY|SELL|HOLD]
 
-Think carefully and provide a decisive recommendation."""
+Think carefully and provide a decisive recommendation. Avoid letting your current position bias your judgment."""
 
         return prompt
 
@@ -278,6 +309,15 @@ Think carefully and provide a decisive recommendation."""
                     f"BUY action but shares=0, defaulting to 50% of cash: {shares} shares"
                 )
 
+        # FR-020 Fallback: If SELL but shares = 0, treat as full sell
+        if action == "SELL" and shares == 0:
+            total_shares = sum(pos["shares"] for pos in trade_state["positions"])
+            if total_shares > 0:
+                shares = total_shares
+                logger.info(
+                    f"SELL action with shares=0, treating as full sell: {shares} shares"
+                )
+
         return {
             "action": action,
             "shares": shares,
@@ -303,10 +343,13 @@ Think carefully and provide a decisive recommendation."""
         """
         action = pipeline_decision
 
-        # Calculate shares for BUY (50% of cash)
+        # Calculate shares for BUY (50% of cash) or SELL (all shares)
         shares = 0
         if action == "BUY" and current_price > 0:
             shares = int((trade_state["cash"] * 0.5) / current_price)
+        elif action == "SELL":
+            # FR-020: SELL timeout → full sell (all shares)
+            shares = sum(pos["shares"] for pos in trade_state["positions"])
 
         return {
             "action": action,
