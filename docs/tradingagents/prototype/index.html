@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>G-ANT Trader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- App Header -->
+    <header class="app-header">
+      <a href="#/" class="logo">🐜 G-ANT Trader</a>
+      <nav class="nav-desktop">
+        <a href="#/" class="nav-link" data-route="/">Dashboard</a>
+        <a href="#/positions" class="nav-link" data-route="/positions"
+          >Positions</a
+        >
+        <a href="#/schedules" class="nav-link" data-route="/schedules"
+          >Schedules</a
+        >
+        <a href="#/live" class="nav-link" data-route="/live">Live</a>
+        <a href="#/search" class="nav-link" data-route="/search">Search</a>
+      </nav>
+      <button class="hamburger" id="menuBtn" aria-label="Menu">☰</button>
+    </header>
+
+    <!-- Mobile Drawer -->
+    <div class="drawer-overlay" id="drawerOverlay"></div>
+    <aside class="mobile-drawer" id="mobileDrawer">
+      <div class="drawer-header">
+        <span class="logo">🐜 G-ANT Trader</span>
+        <button class="drawer-close" id="drawerClose">✕</button>
+      </div>
+      <nav class="drawer-nav">
+        <a href="#/" class="drawer-link" data-route="/">Dashboard</a>
+        <a href="#/positions" class="drawer-link" data-route="/positions"
+          >Positions</a
+        >
+        <a href="#/schedules" class="drawer-link" data-route="/schedules"
+          >Schedules</a
+        >
+        <a href="#/live" class="drawer-link" data-route="/live">Live</a>
+        <a href="#/search" class="drawer-link" data-route="/search">Search</a>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <!-- ===== 1. DASHBOARD ===== -->
+      <section class="page" id="page-dashboard">
+        <div class="page-container">
+          <div class="card-grid card-grid-3">
+            <!-- Health Card -->
+            <div class="card">
+              <div class="card-header">
+                <h3>System Health</h3>
+                <span class="status-dot status-ok"></span>
+              </div>
+              <div class="card-body">
+                <div class="stat-row">
+                  <span class="stat-label">Status</span
+                  ><span class="stat-value badge badge-green">● OK</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Uptime</span
+                  ><span class="stat-value">3h 24m</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Scheduler</span
+                  ><span class="stat-value badge badge-green">Running</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Schedules</span
+                  ><span class="stat-value">5</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Queue</span
+                  ><span class="stat-value">2</span>
+                </div>
+              </div>
+            </div>
+            <!-- Queue Card -->
+            <div class="card">
+              <div class="card-header"><h3>Queue Status</h3></div>
+              <div class="card-body">
+                <div class="queue-item queue-running">
+                  <span class="queue-icon">▶</span>
+                  <span class="queue-ticker">NVDA</span>
+                  <span class="badge badge-blue">Running</span>
+                </div>
+                <div class="queue-item queue-pending">
+                  <span class="queue-icon">⏳</span>
+                  <span class="queue-ticker">AAPL</span>
+                  <span class="badge badge-dim">Pending</span>
+                </div>
+                <div class="queue-item queue-pending">
+                  <span class="queue-icon">⏳</span>
+                  <span class="queue-ticker">TSLA</span>
+                  <span class="badge badge-dim">Pending</span>
+                </div>
+                <div
+                  class="stat-row"
+                  style="
+                    margin-top: 12px;
+                    border-top: 1px solid var(--border);
+                    padding-top: 12px;
+                  "
+                >
+                  <span class="stat-label">Total</span
+                  ><span class="stat-value">3</span>
+                </div>
+              </div>
+            </div>
+            <!-- Positions Summary Card -->
+            <div class="card">
+              <div class="card-header">
+                <h3>Active Positions</h3>
+                <a href="#/positions" class="card-link">View All →</a>
+              </div>
+              <div class="card-body">
+                <div
+                  class="pos-mini-row"
+                  onclick="location.hash = '#/trade/NVDA'"
+                >
+                  <span class="ticker-badge">NVDA</span>
+                  <span class="pos-shares">2 sh</span>
+                  <span class="pos-price">$285.00</span>
+                  <span class="return-badge return-pos">+15.7% ▲</span>
+                </div>
+                <div
+                  class="pos-mini-row"
+                  onclick="location.hash = '#/trade/AAPL'"
+                >
+                  <span class="ticker-badge">AAPL</span>
+                  <span class="pos-shares">1 sh</span>
+                  <span class="pos-price">$178.11</span>
+                  <span class="return-badge return-neg">-3.2% ▼</span>
+                </div>
+                <div
+                  class="pos-mini-row"
+                  onclick="location.hash = '#/trade/TSLA'"
+                >
+                  <span class="ticker-badge">TSLA</span>
+                  <span class="pos-shares">3 sh</span>
+                  <span class="pos-price">$245.00</span>
+                  <span class="return-badge return-pos">+8.1% ▲</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Quick Nav (mobile) -->
+          <div class="quick-nav">
+            <a href="#/schedules" class="quick-nav-btn">📅 Schedules</a>
+            <a href="#/positions" class="quick-nav-btn">📊 Positions</a>
+            <a href="#/live" class="quick-nav-btn">🔴 Live Analysis</a>
+            <a href="#/search" class="quick-nav-btn">🔍 Search</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 2. POSITIONS ===== -->
+      <section class="page" id="page-positions">
+        <div class="page-container">
+          <div class="page-header">
+            <button class="back-btn" onclick="history.back()">←</button>
+            <h2>Positions</h2>
+            <div class="pnl-banner pnl-pos">Total P&L: +$127.30 (+8.5%)</div>
+          </div>
+          <!-- Desktop Table -->
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Shares</th>
+                  <th>Avg Cost</th>
+                  <th>Current</th>
+                  <th>P&L ($)</th>
+                  <th>Return (%)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr onclick="location.hash = '#/trade/NVDA'">
+                  <td><span class="ticker-badge">NVDA</span></td>
+                  <td>2</td>
+                  <td>$247.50</td>
+                  <td>$285.00</td>
+                  <td class="text-green">+$75.00</td>
+                  <td><span class="return-badge return-pos">+15.7% ▲</span></td>
+                </tr>
+                <tr onclick="location.hash = '#/trade/AAPL'">
+                  <td><span class="ticker-badge">AAPL</span></td>
+                  <td>1</td>
+                  <td>$184.00</td>
+                  <td>$178.11</td>
+                  <td class="text-red">-$5.89</td>
+                  <td><span class="return-badge return-neg">-3.2% ▼</span></td>
+                </tr>
+                <tr onclick="location.hash = '#/trade/TSLA'">
+                  <td><span class="ticker-badge">TSLA</span></td>
+                  <td>3</td>
+                  <td>$226.67</td>
+                  <td>$245.00</td>
+                  <td class="text-green">+$55.00</td>
+                  <td><span class="return-badge return-pos">+8.1% ▲</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <!-- Mobile Cards -->
+          <div class="pos-card-list">
+            <div class="card pos-card" onclick="location.hash = '#/trade/NVDA'">
+              <div class="pos-card-top">
+                <span class="ticker-badge">NVDA</span
+                ><span class="return-badge return-pos">+15.7% ▲</span>
+              </div>
+              <div class="pos-card-details">
+                <div>2 shares @ avg $247.50</div>
+                <div>Current: $285.00</div>
+                <div class="text-green">P&L: +$75.00</div>
+              </div>
+            </div>
+            <div class="card pos-card" onclick="location.hash = '#/trade/AAPL'">
+              <div class="pos-card-top">
+                <span class="ticker-badge">AAPL</span
+                ><span class="return-badge return-neg">-3.2% ▼</span>
+              </div>
+              <div class="pos-card-details">
+                <div>1 share @ avg $184.00</div>
+                <div>Current: $178.11</div>
+                <div class="text-red">P&L: -$5.89</div>
+              </div>
+            </div>
+            <div class="card pos-card" onclick="location.hash = '#/trade/TSLA'">
+              <div class="pos-card-top">
+                <span class="ticker-badge">TSLA</span
+                ><span class="return-badge return-pos">+8.1% ▲</span>
+              </div>
+              <div class="pos-card-details">
+                <div>3 shares @ avg $226.67</div>
+                <div>Current: $245.00</div>
+                <div class="text-green">P&L: +$55.00</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 3. SCHEDULES ===== -->
+      <section class="page" id="page-schedules">
+        <div class="page-container">
+          <div class="page-header">
+            <button class="back-btn" onclick="history.back()">←</button>
+            <h2>Schedules</h2>
+            <button class="btn btn-primary" id="addScheduleBtn">＋ Add</button>
+          </div>
+          <div class="schedule-list">
+            <div class="card schedule-card">
+              <div class="schedule-top">
+                <span class="ticker-badge">NVDA</span>
+                <span class="interval-label">Every 4d</span>
+              </div>
+              <div class="schedule-details">
+                <div>Capital: $1,000</div>
+                <div class="text-dim">Next: 2026-02-15 09:00</div>
+              </div>
+              <button
+                class="btn-icon btn-danger schedule-delete"
+                title="Delete"
+              >
+                🗑️
+              </button>
+            </div>
+            <div class="card schedule-card">
+              <div class="schedule-top">
+                <span class="ticker-badge">AAPL</span>
+                <span class="interval-label">Every 4d</span>
+              </div>
+              <div class="schedule-details">
+                <div>Capital: $1,000</div>
+                <div class="text-dim">Next: 2026-02-16 09:00</div>
+              </div>
+              <button
+                class="btn-icon btn-danger schedule-delete"
+                title="Delete"
+              >
+                🗑️
+              </button>
+            </div>
+            <div class="card schedule-card">
+              <div class="schedule-top">
+                <span class="ticker-badge">TSLA</span>
+                <span class="interval-label">Every 7d</span>
+              </div>
+              <div class="schedule-details">
+                <div>Capital: $2,000</div>
+                <div class="text-dim">Next: 2026-02-18 09:00</div>
+              </div>
+              <button
+                class="btn-icon btn-danger schedule-delete"
+                title="Delete"
+              >
+                🗑️
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 4. TRADE DETAIL ===== -->
+      <section class="page" id="page-trade">
+        <div class="page-container">
+          <div class="page-header">
+            <button class="back-btn" onclick="history.back()">←</button>
+            <h2 id="tradeTickerTitle">NVDA Trade</h2>
+          </div>
+          <div class="card-grid card-grid-2">
+            <div class="card">
+              <div class="card-header"><h3>Position Summary</h3></div>
+              <div class="card-body">
+                <div class="stat-row">
+                  <span class="stat-label">Status</span
+                  ><span class="badge badge-green">🟢 Open</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Cash</span
+                  ><span class="stat-value">$485.00 / $1,000</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Shares</span
+                  ><span class="stat-value">2 @ avg $257.50</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Invested</span
+                  ><span class="stat-value">$515.00</span>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header"><h3>Current Strategy</h3></div>
+              <div class="card-body">
+                <div class="stat-row">
+                  <span class="stat-label">Stop Loss</span
+                  ><span class="stat-value text-red">$260.00</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">Target</span
+                  ><span class="stat-value text-green">$300.00</span>
+                </div>
+                <div class="strategy-text">
+                  Next: 풀백 시 $264-266에서 50% 추가매수
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Tabs -->
+          <div class="tab-bar">
+            <button class="tab-btn active" data-tab="history">
+              Trade History
+            </button>
+            <button class="tab-btn" data-tab="reports">Analysis Reports</button>
+          </div>
+          <div class="tab-content" id="tab-history">
+            <div class="history-list">
+              <div class="card history-entry">
+                <div class="history-top">
+                  <span class="history-no">#3</span>
+                  <span class="history-date">2026-02-10</span>
+                  <span class="badge badge-dim">HOLD</span>
+                </div>
+                <div class="history-action">관망. 목표가 접근 대기</div>
+                <div class="history-cash">Cash: $485.00</div>
+              </div>
+              <div class="card history-entry">
+                <div class="history-top">
+                  <span class="history-no">#2</span>
+                  <span class="history-date">2026-02-06</span>
+                  <span class="badge badge-green">BUY</span>
+                </div>
+                <div class="history-action">풀백 추가매수 $265 x 1</div>
+                <div class="history-cash">Cash: $485.00</div>
+              </div>
+              <div class="card history-entry">
+                <div class="history-top">
+                  <span class="history-no">#1</span>
+                  <span class="history-date">2026-02-02</span>
+                  <span class="badge badge-green">BUY</span>
+                </div>
+                <div class="history-action">첫 진입. $250 x 1</div>
+                <div class="history-cash">Cash: $750.00</div>
+              </div>
+            </div>
+          </div>
+          <div class="tab-content hidden" id="tab-reports">
+            <div class="history-list">
+              <div class="card history-entry">
+                <div class="history-top">
+                  <span class="history-no">#3</span>
+                  <span class="history-date">2026-02-10</span>
+                  <span class="badge badge-dim">HOLD</span>
+                  <span class="memory-badge">🧠</span>
+                </div>
+                <div class="history-action">
+                  현재가 접선 접근. 단기 조정 가능성 30%. 기존 포지션 유지 권고.
+                </div>
+              </div>
+              <div class="card history-entry">
+                <div class="history-top">
+                  <span class="history-no">#2</span>
+                  <span class="history-date">2026-02-06</span>
+                  <span class="badge badge-green">BUY</span>
+                  <span class="memory-badge">🧠</span>
+                </div>
+                <div class="history-action">
+                  3일 연속 하락 후 지지선 접근. RSI 과매도 진입. 추가 매수 적정
+                  구간.
+                </div>
+              </div>
+              <div class="card history-entry">
+                <div class="history-top">
+                  <span class="history-no">#1</span>
+                  <span class="history-date">2026-02-02</span>
+                  <span class="badge badge-green">BUY</span>
+                  <span class="memory-badge dim">—</span>
+                </div>
+                <div class="history-action">
+                  AI 수요 급증에 따른 실적 기대감. 기술적 지표 상 매수 시그널
+                  확인.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 5. ARCHIVE ===== -->
+      <section class="page" id="page-archive">
+        <div class="page-container">
+          <div class="page-header">
+            <button class="back-btn" onclick="history.back()">←</button>
+            <h2 id="archiveTickerTitle">AAPL Archive</h2>
+          </div>
+          <div class="archive-list">
+            <div class="card archive-card">
+              <div class="archive-top">
+                <span class="cycle-badge">#2</span>
+                <span class="return-badge return-pos">+12.3% ▲</span>
+              </div>
+              <div class="archive-details">
+                <div>2026-01-05 → 2026-02-01</div>
+                <div class="text-green">Profit: +$123.00</div>
+                <div class="text-dim">3 analyses</div>
+              </div>
+            </div>
+            <div class="card archive-card">
+              <div class="archive-top">
+                <span class="cycle-badge">#1</span>
+                <span class="return-badge return-neg">-5.1% ▼</span>
+              </div>
+              <div class="archive-details">
+                <div>2025-12-01 → 2025-12-20</div>
+                <div class="text-red">Loss: -$51.00</div>
+                <div class="text-dim">2 analyses</div>
+              </div>
+            </div>
+          </div>
+          <div class="pagination">
+            <button class="btn btn-ghost" disabled>◀</button>
+            <span class="page-indicator">1 / 1</span>
+            <button class="btn btn-ghost" disabled>▶</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 6. LIVE ANALYSIS ===== -->
+      <section class="page" id="page-live">
+        <div class="page-container">
+          <div class="page-header">
+            <button class="back-btn" onclick="history.back()">←</button>
+            <h2>Live Analysis</h2>
+          </div>
+          <div class="live-layout">
+            <!-- Queue Sidebar -->
+            <div class="card live-queue">
+              <div class="card-header"><h3>Queue</h3></div>
+              <div class="card-body">
+                <div class="queue-item queue-running">
+                  <span class="queue-icon">▶</span>
+                  <span
+                    class="queue-ticker"
+                    onclick="location.hash = '#/trade/NVDA'"
+                    style="cursor: pointer"
+                    >NVDA</span
+                  >
+                  <span class="badge badge-blue">Running</span>
+                </div>
+                <div class="queue-item queue-pending">
+                  <span class="queue-icon">⏳</span>
+                  <span class="queue-ticker">AAPL</span>
+                </div>
+                <div class="queue-item queue-pending">
+                  <span class="queue-icon">⏳</span>
+                  <span class="queue-ticker">TSLA</span>
+                </div>
+              </div>
+            </div>
+            <!-- Live Feed -->
+            <div class="card live-feed">
+              <div class="card-header">
+                <h3>Live Feed: NVDA</h3>
+                <span class="live-dot"></span>
+              </div>
+              <div class="card-body agent-steps">
+                <div class="agent-step step-completed">
+                  <div class="step-header">
+                    <span class="step-time">17:23:01</span>
+                    <span class="step-name">Market Analyst</span>
+                    <span class="step-status">✅</span>
+                  </div>
+                  <div class="step-message">
+                    "시장 분석 보고서 생성 완료. NVDA는 현재 강한 상승 추세..."
+                  </div>
+                </div>
+                <div class="agent-step step-completed">
+                  <div class="step-header">
+                    <span class="step-time">17:24:30</span>
+                    <span class="step-name">Social Analyst</span>
+                    <span class="step-status">✅</span>
+                  </div>
+                  <div class="step-message">
+                    "소셜 미디어 감성 분석 완료. 긍정적 언급 82%..."
+                  </div>
+                </div>
+                <div class="agent-step step-running">
+                  <div class="step-header">
+                    <span class="step-time">17:25:45</span>
+                    <span class="step-name">News Analyst</span>
+                    <span class="step-status"
+                      ><span class="spinner"></span
+                    ></span>
+                  </div>
+                  <div class="step-message">
+                    "뉴스 데이터 수집 및 분석 진행 중..."
+                  </div>
+                </div>
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-name">⏳ Fundamentals Analyst</span>
+                  </div>
+                </div>
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-name">⏳ Bull/Bear Debate</span>
+                  </div>
+                </div>
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-name">⏳ Research Manager</span>
+                  </div>
+                </div>
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-name">⏳ Trader Agent</span>
+                  </div>
+                </div>
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-name">⏳ Risk Debate</span>
+                  </div>
+                </div>
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-name">⏳ Risk Manager</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 7. MEMORY SEARCH ===== -->
+      <section class="page" id="page-search">
+        <div class="page-container">
+          <div class="page-header">
+            <button class="back-btn" onclick="history.back()">←</button>
+            <h2>Memory Search</h2>
+          </div>
+          <div class="search-form">
+            <input
+              type="text"
+              class="input"
+              id="searchQuery"
+              placeholder="Describe a market situation..."
+            />
+            <div class="search-controls">
+              <select class="select" id="agentFilter">
+                <option value="">All Agents</option>
+                <option value="bull">Bull</option>
+                <option value="bear">Bear</option>
+                <option value="trader">Trader</option>
+                <option value="invest_judge">Invest Judge</option>
+                <option value="risk_manager">Risk Manager</option>
+              </select>
+              <button class="btn btn-primary" id="searchBtn">Search</button>
+            </div>
+          </div>
+          <div class="search-results" id="searchResults">
+            <div class="results-count">Results (2)</div>
+            <div class="card result-card">
+              <div class="result-top">
+                <span class="badge badge-green">✅ 성공 사례</span>
+                <span class="badge badge-outline">bull_memory</span>
+                <span class="text-dim">Score: 0.72</span>
+              </div>
+              <div class="result-meta">
+                <span class="ticker-badge">NVDA</span>
+                <span class="text-dim">Technology</span>
+                <span class="return-badge return-pos">+15.7%</span>
+              </div>
+              <div class="result-content">
+                <div class="result-section">
+                  <strong>Situation:</strong>
+                  <p>
+                    "반도체 수요 급증 시점에 bullish 모멘텀이 강하게 형성. RSI
+                    상승 돌파 후 지속적인 매수세 유입."
+                  </p>
+                </div>
+                <div class="result-section">
+                  <strong>Recommendation:</strong>
+                  <p>
+                    "강한 추세에서는 초기 진입이 유리. 풀백 시 분할 매수로 평균
+                    단가 관리."
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="card result-card">
+              <div class="result-top">
+                <span class="badge badge-yellow">⚠️ 실패 사례</span>
+                <span class="badge badge-outline">trader_memory</span>
+                <span class="text-dim">Score: 0.65</span>
+              </div>
+              <div class="result-meta">
+                <span class="ticker-badge">AAPL</span>
+                <span class="text-dim">Technology</span>
+                <span class="return-badge return-neg">-5.1%</span>
+              </div>
+              <div class="result-content">
+                <div class="result-section">
+                  <strong>Situation:</strong>
+                  <p>
+                    "연말 기대감에 매수 진입했으나, 실적 발표 후 기대 이하로
+                    하락 전환."
+                  </p>
+                </div>
+                <div class="result-section">
+                  <strong>Recommendation:</strong>
+                  <p>
+                    "실적 발표 전 과도한 포지션 구축 회피. 이벤트 리스크를
+                    고려한 분할 진입."
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ===== MODALS ===== -->
+    <!-- Add Schedule Modal -->
+    <div class="modal-overlay hidden" id="addModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Add Schedule</h3>
+          <button class="modal-close" id="addModalClose">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label"
+            >Ticker
+            <input
+              type="text"
+              class="input"
+              id="modalTicker"
+              placeholder="e.g. NVDA"
+              style="text-transform: uppercase"
+            />
+          </label>
+          <label class="form-label"
+            >Interval (days)
+            <input
+              type="number"
+              class="input"
+              id="modalInterval"
+              value="4"
+              min="1"
+            />
+          </label>
+          <label class="form-label"
+            >Initial Capital ($)
+            <input
+              type="number"
+              class="input"
+              id="modalCapital"
+              value="1000"
+              min="100"
+              step="100"
+            />
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="addModalCancel">Cancel</button>
+          <button class="btn btn-primary" id="addModalSubmit">Add</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Confirm Modal -->
+    <div class="modal-overlay hidden" id="deleteModal">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h3>Delete Schedule</h3>
+          <button class="modal-close" id="deleteModalClose">✕</button>
+        </div>
+        <div class="modal-body">
+          <p>
+            Remove schedule for <strong id="deleteTickerName">NVDA</strong>?
+          </p>
+          <p class="text-dim">
+            This will also remove the ticker from the queue.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="deleteModalCancel">Cancel</button>
+          <button class="btn btn-danger" id="deleteModalConfirm">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Token Modal -->
+    <div class="modal-overlay hidden" id="tokenModal">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h3>Admin Authentication</h3>
+          <button class="modal-close" id="tokenModalClose">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label"
+            >Admin Token
+            <input
+              type="password"
+              class="input"
+              id="modalToken"
+              placeholder="Enter admin token"
+            />
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="tokenModalCancel">Cancel</button>
+          <button class="btn btn-primary" id="tokenModalSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

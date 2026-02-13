@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="GANT — AI-powered multi-agent trading analysis dashboard" />
+  <title>GANT</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ===== APP HEADER ===== -->
+<header class="app-header">
+  <a href="#/" class="logo">GANT</a>
+
+  <nav class="nav-desktop">
+    <a href="#/" class="nav-link active" data-route="/">Dashboard</a>
+    <a href="#/positions" class="nav-link" data-route="/positions">Positions</a>
+    <a href="#/schedules" class="nav-link" data-route="/schedules">Schedules</a>
+    <a href="#/live" class="nav-link" data-route="/live">Live</a>
+    <a href="#/search" class="nav-link" data-route="/search">Search</a>
+  </nav>
+
+  <button class="hamburger" id="menuBtn" aria-label="Menu">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/>
+    </svg>
+  </button>
+</header>
+
+<!-- ===== MOBILE DRAWER ===== -->
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<aside class="mobile-drawer" id="mobileDrawer">
+  <div class="drawer-header">
+    <span class="logo" style="font-size:1.125rem">GANT</span>
+    <button class="drawer-close" id="drawerClose" aria-label="Close">&times;</button>
+  </div>
+  <nav class="drawer-nav">
+    <a href="#/" class="drawer-link active" data-route="/">Dashboard</a>
+    <a href="#/positions" class="drawer-link" data-route="/positions">Positions</a>
+    <a href="#/schedules" class="drawer-link" data-route="/schedules">Schedules</a>
+    <a href="#/live" class="drawer-link" data-route="/live">Live</a>
+    <a href="#/search" class="drawer-link" data-route="/search">Search</a>
+  </nav>
+</aside>
+
+<!-- ===== MAIN CONTENT ===== -->
+<main class="main-content">
+
+  <!-- ─────── DASHBOARD ─────── -->
+  <section class="page active" id="page-dashboard">
+    <div class="page-container">
+      <div class="page-header">
+        <h2>Dashboard</h2>
+        <span class="badge badge-gain"><span class="status-dot status-ok" style="width:6px;height:6px;margin-right:4px"></span> System OK</span>
+      </div>
+
+      <!-- 3-col grid -->
+      <div class="card-grid card-grid-3">
+        <!-- Health -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Health</h3>
+            <span class="status-dot status-ok"></span>
+          </div>
+          <div class="card-body">
+            <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value text-gain">OK</span></div>
+            <div class="stat-row"><span class="stat-label">Scheduler</span><span class="stat-value">Running</span></div>
+            <div class="stat-row"><span class="stat-label">Queue</span><span class="stat-value">2 / 5</span></div>
+            <div class="stat-row"><span class="stat-label">Uptime</span><span class="stat-value">4h 23m</span></div>
+          </div>
+        </div>
+
+        <!-- Queue -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Queue</h3>
+            <a href="#/live" class="card-link">Live View</a>
+          </div>
+          <div class="card-body">
+            <div class="queue-item queue-running">
+              <span class="queue-indicator"></span>
+              <span class="queue-ticker">NVDA</span>
+              <span class="badge badge-info">Running</span>
+            </div>
+            <div class="queue-item queue-pending">
+              <span class="queue-indicator"></span>
+              <span class="queue-ticker">TSLA</span>
+              <span class="badge badge-muted">Pending</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Positions -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Active Positions</h3>
+            <a href="#/positions" class="card-link">View All</a>
+          </div>
+          <div class="card-body">
+            <div class="pos-mini-row" onclick="location.hash='#/trade/aapl'">
+              <span class="ticker-badge">AAPL</span>
+              <span class="pos-shares">50 shares</span>
+              <span class="pos-price">$185.40</span>
+              <span class="return-badge return-pos">+12.3%</span>
+            </div>
+            <div class="pos-mini-row" onclick="location.hash='#/trade/googl'">
+              <span class="ticker-badge">GOOGL</span>
+              <span class="pos-shares">30 shares</span>
+              <span class="pos-price">$142.80</span>
+              <span class="return-badge return-pos">+8.7%</span>
+            </div>
+            <div class="pos-mini-row" onclick="location.hash='#/trade/msft'">
+              <span class="ticker-badge">MSFT</span>
+              <span class="pos-shares">25 shares</span>
+              <span class="pos-price">$378.20</span>
+              <span class="return-badge return-neg">-2.1%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Nav (mobile) -->
+      <div class="quick-nav">
+        <a href="#/schedules" class="quick-nav-btn">Schedules</a>
+        <a href="#/positions" class="quick-nav-btn">Positions</a>
+        <a href="#/live" class="quick-nav-btn">Live Feed</a>
+        <a href="#/search" class="quick-nav-btn">Search</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────── POSITIONS ─────── -->
+  <section class="page" id="page-positions">
+    <div class="page-container">
+      <div class="page-header">
+        <h2>Positions</h2>
+        <span class="pnl-banner pnl-pos">P&amp;L +$4,230.50</span>
+      </div>
+
+      <!-- Desktop table -->
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Ticker</th><th>Shares</th><th>Avg Cost</th><th>Current</th><th>P&amp;L</th><th>Return</th></tr>
+          </thead>
+          <tbody>
+            <tr onclick="location.hash='#/trade/aapl'">
+              <td><span class="ticker-badge">AAPL</span></td>
+              <td>50</td><td>$165.00</td><td>$185.40</td>
+              <td class="text-gain">+$1,020.00</td><td class="text-gain">+12.3%</td>
+            </tr>
+            <tr onclick="location.hash='#/trade/googl'">
+              <td><span class="ticker-badge">GOOGL</span></td>
+              <td>30</td><td>$131.30</td><td>$142.80</td>
+              <td class="text-gain">+$345.00</td><td class="text-gain">+8.7%</td>
+            </tr>
+            <tr onclick="location.hash='#/trade/msft'">
+              <td><span class="ticker-badge">MSFT</span></td>
+              <td>25</td><td>$386.30</td><td>$378.20</td>
+              <td class="text-loss">-$202.50</td><td class="text-loss">-2.1%</td>
+            </tr>
+            <tr onclick="location.hash='#/trade/meta'">
+              <td><span class="ticker-badge">META</span></td>
+              <td>20</td><td>$480.00</td><td>$523.60</td>
+              <td class="text-gain">+$872.00</td><td class="text-gain">+9.1%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Mobile cards -->
+      <div class="pos-card-list">
+        <div class="card pos-card" onclick="location.hash='#/trade/aapl'">
+          <div class="pos-card-top">
+            <span class="ticker-badge">AAPL</span>
+            <span class="return-badge return-pos">+12.3%</span>
+          </div>
+          <div class="pos-card-details">
+            <span>50 shares at $165.00</span>
+            <span>Current: $185.40 &middot; P&amp;L: <span class="text-gain">+$1,020.00</span></span>
+          </div>
+        </div>
+        <div class="card pos-card" onclick="location.hash='#/trade/googl'">
+          <div class="pos-card-top">
+            <span class="ticker-badge">GOOGL</span>
+            <span class="return-badge return-pos">+8.7%</span>
+          </div>
+          <div class="pos-card-details">
+            <span>30 shares at $131.30</span>
+            <span>Current: $142.80 &middot; P&amp;L: <span class="text-gain">+$345.00</span></span>
+          </div>
+        </div>
+        <div class="card pos-card" onclick="location.hash='#/trade/msft'">
+          <div class="pos-card-top">
+            <span class="ticker-badge">MSFT</span>
+            <span class="return-badge return-neg">-2.1%</span>
+          </div>
+          <div class="pos-card-details">
+            <span>25 shares at $386.30</span>
+            <span>Current: $378.20 &middot; P&amp;L: <span class="text-loss">-$202.50</span></span>
+          </div>
+        </div>
+        <div class="card pos-card" onclick="location.hash='#/trade/meta'">
+          <div class="pos-card-top">
+            <span class="ticker-badge">META</span>
+            <span class="return-badge return-pos">+9.1%</span>
+          </div>
+          <div class="pos-card-details">
+            <span>20 shares at $480.00</span>
+            <span>Current: $523.60 &middot; P&amp;L: <span class="text-gain">+$872.00</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────── SCHEDULES ─────── -->
+  <section class="page" id="page-schedules">
+    <div class="page-container">
+      <div class="page-header">
+        <h2>Schedules</h2>
+        <button class="btn btn-primary" id="addScheduleBtn">+ Add</button>
+      </div>
+
+      <div class="schedule-list">
+        <div class="card schedule-card">
+          <div class="schedule-top">
+            <span class="ticker-badge">AAPL</span>
+            <span class="badge badge-gain">Active</span>
+            <span class="interval-label">24h</span>
+          </div>
+          <div class="schedule-details">
+            <span>Every 24 hours</span>
+            <span>Next run: 2026-02-14 09:00 KST</span>
+            <span>Last run: 2h ago &middot; Cycle #8</span>
+          </div>
+          <button class="btn-icon btn-danger schedule-delete" title="Delete">&times;</button>
+        </div>
+
+        <div class="card schedule-card">
+          <div class="schedule-top">
+            <span class="ticker-badge">NVDA</span>
+            <span class="badge badge-info">Running</span>
+            <span class="interval-label">12h</span>
+          </div>
+          <div class="schedule-details">
+            <span>Every 12 hours</span>
+            <span>Currently analyzing...</span>
+            <span>Started: 15 min ago &middot; Cycle #12</span>
+          </div>
+          <button class="btn-icon btn-danger schedule-delete" title="Delete">&times;</button>
+        </div>
+
+        <div class="card schedule-card">
+          <div class="schedule-top">
+            <span class="ticker-badge">TSLA</span>
+            <span class="badge badge-warn">Queued</span>
+            <span class="interval-label">24h</span>
+          </div>
+          <div class="schedule-details">
+            <span>Every 24 hours</span>
+            <span>Waiting in queue (position #2)</span>
+            <span>Last run: 20h ago &middot; Cycle #5</span>
+          </div>
+          <button class="btn-icon btn-danger schedule-delete" title="Delete">&times;</button>
+        </div>
+
+        <div class="card schedule-card">
+          <div class="schedule-top">
+            <span class="ticker-badge">GOOGL</span>
+            <span class="badge badge-gain">Active</span>
+            <span class="interval-label">48h</span>
+          </div>
+          <div class="schedule-details">
+            <span>Every 48 hours</span>
+            <span>Next run: 2026-02-15 09:00 KST</span>
+            <span>Last run: 1d ago &middot; Cycle #4</span>
+          </div>
+          <button class="btn-icon btn-danger schedule-delete" title="Delete">&times;</button>
+        </div>
+
+        <div class="card schedule-card">
+          <div class="schedule-top">
+            <span class="ticker-badge">MSFT</span>
+            <span class="badge badge-gain">Active</span>
+            <span class="interval-label">24h</span>
+          </div>
+          <div class="schedule-details">
+            <span>Every 24 hours</span>
+            <span>Next run: 2026-02-14 06:00 KST</span>
+            <span>Last run: 8h ago &middot; Cycle #6</span>
+          </div>
+          <button class="btn-icon btn-danger schedule-delete" title="Delete">&times;</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────── TRADE DETAIL ─────── -->
+  <section class="page" id="page-trade">
+    <div class="page-container">
+      <div class="page-header">
+        <button class="back-btn" onclick="history.back()">&larr;</button>
+        <h2 id="tradeTickerTitle">AAPL Trade</h2>
+        <span class="pnl-banner pnl-pos">+12.3%</span>
+      </div>
+
+      <!-- Summary -->
+      <div class="card-grid card-grid-2" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-header"><h3>Position</h3></div>
+          <div class="card-body">
+            <div class="stat-row"><span class="stat-label">Shares</span><span class="stat-value">50</span></div>
+            <div class="stat-row"><span class="stat-label">Avg Cost</span><span class="stat-value">$165.00</span></div>
+            <div class="stat-row"><span class="stat-label">Current</span><span class="stat-value">$185.40</span></div>
+            <div class="stat-row"><span class="stat-label">P&amp;L</span><span class="stat-value text-gain">+$1,020.00</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Strategy</h3></div>
+          <div class="card-body">
+            <div class="stat-row"><span class="stat-label">Action</span><span class="stat-value badge badge-gain">Hold</span></div>
+            <div class="stat-row"><span class="stat-label">Stop Loss</span><span class="stat-value">$172.00</span></div>
+            <div class="stat-row"><span class="stat-label">Target</span><span class="stat-value">$200.00</span></div>
+            <div class="stat-row"><span class="stat-label">Confidence</span><span class="stat-value">72%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trade actions -->
+      <div class="trade-actions">
+        <a href="#/archive/aapl" class="btn btn-ghost" id="viewArchiveBtn">View Archive</a>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="report">Latest Report</button>
+        <button class="tab-btn" data-tab="history">History</button>
+      </div>
+
+      <!-- Latest Report -->
+      <div class="tab-content" id="tab-report">
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-body">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+              <span class="cycle-badge">Cycle #8</span>
+              <span style="font-size:0.8125rem;color:var(--text-dim)">2026-02-13 09:15 KST</span>
+            </div>
+            <div class="strategy-text">
+              <strong style="color:var(--text);font-size:0.875rem;display:block;margin-bottom:4px">Final Decision: Hold</strong>
+              Apple continues to show strong growth. AI agents recommend holding with a stop loss at $172 and target at $200. Bull-bear debate concluded with majority favoring continued upward momentum. Risk assessment: moderate.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="tab-content hidden" id="tab-history">
+        <div class="history-list">
+          <div class="card history-entry">
+            <div class="history-top">
+              <span class="history-no">#8</span>
+              <span class="history-date">2026-02-13 09:15</span>
+              <span class="badge badge-gain">Hold</span>
+              <span class="memory-indicator active">MEM</span>
+            </div>
+            <div class="history-action">Maintain position. Upside potential to $200 range.</div>
+            <div class="history-cash">Cash allocated: $8,250.00</div>
+          </div>
+          <div class="card history-entry">
+            <div class="history-top">
+              <span class="history-no">#7</span>
+              <span class="history-date">2026-02-12 09:10</span>
+              <span class="badge badge-gain">Buy</span>
+              <span class="memory-indicator active">MEM</span>
+            </div>
+            <div class="history-action">Add 10 shares. Strong earnings beat expected.</div>
+            <div class="history-cash">Cash allocated: $1,650.00</div>
+          </div>
+          <div class="card history-entry">
+            <div class="history-top">
+              <span class="history-no">#6</span>
+              <span class="history-date">2026-02-11 09:05</span>
+              <span class="badge badge-muted">Hold</span>
+              <span class="memory-indicator inactive">&mdash;</span>
+            </div>
+            <div class="history-action">Consolidation phase. No change advised.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────── ARCHIVE ─────── -->
+  <section class="page" id="page-archive">
+    <div class="page-container">
+      <div class="page-header">
+        <button class="back-btn" onclick="history.back()">&larr;</button>
+        <h2 id="archiveTickerTitle">AAPL Archive</h2>
+      </div>
+
+      <div class="archive-list">
+        <div class="card archive-card">
+          <div class="archive-top">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="cycle-badge">Cycle #8</span>
+              <span class="badge badge-gain">Hold</span>
+            </div>
+            <span style="font-size:0.8125rem;color:var(--text-dim)">2026-02-13</span>
+          </div>
+          <div class="archive-details">
+            <span>Upside target $200. Risk: moderate. Confidence: 72%</span>
+            <span>Duration: 24min &middot; 12 agents completed</span>
+          </div>
+        </div>
+        <div class="card archive-card">
+          <div class="archive-top">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="cycle-badge">Cycle #7</span>
+              <span class="badge badge-gain">Buy</span>
+            </div>
+            <span style="font-size:0.8125rem;color:var(--text-dim)">2026-02-12</span>
+          </div>
+          <div class="archive-details">
+            <span>Add 10 shares at $165. Earnings catalyst expected.</span>
+            <span>Duration: 22min &middot; 12 agents completed</span>
+          </div>
+        </div>
+        <div class="card archive-card">
+          <div class="archive-top">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="cycle-badge">Cycle #6</span>
+              <span class="badge badge-muted">Hold</span>
+            </div>
+            <span style="font-size:0.8125rem;color:var(--text-dim)">2026-02-11</span>
+          </div>
+          <div class="archive-details">
+            <span>Consolidation phase. Low volatility expected.</span>
+            <span>Duration: 28min &middot; 12 agents completed</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pagination">
+        <button class="btn btn-ghost" disabled>&larr; Prev</button>
+        <span class="page-indicator">1 / 3</span>
+        <button class="btn btn-ghost">Next &rarr;</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────── LIVE ANALYSIS ─────── -->
+  <section class="page" id="page-live">
+    <div class="page-container">
+      <div class="page-header">
+        <h2>Live Analysis</h2>
+        <span class="badge badge-info"><span class="spinner" style="width:10px;height:10px;margin-right:4px"></span> Analyzing NVDA</span>
+      </div>
+
+      <div class="live-layout">
+        <!-- Side: Queue -->
+        <div class="card live-queue">
+          <div class="card-header"><h3>Queue</h3></div>
+          <div class="card-body">
+            <div class="queue-item queue-running">
+              <span class="queue-indicator"></span>
+              <span class="queue-ticker">NVDA</span>
+              <span class="badge badge-info" style="font-size:0.625rem;padding:2px 6px">Running</span>
+            </div>
+            <div class="queue-item queue-pending">
+              <span class="queue-indicator"></span>
+              <span class="queue-ticker">TSLA</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main: Analysis Feed -->
+        <div class="card live-feed">
+          <div class="card-header">
+            <h3>Agent Pipeline</h3>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="live-dot"></span>
+              <span style="font-size:0.75rem;color:var(--text-dim)">NVDA &middot; Cycle #13</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <!-- Phase 1: Data Collection -->
+            <div class="phase-group">
+              <div class="phase-label">Phase 1 — Data Collection</div>
+              <div class="agent-steps">
+                <div class="agent-step step-completed">
+                  <div class="step-header">
+                    <span class="step-time">00:00</span>
+                    <span class="step-name">Market Analyst</span>
+                    <span class="step-check done">&#10003;</span>
+                  </div>
+                  <div class="step-message">P/E: 45.2, RSI: 62.3, 52w range analysis done</div>
+                </div>
+                <div class="agent-step step-completed">
+                  <div class="step-header">
+                    <span class="step-time">02:15</span>
+                    <span class="step-name">Social Analyst</span>
+                    <span class="step-check done">&#10003;</span>
+                  </div>
+                  <div class="step-message">Sentiment: Bullish (Reddit/Twitter analysis)</div>
+                </div>
+                <div class="agent-step step-completed">
+                  <div class="step-header">
+                    <span class="step-time">04:30</span>
+                    <span class="step-name">News Analyst</span>
+                    <span class="step-check done">&#10003;</span>
+                  </div>
+                  <div class="step-message">3 key articles analyzed. GTC conference catalyst</div>
+                </div>
+                <div class="agent-step step-completed">
+                  <div class="step-header">
+                    <span class="step-time">06:45</span>
+                    <span class="step-name">Fundamentals Analyst</span>
+                    <span class="step-check done">&#10003;</span>
+                  </div>
+                  <div class="step-message">Revenue growth +262% YoY. Data center demand strong</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Phase 2: Investment Debate -->
+            <div class="phase-group">
+              <div class="phase-label">Phase 2 — Investment Debate</div>
+              <div class="agent-steps">
+                <div class="agent-step step-completed">
+                  <div class="step-header">
+                    <span class="step-time">09:00</span>
+                    <span class="step-name">Bull Researcher</span>
+                    <span class="step-check done">&#10003;</span>
+                  </div>
+                  <div class="step-message">Strong buy thesis. AI infrastructure spending cycle</div>
+                </div>
+                <div class="agent-step step-completed">
+                  <div class="step-header">
+                    <span class="step-time">11:30</span>
+                    <span class="step-name">Bear Researcher</span>
+                    <span class="step-check done">&#10003;</span>
+                  </div>
+                  <div class="step-message">Valuation concern. Competition from AMD/Intel</div>
+                </div>
+                <div class="agent-step step-running">
+                  <div class="step-header">
+                    <span class="step-time">14:00</span>
+                    <span class="step-name">Research Manager</span>
+                    <span class="spinner"></span>
+                  </div>
+                  <div class="step-message">Judging bull vs bear arguments...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Phase 3: Trade Decision -->
+            <div class="phase-group">
+              <div class="phase-label">Phase 3 — Trade Decision</div>
+              <div class="agent-steps">
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-time">&mdash;</span>
+                    <span class="step-name">Trader Agent</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Phase 4: Risk Assessment -->
+            <div class="phase-group">
+              <div class="phase-label">Phase 4 — Risk Assessment</div>
+              <div class="agent-steps">
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-time">&mdash;</span>
+                    <span class="step-name">Aggressive Risk</span>
+                  </div>
+                </div>
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-time">&mdash;</span>
+                    <span class="step-name">Conservative Risk</span>
+                  </div>
+                </div>
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-time">&mdash;</span>
+                    <span class="step-name">Neutral Risk</span>
+                  </div>
+                </div>
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-time">&mdash;</span>
+                    <span class="step-name">Risk Manager</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Phase 5: Execution -->
+            <div class="phase-group">
+              <div class="phase-label">Phase 5 — Execution</div>
+              <div class="agent-steps">
+                <div class="agent-step step-pending">
+                  <div class="step-header">
+                    <span class="step-time">&mdash;</span>
+                    <span class="step-name">Portfolio Agent</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────── MEMORY SEARCH ─────── -->
+  <section class="page" id="page-search">
+    <div class="page-container">
+      <div class="page-header">
+        <h2>Memory Search</h2>
+      </div>
+
+      <div class="search-form">
+        <div class="search-controls">
+          <input type="text" class="input" id="searchInput" placeholder="Search trading memories..." />
+          <button class="btn btn-primary" id="searchBtn">Search</button>
+        </div>
+        <select class="select" id="searchAgent">
+          <option value="">All Agents</option>
+          <option value="market">Market Analyst</option>
+          <option value="social">Social Analyst</option>
+          <option value="news">News Analyst</option>
+          <option value="fundamentals">Fundamentals Analyst</option>
+          <option value="trader">Trader Agent</option>
+          <option value="risk">Risk Manager</option>
+        </select>
+      </div>
+
+      <!-- Empty State -->
+      <div class="search-empty" id="searchEmpty">
+        <span class="search-empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </span>
+        <p>Enter a query to search past analysis memories.</p>
+        <p style="margin-top:4px;font-size:0.8125rem">Search across all agent reports, trade decisions, and risk assessments.</p>
+      </div>
+
+      <!-- Results (hidden until search) -->
+      <div class="search-results" id="searchResults">
+        <div class="results-count">3 results found</div>
+        <div class="card result-card">
+          <div class="result-top">
+            <span class="ticker-badge">NVDA</span>
+            <span class="badge badge-primary">Market Analyst</span>
+            <span style="font-size:0.8125rem;color:var(--text-dim)">Cycle #12</span>
+          </div>
+          <div class="result-meta">
+            <span style="font-size:0.8125rem;color:var(--text-dim)">2026-02-12 15:30 KST</span>
+          </div>
+          <div class="result-content">
+            <div class="result-section">
+              <strong>Analysis Summary</strong>
+              <p>NVDA showing strong momentum with RSI at 58. Volume surge on GTC announcements. Data center revenue exceeding expectations.</p>
+            </div>
+            <div class="result-section">
+              <strong>Key Data Points</strong>
+              <p>P/E: 42.8 &middot; Vol: 52M &middot; 52w High: $974 &middot; Market Cap: $2.3T</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card result-card">
+          <div class="result-top">
+            <span class="ticker-badge">NVDA</span>
+            <span class="badge badge-primary">Trader Agent</span>
+            <span style="font-size:0.8125rem;color:var(--text-dim)">Cycle #12</span>
+          </div>
+          <div class="result-meta">
+            <span style="font-size:0.8125rem;color:var(--text-dim)">2026-02-12 15:45 KST</span>
+          </div>
+          <div class="result-content">
+            <div class="result-section">
+              <strong>Trade Recommendation</strong>
+              <p>BUY 15 shares. Entry: $880. Stop loss: $840. Target: $950. Risk/Reward ratio: 1:1.75</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card result-card">
+          <div class="result-top">
+            <span class="ticker-badge">AAPL</span>
+            <span class="badge badge-primary">Risk Manager</span>
+            <span style="font-size:0.8125rem;color:var(--text-dim)">Cycle #7</span>
+          </div>
+          <div class="result-meta">
+            <span style="font-size:0.8125rem;color:var(--text-dim)">2026-02-12 09:30 KST</span>
+          </div>
+          <div class="result-content">
+            <div class="result-section">
+              <strong>Risk Assessment</strong>
+              <p>Portfolio concentration within limits. Adding 10 AAPL shares brings tech exposure to 62%. Recommend maintaining diversification target.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ===== MODALS ===== -->
+
+<!-- Add Schedule Modal -->
+<div class="modal-overlay hidden" id="addModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add Schedule</h3>
+      <button class="modal-close" id="addModalClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label class="form-label">
+        Ticker Symbol
+        <input type="text" class="input" placeholder="e.g. AAPL" />
+      </label>
+      <label class="form-label">
+        Interval (hours)
+        <select class="select">
+          <option>12</option>
+          <option selected>24</option>
+          <option>48</option>
+        </select>
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="addModalCancel">Cancel</button>
+      <button class="btn btn-primary" id="addModalSubmit">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-overlay hidden" id="deleteModal">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>Delete Schedule</h3>
+      <button class="modal-close" id="deleteModalClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>Remove the schedule for <strong id="deleteTickerName">AAPL</strong>?</p>
+      <p>The ticker will also be removed from the queue if present.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="deleteModalCancel">Cancel</button>
+      <button class="btn btn-danger" id="deleteModalConfirm">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Token Auth Modal -->
+<div class="modal-overlay hidden" id="tokenModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>API Token</h3>
+      <button class="modal-close" id="tokenModalClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>Enter the admin token for write operations.</p>
+      <label class="form-label">
+        Token
+        <input type="password" class="input" placeholder="Bearer token" />
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="tokenModalCancel">Cancel</button>
+      <button class="btn btn-primary" id="tokenModalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
