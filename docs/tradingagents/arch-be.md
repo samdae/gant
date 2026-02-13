@@ -994,9 +994,17 @@ python_api:
   {"status": "ok" | "degraded", "scheduler_running": true, "queue_length": 2, "schedules_count": 5, "uptime_seconds": 3600}
   ```
 - **POST /schedules 중복 티커**: 이미 스케줄이 등록된 티커 → 409 Conflict `{"detail": "Schedule already exists for {ticker}"}`
-- **DELETE /schedules/{ticker} 큐 정리**: 스케줄 삭제 시 큐에 해당 티커가 있으면 함께 제거 (deque 순회 후 삭제)
+- **DELETE /schedules/{ticker} 큐 정리**: 스케줄 삭제 시 큐에 해당 티커가 있으면 함께 제거 (drain+re-enqueue 패턴: 큐 전체 비우고 해당 티커 제외 후 나머지 다시 넣음)
+- **GET /positions 현재가**: yfinance `Ticker.history(period="1d")` 실시간 조회. 티커별 `calculate_realized_return()` 호출하여 `unrealized_return_pct` 계산. fetch 실패 시 `current_price: null, unrealized_return_pct: null`
+- **큐 상태 추적 구현**: `app.py`에 `current_running_ticker: Optional[str]` 전역 변수. 큐 워커가 티커 시작/완료 시 갱신. `GET /queue`는 `analysis_queue._queue` (deque 내부) 스냅샷으로 pending 읽음
+- **WebSocket 스트리밍 메커니즘**:
+  - `app.py`에 `ws_subscribers: Dict[str, List[asyncio.Queue]]` 구독 구조
+  - `broadcast_status()` 함수: 스레드 안전 (`run_coroutine_threadsafe`). 큐 워커 + `_run_analysis_cycle_impl` 단계별 호출
+  - `ticker_scheduler.py`에 `_status_callback` 속성: 큐 워커가 분석 시작 전 설정, 각 단계에서 `_notify_status()` 호출
+  - WS 클라이언트: 연결 시 개인 subscriber queue 생성, 종료 시 제거
 - **WebSocket Reconnection**: heartbeat 불필요 (분석 20~30분 단기 연결). 클라이언트 측 onclose 이벤트로 재연결 가이드만 제공
 - **Logging**: `python-json-logger` 패키지로 JSON 구조화 로깅. 포매터만 교체, 코드 변경 없음. 향후 로그 수집 도구 연동 대비
+- **pyproject.toml**: `fastapi`, `uvicorn`, `python-json-logger` 의존성 등록 필수
 
 ### 배포 및 동시성 모델 (FR-025)
 
@@ -1107,3 +1115,4 @@ python_api:
 | 2026-02-13 | update  | check     | 동시성 모델 변경: asyncio.to_thread 병렴 → 글로벌 asyncio.Queue 순차 실행(max_workers=1). LLM rate limit 근거. Step 5/§10 갱신, 큐 워커 실시 코드 추가                                                  |
 | 2026-02-13 | review  | check     | 전체 설계 완성도 검증 — 9개 gap: POST /analyze 제거, GET /queue·/health 추가, 큐 중복 거부, JSON logging(python-json-logger), WS heartbeat→클라이언트 reconnection, API 버저닝/rate limit skip          |
 | 2026-02-13 | review  | check     | Round 2 — 5개 gap: GET /queue·/health 응답 스키마 정의, python-json-logger 의존성 추가, 큐 워커 lifespan 시작, POST /schedules 중복 409, DELETE /schedules 큐 정리                                      |
+| 2026-02-13 | update  | fix       | 코드 검증 후 설계 보충 — WS 스트리밍 메커니즘(broadcast+subscriber), 큐 상태 추적(current_running_ticker), GET /positions 현재가, DELETE /schedules drain+re-enqueue, pyproject.toml 의존성 필수        |

@@ -24,7 +24,7 @@ import os
 import logging
 import threading
 import asyncio
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -67,17 +67,22 @@ class TickerScheduler:
         # Per-ticker locks (to prevent concurrent execution)
         self._ticker_locks: Dict[str, threading.Lock] = {}
 
+        # WS broadcast callback (set by queue worker in app.py)
+        self._status_callback: Optional[callable] = None
+
         # Import virtual_trade components lazily (avoid circular imports)
         from tradingagents.virtual_trade import (
             TradeManager,
             ReportStore,
-            PortfolioAgent
+            PortfolioAgent,
         )
 
         # Initialize virtual trade components
         trade_dir = config.get(
             "virtual_trade_dir",
-            os.path.join(os.path.dirname(config["project_dir"]), "virtual_trade/tickers")
+            os.path.join(
+                os.path.dirname(config["project_dir"]), "virtual_trade/tickers"
+            ),
         )
 
         self.trade_manager = TradeManager(base_dir=trade_dir)
@@ -85,16 +90,13 @@ class TickerScheduler:
         self.portfolio_agent = PortfolioAgent(
             llm=graph.deep_thinking_llm,
             trade_manager=self.trade_manager,
-            report_store=self.report_store
+            report_store=self.report_store,
         )
 
         logger.info(f"TickerScheduler initialized with trade_dir: {trade_dir}")
 
     def add_ticker(
-        self,
-        ticker: str,
-        interval_days: int = 4,
-        initial_capital: float = 1000.0
+        self, ticker: str, interval_days: int = 4, initial_capital: float = 1000.0
     ):
         """Add a ticker to the schedule.
 
@@ -137,9 +139,7 @@ class TickerScheduler:
             replace_existing=True,
         )
 
-        logger.info(
-            f"Added ticker {ticker} to schedule: every {interval_days} days"
-        )
+        logger.info(f"Added ticker {ticker} to schedule: every {interval_days} days")
 
     def remove_ticker(self, ticker: str):
         """Remove a ticker from the schedule.
@@ -186,18 +186,20 @@ class TickerScheduler:
         for job in jobs:
             # Extract ticker from job.id ("ticker_NVDA" -> "NVDA")
             if job.id.startswith("ticker_"):
-                ticker = job.id[len("ticker_"):]
+                ticker = job.id[len("ticker_") :]
 
                 # Extract interval_days from trigger
                 interval_days = None
-                if hasattr(job.trigger, 'interval'):
+                if hasattr(job.trigger, "interval"):
                     interval_days = job.trigger.interval.days
 
-                schedules.append({
-                    "ticker": ticker,
-                    "interval_days": interval_days,
-                    "next_run_time": job.next_run_time,
-                })
+                schedules.append(
+                    {
+                        "ticker": ticker,
+                        "interval_days": interval_days,
+                        "next_run_time": job.next_run_time,
+                    }
+                )
 
         return schedules
 
@@ -288,10 +290,19 @@ class TickerScheduler:
             # Always release lock
             lock.release()
 
+    def _notify_status(self, agent: str, status: str, message: str):
+        """Send status update via callback (for WS broadcast)."""
+        if self._status_callback:
+            try:
+                self._status_callback(agent, status, message)
+            except Exception:
+                pass  # Never let callback errors break analysis
+
     def _run_analysis_cycle_impl(self, ticker: str):
         """Implementation of analysis cycle (called by _run_analysis_cycle)."""
 
         logger.info(f"Starting analysis cycle for {ticker}")
+        self._notify_status("trade_manager", "running", "Loading trade state...")
 
         # 1. Load trade state
         trade_state = self.trade_manager.load(ticker)
@@ -304,12 +315,13 @@ class TickerScheduler:
         # 2. Get current price (yfinance)
         current_price = self._get_current_price(ticker)
         if current_price is None:
-            logger.error(
-                f"{ticker}: Failed to fetch current price, skipping cycle"
-            )
+            logger.error(f"{ticker}: Failed to fetch current price, skipping cycle")
             return
 
         logger.info(f"{ticker}: Current price: ${current_price:.2f}")
+        self._notify_status(
+            "data_fetcher", "running", f"Price fetched: ${current_price:.2f}"
+        )
 
         # 3. Get position summary
         position_summary = self.trade_manager.get_position_summary(ticker)
@@ -318,13 +330,19 @@ class TickerScheduler:
         today = datetime.now().strftime("%Y-%m-%d")
 
         logger.info(f"{ticker}: Running G-ANT pipeline...")
+        self._notify_status(
+            "pipeline", "running", "Running 12-agent analysis pipeline..."
+        )
         final_state, pipeline_decision = self.graph.propagate(
             company_name=ticker,
             trade_date=today,
-            current_position=position_summary  # FR-017
+            current_position=position_summary,  # FR-017
         )
 
         logger.info(f"{ticker}: Pipeline decision: {pipeline_decision}")
+        self._notify_status(
+            "pipeline", "running", f"Pipeline decision: {pipeline_decision}"
+        )
 
         # 5. Store report
         analysis_no = self.report_store.append(
@@ -335,24 +353,34 @@ class TickerScheduler:
             has_memory=self.graph._last_had_memory,
             state_summary={
                 "market_report_excerpt": final_state.get("market_report", "")[:500],
-                "final_decision_excerpt": final_state.get("final_trade_decision", "")[:500],
-            }
+                "final_decision_excerpt": final_state.get("final_trade_decision", "")[
+                    :500
+                ],
+            },
         )
 
         logger.info(f"{ticker}: Stored report (analysis #{analysis_no})")
 
         # 6. Portfolio decision
         logger.info(f"{ticker}: Running portfolio agent...")
+        self._notify_status(
+            "portfolio_agent", "running", "Making portfolio decision..."
+        )
         portfolio_decision = self.portfolio_agent.decide(
             ticker=ticker,
             pipeline_decision=pipeline_decision,
             pipeline_state=final_state,
-            current_price=current_price
+            current_price=current_price,
         )
 
         logger.info(
             f"{ticker}: Portfolio decision: {portfolio_decision['action']} "
             f"(shares={portfolio_decision['shares']})"
+        )
+        self._notify_status(
+            "portfolio_agent",
+            "running",
+            f"Decision: {portfolio_decision['action']} (shares={portfolio_decision['shares']})",
         )
 
         # 7. Execute trade
@@ -367,17 +395,23 @@ class TickerScheduler:
                         ticker, shares, current_price, today
                     )
                     self.trade_manager.append_history(
-                        ticker, today, analysis_no, action,
+                        ticker,
+                        today,
+                        analysis_no,
+                        action,
                         f"Bought {shares} shares @ ${current_price:.2f}",
-                        rationale
+                        rationale,
                     )
                     logger.info(f"{ticker}: BUY executed - {shares} shares")
                 except ValueError as e:
                     logger.warning(f"{ticker}: BUY failed: {e}")
                     self.trade_manager.append_history(
-                        ticker, today, analysis_no, "HOLD",
+                        ticker,
+                        today,
+                        analysis_no,
+                        "HOLD",
                         f"BUY attempt failed: {e}",
-                        rationale
+                        rationale,
                     )
 
         elif action == "SELL":
@@ -385,9 +419,12 @@ class TickerScheduler:
                 ticker, current_price, today
             )
             self.trade_manager.append_history(
-                ticker, today, analysis_no, action,
+                ticker,
+                today,
+                analysis_no,
+                action,
                 f"Sold all positions @ ${current_price:.2f}",
-                rationale
+                rationale,
             )
             logger.info(
                 f"{ticker}: SELL executed - "
@@ -409,9 +446,12 @@ class TickerScheduler:
 
         elif action == "HOLD":
             self.trade_manager.append_history(
-                ticker, today, analysis_no, action,
+                ticker,
+                today,
+                analysis_no,
+                action,
                 "Maintaining current position",
-                rationale
+                rationale,
             )
             logger.info(f"{ticker}: HOLD - no trade executed")
 
@@ -419,14 +459,18 @@ class TickerScheduler:
             # Update strategy parameters
             trade_state["strategy"].update(portfolio_decision["strategy_update"])
             self.trade_manager.append_history(
-                ticker, today, analysis_no, action,
+                ticker,
+                today,
+                analysis_no,
+                action,
                 "Modified strategy parameters",
-                rationale
+                rationale,
             )
             logger.info(f"{ticker}: MODIFY - strategy updated")
 
         # 9. Save trade state
         self.trade_manager.save(ticker)
+        self._notify_status("trade_manager", "running", "Trade state saved")
         logger.info(f"{ticker}: Analysis cycle complete")
 
     def _get_current_price(self, ticker: str) -> Optional[float]:

@@ -2,12 +2,17 @@
 
 FR-025: WebSocket /ws/analyze/{ticker}
 Streams agent status during analysis execution (not persisted to report).
+
+Architecture:
+    - Client connects to WS and subscribes to status updates for a ticker
+    - Queue worker broadcasts step-level updates via app_module.broadcast_status()
+    - WS endpoint reads from its personal asyncio.Queue and forwards to client
+    - If no analysis is running, waits until one starts
 """
 
 import logging
 import asyncio
-from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -23,7 +28,7 @@ async def analyze_ws(websocket: WebSocket, ticker: str):
     """WebSocket endpoint for real-time analysis streaming.
 
     Args:
-        ticker: Ticker symbol to analyze
+        ticker: Ticker symbol to observe
 
     Message schema:
         {
@@ -38,64 +43,55 @@ async def analyze_ws(websocket: WebSocket, ticker: str):
     await websocket.accept()
     logger.info(f"WebSocket connected for {ticker}")
 
+    # Create personal subscriber queue
+    subscriber_queue: asyncio.Queue = asyncio.Queue()
+    app_module.ws_subscribers[ticker].append(subscriber_queue)
+
     try:
-        # TODO: Integrate with TradingAgentsGraph to stream agent status
-        # This is a simplified implementation showing the structure
-        
-        # Send initial message
-        await websocket.send_json({
-            "agent": "system",
-            "status": "running",
-            "message": f"Starting analysis for {ticker}",
-            "timestamp": datetime.utcnow().isoformat()
-        })
-
-        # Simulate analysis streaming (replace with actual integration)
-        agents = [
-            "data_fetcher",
-            "bull_analyst",
-            "bear_analyst",
-            "research_manager",
-            "trader",
-            "risk_manager"
-        ]
-
-        for agent in agents:
-            await asyncio.sleep(1)  # Simulate processing
-            
-            await websocket.send_json({
-                "agent": agent,
-                "status": "running",
-                "message": f"{agent} processing...",
-                "timestamp": datetime.utcnow().isoformat()
-            })
-
-        # Send completion message
-        await websocket.send_json({
-            "agent": "system",
-            "status": "completed",
-            "message": f"Analysis complete for {ticker}",
-            "timestamp": datetime.utcnow().isoformat()
-        })
-
-        # Keep connection open until client disconnects
-        while True:
-            # Wait for client messages (if any)
-            try:
-                data = await asyncio.wait_for(
-                    websocket.receive_text(),
-                    timeout=3600.0
-                )
-                # Echo back (or handle client commands)
-                await websocket.send_json({
+        # Send initial status
+        running = app_module.current_running_ticker
+        if running == ticker:
+            await websocket.send_json(
+                {
                     "agent": "system",
                     "status": "running",
-                    "message": f"Received: {data}",
-                    "timestamp": datetime.utcnow().isoformat()
-                })
+                    "message": f"Analysis in progress for {ticker}",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+        else:
+            await websocket.send_json(
+                {
+                    "agent": "system",
+                    "status": "waiting",
+                    "message": f"Waiting for analysis to start for {ticker}",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+
+        # Stream updates from subscriber queue
+        while True:
+            try:
+                msg = await asyncio.wait_for(
+                    subscriber_queue.get(),
+                    timeout=3600.0,
+                )
+                await websocket.send_json(msg)
+
+                # If analysis completed or errored, close connection
+                if msg.get("status") in ("completed", "error"):
+                    break
+
             except asyncio.TimeoutError:
-                # Timeout reached
                 logger.info(f"WebSocket timeout for {ticker}")
+                await websocket.send_json(
+                    {
+                        "agent": "system",
+                        "status": "error",
+                        "message": "Connection timed out (1 hour)",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
                 break
 
     except WebSocketDisconnect:
@@ -103,16 +99,26 @@ async def analyze_ws(websocket: WebSocket, ticker: str):
     except Exception as e:
         logger.error(f"WebSocket error for {ticker}: {e}", exc_info=True)
         try:
-            await websocket.send_json({
-                "agent": "system",
-                "status": "error",
-                "message": f"Error: {str(e)}",
-                "timestamp": datetime.utcnow().isoformat()
-            })
-        except:
+            await websocket.send_json(
+                {
+                    "agent": "system",
+                    "status": "error",
+                    "message": f"Error: {str(e)}",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+        except Exception:
             pass
     finally:
+        # Unsubscribe
+        try:
+            app_module.ws_subscribers[ticker].remove(subscriber_queue)
+        except ValueError:
+            pass
+        # Clean up empty subscriber lists
+        if not app_module.ws_subscribers[ticker]:
+            del app_module.ws_subscribers[ticker]
         try:
             await websocket.close()
-        except:
+        except Exception:
             pass

@@ -59,10 +59,7 @@ async def get_schedules():
 
 
 @router.post("/schedules", response_model=dict, tags=["Schedules"])
-async def create_schedule(
-    req: ScheduleRequest,
-    _: bool = Depends(check_admin_token)
-):
+async def create_schedule(req: ScheduleRequest, _: bool = Depends(check_admin_token)):
     """Create a new schedule (AUTHENTICATED).
 
     Returns:
@@ -76,8 +73,7 @@ async def create_schedule(
     existing = scheduler.list_schedules()
     if any(s["ticker"] == req.ticker for s in existing):
         raise HTTPException(
-            status_code=409,
-            detail=f"Schedule already exists for {req.ticker}"
+            status_code=409, detail=f"Schedule already exists for {req.ticker}"
         )
 
     # Add ticker
@@ -87,10 +83,7 @@ async def create_schedule(
 
 
 @router.delete("/schedules/{ticker}", response_model=dict, tags=["Schedules"])
-async def delete_schedule(
-    ticker: str,
-    _: bool = Depends(check_admin_token)
-):
+async def delete_schedule(ticker: str, _: bool = Depends(check_admin_token)):
     """Delete a schedule (AUTHENTICATED).
 
     Also removes ticker from queue if present.
@@ -109,20 +102,21 @@ async def delete_schedule(
 
     # FR-025: Remove from queue if present
     from tradingagents.scheduler.ticker_scheduler import analysis_queue
-    if analysis_queue:
-        # Create new queue without this ticker
-        new_queue = asyncio.Queue()
+
+    if analysis_queue and not analysis_queue.empty():
+        # Drain and re-enqueue without the deleted ticker
+        remaining = []
         while not analysis_queue.empty():
             try:
                 item = analysis_queue.get_nowait()
                 if item != ticker:
-                    await new_queue.put(item)
+                    remaining.append(item)
                 analysis_queue.task_done()
-            except:
+            except Exception:
                 break
-        
-        # Replace queue (note: this is a simplification, actual implementation may vary)
-        logger.info(f"Removed {ticker} from queue (if present)")
+        for item in remaining:
+            analysis_queue.put_nowait(item)
+        logger.info(f"Cleaned queue after deleting {ticker} schedule")
 
     return {"message": f"Schedule deleted for {ticker}"}
 
@@ -136,7 +130,7 @@ async def get_trade(ticker: str):
         raise HTTPException(status_code=503, detail="Scheduler not initialized")
 
     trade_manager = scheduler.trade_manager
-    
+
     # Check existence
     trade_path = trade_manager._get_trade_path(ticker)
     if not os.path.exists(trade_path):
@@ -162,9 +156,7 @@ async def get_trade_report(ticker: str):
 # Archive endpoints
 @router.get("/archive/{ticker}", response_model=List[dict], tags=["Archive"])
 async def get_archive_list(
-    ticker: str,
-    offset: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100)
+    ticker: str, offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)
 ):
     """Get list of archived trade cycles for a ticker (PUBLIC).
 
@@ -184,7 +176,8 @@ async def get_archive_list(
 
     # List archive directories (numeric only)
     archives = [
-        int(d) for d in os.listdir(ticker_archive_dir)
+        int(d)
+        for d in os.listdir(ticker_archive_dir)
         if os.path.isdir(os.path.join(ticker_archive_dir, d)) and d.isdigit()
     ]
 
@@ -192,7 +185,7 @@ async def get_archive_list(
     archives.sort(reverse=True)
 
     # Pagination
-    paginated = archives[offset:offset+limit]
+    paginated = archives[offset : offset + limit]
 
     return [{"archive_no": n} for n in paginated]
 
@@ -209,8 +202,7 @@ async def get_archive_detail(ticker: str, archive_no: int):
 
     if not os.path.exists(archive_dir):
         raise HTTPException(
-            status_code=404,
-            detail=f"Archive not found: {ticker}/{archive_no}"
+            status_code=404, detail=f"Archive not found: {ticker}/{archive_no}"
         )
 
     trade_path = os.path.join(archive_dir, "trade.json")
@@ -220,12 +212,12 @@ async def get_archive_detail(ticker: str, archive_no: int):
 
     trade_data = None
     if os.path.exists(trade_path):
-        with open(trade_path, 'r', encoding='utf-8') as f:
+        with open(trade_path, "r", encoding="utf-8") as f:
             trade_data = json.load(f)
 
     report_data = None
     if os.path.exists(report_path):
-        with open(report_path, 'r', encoding='utf-8') as f:
+        with open(report_path, "r", encoding="utf-8") as f:
             report_data = json.load(f)
 
     return {
@@ -256,24 +248,47 @@ async def get_positions():
         return []
 
     tickers = [
-        d for d in os.listdir(base_dir)
-        if os.path.isdir(os.path.join(base_dir, d))
+        d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))
     ]
 
     positions = []
     for ticker in tickers:
         state = trade_manager.load(ticker)
         if state["positions"]:
-            # Get current price (simplified — use last known price or placeholder)
-            # Real implementation: fetch from yfinance
+            # Fetch current price via yfinance
+            current_price = None
+            try:
+                import yfinance as yf
+
+                history = yf.Ticker(ticker).history(period="1d")
+                if not history.empty:
+                    current_price = float(history["Close"].iloc[-1])
+            except Exception as e:
+                logger.warning(f"Failed to fetch price for {ticker}: {e}")
+
             position_summary = trade_manager.get_position_summary(ticker)
-            
-            positions.append({
-                "ticker": ticker,
-                "position_summary": position_summary,
-                "status": state["status"],
-                "cash": state["cash"],
-            })
+
+            # Calculate unrealized return if price available
+            unrealized_return = None
+            if current_price is not None:
+                try:
+                    result = trade_manager.calculate_realized_return(
+                        ticker, current_price
+                    )
+                    unrealized_return = result.get("realized_return_pct")
+                except Exception:
+                    pass
+
+            positions.append(
+                {
+                    "ticker": ticker,
+                    "position_summary": position_summary,
+                    "current_price": current_price,
+                    "unrealized_return_pct": unrealized_return,
+                    "status": state["status"],
+                    "cash": state["cash"],
+                }
+            )
 
     return positions
 
@@ -284,19 +299,20 @@ async def get_queue_status():
     """Get analysis queue status (PUBLIC)."""
     from tradingagents.scheduler.ticker_scheduler import analysis_queue
 
-    if not analysis_queue:
-        return QueueStatusResponse(running=None, pending=[], total=0)
+    running = app_module.current_running_ticker
 
-    # Get queue contents (note: this is approximation)
+    # Read pending items from queue (non-destructive snapshot)
     pending = []
-    # Queue inspection is tricky in asyncio — simplified here
-    # Real implementation: maintain a separate tracking structure
+    if analysis_queue and not analysis_queue.empty():
+        # asyncio.Queue uses a deque internally at _queue
+        try:
+            pending = list(analysis_queue._queue)
+        except AttributeError:
+            pass
 
-    return QueueStatusResponse(
-        running=None,  # TODO: Track current running ticker
-        pending=pending,
-        total=len(pending)
-    )
+    total = len(pending) + (1 if running else 0)
+
+    return QueueStatusResponse(running=running, pending=pending, total=total)
 
 
 # Health endpoint
@@ -314,17 +330,20 @@ async def get_health():
             scheduler_running=False,
             queue_length=0,
             schedules_count=0,
-            uptime_seconds=0.0
+            uptime_seconds=0.0,
         )
 
     scheduler_running = scheduler.scheduler.running
     schedules_count = len(scheduler.list_schedules())
 
     from tradingagents.scheduler.ticker_scheduler import analysis_queue
+
     queue_length = analysis_queue.qsize() if analysis_queue else 0
 
-    # Uptime tracking (simplified — use app start time)
-    uptime_seconds = 0.0  # TODO: Track app start time
+    # Uptime from app start time
+    uptime_seconds = (
+        time.time() - app_module._app_start_time if app_module._app_start_time else 0.0
+    )
 
     status = "ok" if scheduler_running else "degraded"
 
@@ -333,7 +352,7 @@ async def get_health():
         scheduler_running=scheduler_running,
         queue_length=queue_length,
         schedules_count=schedules_count,
-        uptime_seconds=uptime_seconds
+        uptime_seconds=uptime_seconds,
     )
 
 
@@ -342,7 +361,7 @@ async def get_health():
 async def search_memories(
     query: str = Query(..., description="Search query"),
     n: int = Query(5, ge=1, le=20, description="Number of results"),
-    agent: Optional[str] = Query(None, description="Agent name (e.g., 'bull_memory')")
+    agent: Optional[str] = Query(None, description="Agent name (e.g., 'bull_memory')"),
 ):
     """Search past trading memories via Hybrid RAG (PUBLIC).
 
@@ -368,7 +387,7 @@ async def search_memories(
             "invest_judge": graph.invest_judge_memory,
             "risk_manager": graph.risk_manager_memory,
         }
-        
+
         memory = memory_map.get(agent)
         if not memory:
             raise HTTPException(status_code=400, detail=f"Invalid agent name: {agent}")
@@ -379,7 +398,7 @@ async def search_memories(
     else:
         # Search all memories and aggregate
         all_results = []
-        
+
         for memory in [
             graph.bull_memory,
             graph.bear_memory,
