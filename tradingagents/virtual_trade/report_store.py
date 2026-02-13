@@ -1,7 +1,7 @@
 """Report Store for analysis reports.
 
 Manages analysis reports (pipeline execution summaries) for a single ticker.
-Storage: JSON array at virtual_trade/tickers/{TICKER}/reports.json
+Storage: JSON array at memory/trade/{TICKER}/report.json (FR-027: reports.json → report.json)
 
 Features:
 - Append-only JSON array
@@ -31,10 +31,10 @@ class ReportStore:
         os.makedirs(base_dir, exist_ok=True)
 
     def _get_reports_path(self, ticker: str) -> str:
-        """Get path to reports.json for a ticker."""
+        """Get path to report.json for a ticker (FR-027)."""
         ticker_dir = os.path.join(self.base_dir, ticker)
         os.makedirs(ticker_dir, exist_ok=True)
-        return os.path.join(ticker_dir, "reports.json")
+        return os.path.join(ticker_dir, "report.json")
 
     def load(self, ticker: str) -> List[Dict[str, Any]]:
         """Load all reports for a ticker.
@@ -56,7 +56,7 @@ class ReportStore:
 
             if not isinstance(reports, list):
                 logger.warning(
-                    f"reports.json for {ticker} is not a list, reinitializing"
+                    f"report.json for {ticker} is not a list, reinitializing"
                 )
                 return []
 
@@ -64,7 +64,7 @@ class ReportStore:
 
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(
-                f"Failed to load reports.json for {ticker}: {e}, "
+                f"Failed to load report.json for {ticker}: {e}, "
                 "returning empty list"
             )
             return []
@@ -126,7 +126,7 @@ class ReportStore:
             return analysis_no
 
         except Exception as e:
-            logger.error(f"Error saving reports.json for {ticker}: {e}")
+            logger.error(f"Error saving report.json for {ticker}: {e}")
             raise
 
     def get_analysis_count(self, ticker: str) -> int:

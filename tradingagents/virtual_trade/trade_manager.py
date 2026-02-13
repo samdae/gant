@@ -374,6 +374,82 @@ class TradeManager:
             f"Appended history for {ticker}: {date} - {decision} - {action}"
         )
 
+    def archive_to_experience(self, ticker: str, archive_base_dir: str):
+        """Archive completed trade cycle to memory/archive/{TICKER}/{n}/.
+
+        Moves trade.json and report.json from memory/trade/{TICKER}/
+        to memory/archive/{TICKER}/{n}/, then reinitializes trade/ for next cycle.
+
+        Args:
+            ticker: Ticker symbol
+            archive_base_dir: Base archive directory (e.g., "memory/archive")
+
+        Returns:
+            Archive number (n)
+        """
+        # Ensure ticker has closed status
+        state = self.load(ticker)
+        if state["status"] != "closed":
+            logger.warning(
+                f"Cannot archive {ticker}: status is '{state['status']}', not 'closed'"
+            )
+            return None
+
+        # Determine next archive number by counting existing archives
+        ticker_archive_dir = os.path.join(archive_base_dir, ticker)
+        os.makedirs(ticker_archive_dir, exist_ok=True)
+
+        existing_archives = [
+            d for d in os.listdir(ticker_archive_dir)
+            if os.path.isdir(os.path.join(ticker_archive_dir, d)) and d.isdigit()
+        ]
+        next_n = max([int(d) for d in existing_archives], default=0) + 1
+
+        # Create archive directory
+        archive_dir = os.path.join(ticker_archive_dir, str(next_n))
+        os.makedirs(archive_dir, exist_ok=True)
+
+        # Source paths (memory/trade/{TICKER}/)
+        trade_source = self._get_trade_path(ticker)
+        ticker_dir = os.path.dirname(trade_source)
+        report_source = os.path.join(ticker_dir, "report.json")
+
+        # Destination paths
+        trade_dest = os.path.join(archive_dir, "trade.json")
+        report_dest = os.path.join(archive_dir, "report.json")
+
+        # Copy files (use copy2 to preserve metadata, then remove source)
+        import shutil
+        try:
+            if os.path.exists(trade_source):
+                shutil.copy2(trade_source, trade_dest)
+                logger.info(f"Copied {trade_source} → {trade_dest}")
+            
+            if os.path.exists(report_source):
+                shutil.copy2(report_source, report_dest)
+                logger.info(f"Copied {report_source} → {report_dest}")
+
+            # Reinitialize trade/ for next cycle
+            initial_capital = state.get("initial_capital", 1000.0)
+            new_state = self.create_initial_trade(ticker, initial_capital)
+            self._cache[ticker] = new_state
+            self.save(ticker)
+
+            # Remove old report.json (trade.json is overwritten by save())
+            if os.path.exists(report_source):
+                os.remove(report_source)
+                logger.info(f"Removed {report_source} after archiving")
+
+            logger.info(
+                f"Archived {ticker} trade cycle to {archive_dir} (cycle #{next_n})"
+            )
+
+            return next_n
+
+        except Exception as e:
+            logger.error(f"Error archiving {ticker}: {e}")
+            raise
+
 
 if __name__ == "__main__":
     # Example usage
