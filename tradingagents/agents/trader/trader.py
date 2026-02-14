@@ -3,7 +3,7 @@ import time
 import json
 
 
-def create_trader(llm, memory):
+def create_trader(llm):
     def trader_node(state, name):
         company_name = state["company_of_interest"]
         investment_plan = state["investment_plan"]
@@ -11,24 +11,6 @@ def create_trader(llm, memory):
         sentiment_report = state["sentiment_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
-
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
-        past_memories = memory.get_memories(curr_situation, n_matches=2)
-
-        past_memory_str = ""
-        if past_memories:
-            for i, rec in enumerate(past_memories, 1):
-                # FR-029: Add outcome-based label prefix
-                outcome = rec.get("metadata", {}).get("outcome")
-                label = ""
-                if outcome == "win":
-                    label = "[✅ 성공 사례] "
-                elif outcome == "lose":
-                    label = "[⚠️ 실패 사례] "
-                
-                past_memory_str += label + rec["recommendation"] + "\n\n"
-        else:
-            past_memory_str = "No past memories found."
 
         context = {
             "role": "user",
@@ -38,7 +20,7 @@ def create_trader(llm, memory):
         messages = [
             {
                 "role": "system",
-                "content": f"""You are a trading agent analyzing market data to make investment decisions. Based on your analysis, provide a specific recommendation to buy, sell, or hold. End with a firm decision and always conclude your response with 'FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**' to confirm your recommendation. Do not forget to utilize lessons from past decisions to learn from your mistakes. Here is some reflections from similar situatiosn you traded in and the lessons learned (⚠️ marks indicate failure cases - use them as cautionary tales): {past_memory_str}""",
+                "content": """You are a trading agent analyzing market data to make investment decisions. Based on your analysis, provide a specific recommendation to buy, sell, or hold. End with a firm decision and always conclude your response with 'FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**' to confirm your recommendation.""",
             },
             context,
         ]

@@ -51,9 +51,9 @@ G-ANT의 분석 결과는 단순한 BUY/SELL이 아니다. 아래처럼 **구체
 │     → 기존 전략 + 새 분석을 종합하여 행동 결정           │
 │     → trade.json 업데이트                                │
 │                                                         │
-│  3. SELL 판단 시                                        │
-│     → 전량 청산 → 수익률 계산                           │
-│     → RAG에 (분석+결과) 쌍으로 WRITE                    │
+│  3. 매도 판단 시                                        │
+│     → 전략에 따라 부분/전량 매도 → 수익률 계산          │
+│     → 전량 청산 시 RAG에 (분석+결과) 쌍으로 WRITE       │
 │     → reflect_and_remember(수익률) 자동 호출             │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
@@ -195,10 +195,10 @@ Portfolio Agent 프롬프트에 다음 판단 기준을 명시적으로 포함�
 | BUY        | 있음        | 기존 전략 참조 → 추가매수 or 확신 강화 기록 |
 | HOLD       | 있음        | 턴 종료. 모니터링 기록                      |
 | HOLD       | 없음        | 턴 종료. 기록만                             |
-| SELL       | 있음        | 전량 청산 → 수익률 → Memory 학습            |
+| SELL       | 있음        | 전략에 따라 부분/전량 매도 → 수익률 → Memory 학습 |
 | SELL       | 없음        | 무시 (팔 게 없음)                           |
 
-> ⚠️ Phase 0~3에서는 SELL = 전량 청산. Phase 4에서 비중 조절 SELL로 전환 (아래 참조).
+> BUY/SELL = 방향성, 전략이 실행 디테일(수량, 타점, 비중)을 결정. 매수·매도 모두 PA가 전략에 따라 수량 결정.
 
 ### BUY/SELL = 방향, 전략 = 디테일
 
@@ -219,7 +219,7 @@ Portfolio Agent 프롬프트에 다음 판단 기준을 명시적으로 포함�
 | **Hybrid** | **둘 다**                                   | -                                                  |
 
 ```
-검색 스코어 = α × BM25_score + (1-α) × cosine_similarity
+검색 스코어 = Σ 1/(60 + rank_i(d))  (RRF — Reciprocal Rank Fusion)
 ```
 
 ### READ/WRITE 의존관계
@@ -269,8 +269,8 @@ Portfolio Agent 프롬프트에 다음 판단 기준을 명시적으로 포함�
 
 ### Embedding
 
-- 로컬 모델 (`sentence-transformers`) 사용. API 호출 비용 없음, 품질 차이 미미.
-- persist: 임베딩 벡터를 numpy/JSON으로 저장, 또는 ChromaDB 로컬 파일
+- **ChromaDB 내장 ONNX 임베딩** (`all-MiniLM-L6-v2`) 사용. API 호출 비용 없음, 별도 설치 불필요.
+- persist: ChromaDB `PersistentClient`로 자동 영속화 (로컬 파일)
 
 ---
 
@@ -280,49 +280,56 @@ Portfolio Agent 프롬프트에 다음 판단 기준을 명시적으로 포함�
 
 ### Phase 0: RAG 검색기 (선행 조건, 1일)
 
-- [ ] `FinancialSituationMemory` → Hybrid RAG로 교체
+- [x] `FinancialSituationMemory` → `HybridMemory`로 교체 완료
   - BM25 (기존 rank_bm25 유지)
-  - Vector (로컬 sentence-transformers)
-  - 가중 합산 스코어링
-- [ ] persist: JSON/파일 기반 저장/로드
-  - `memory/{agent_name}.json` — 모든 티커 통합 (크로스 티커 학습)
-- [ ] 기존 인터페이스 유지: `add_situations()`, `get_memories()`
+  - Vector (ChromaDB 내장 ONNX 임베딩 `all-MiniLM-L6-v2`)
+  - RRF 스코어링: `rrf(d) = Σ 1/(60 + rank_i(d))`
+- [x] persist: JSONL 기반 저장 + ChromaDB PersistentClient
+  - `memory/data/{agent_name}.jsonl` — 모든 티커 통합 (크로스 티커 학습)
+- [x] 기존 인터페이스 유지: `add_situations()`, `get_memories()`
 
 ### Phase 1: 분석 결과 WRITE (반나절)
 
-- [ ] `propagate()` 완료 후 분석 결과를 RAG에 자동 ADD
+- [x] `propagate()` 완료 후 분석 결과를 RAG에 자동 ADD
   - 상황 (시장 상태 요약) + 추천 (BUY/HOLD/SELL + 전략) 저장
   - `has_memory` 플래그 포함 (부트스트랩 기간 태깅)
-- [ ] `trade.json` 읽기/쓰기 유틸리티 구현
-- [ ] `reflect_and_remember()` 입력을 구조체로 확장 (ticker, return_pct, holding_days, analysis_count, market_condition, has_memory)
+- [x] `trade.json` 읽기/쓰기 유틸리티 구현
+- [x] `reflect_and_remember()` 입력을 구조체로 확장 (ticker, return_pct, holding_days, analysis_count, market_condition, has_memory)
 
 > **🔍 중간 검증**: Phase 1까지 완료 후 실제 `propagate()` 1~2회 실행하여 "분석 → RAG 저장"이 동작하는지 확인. 이 데이터가 Phase 2 테스트의 기반이 된다.
 
 ### Phase 2: Portfolio Agent (2~3일)
 
-- [ ] Portfolio Agent 프롬프트 설계 (코드보다 프롬프트가 먼저)
+- [x] Portfolio Agent 프롬프트 설계 (코드보다 프롬프트가 먼저)
   - 전략 유지 / 수정 / 폐기 판단 프레임 포함
   - 확신도 변화 기준 포함
-- [ ] Portfolio Agent 구현 (deep_think_llm)
+- [x] Portfolio Agent 구현 (deep_think_llm)
   - trade.json 읽기 → G-ANT 결과 읽기 → RAG 조회 → 행동 결정 → trade.json 업데이트
-- [ ] BUY 연속 규칙: 첫 전략이 마스터 플랜, 이후는 확신 강화 or 전략 수정
-- [ ] SELL 시: 전량 청산 → 수익률 계산 → RAG에 WRITE → reflect_and_remember(구조체)
+- [x] BUY 연속 규칙: 첫 전략이 마스터 플랜, 이후는 확신 강화 or 전략 수정
+- [x] SELL 시: 전략에 따라 부분/전량 매도 → 수익률 계산 → RAG에 WRITE → reflect_and_remember(구조체)
 
 ### Phase 3: 스케줄링 (반나절)
 
-- [ ] Windows Task Scheduler 설정 (1 스케줄 = 1 티커, 주기 개별 설정)
-- [ ] 실행 로그 저장
+- [x] APScheduler 기반 스케줄링 (1 스케줄 = 1 티커, 주기 개별 설정)
+- [x] 셀프힐링: 시작 시 config + tickers/ 디렉토리 스캔하여 스케줄 복원
 
-### Phase 4: 포지션 인식 분석 + 비중 조절 SELL (1~2일)
+### Phase 4: 포지션 인식 분석 (1~2일)
 
 > ⚠️ 기존 에이전트 코드를 수정하는 유일한 Phase. 위험도가 높으므로 **가장 마지막에 진행**.
 
-- [ ] `AgentState`에 `current_position: str` 필드 추가
-- [ ] `propagate()` 호출 전 trade.json → 포지션 요약 문자열 생성
-- [ ] Research Manager / Trader / Risk Judge 프롬프트에 포지션 컨텍스트 주입
+- [x] `AgentState`에 `current_position: str` 필드 추가
+- [x] `propagate()` 호출 전 trade.json → 포지션 요약 문자열 생성
+- [x] Research Manager / Trader / Risk Manager 프롬프트에 포지션 컨텍스트 주입
   - Analyst 4명은 시장 데이터 분석이므로 수정 불필요
-- [ ] Portfolio Agent의 SELL 로직: 전량 청산 → **전략 기반 비중 조절**로 변경
-- [ ] Phase 0~3 동안의 "전량 청산" 데이터 vs Phase 4 이후 "비중 조절" 데이터 비교 가능
+
+### Phase 5: PA 편향 방지 + Experience 아키텍처
+
+> 12에이전트 분석의 객관성을 보장하고, 완료된 매매 사이클을 경험 데이터로 아카이빙하여 학습 기반을 강화한다.
+
+- [ ] **분석플로우 객관성 확보**: FR-017에서 추가한 포지션 주입(Research Manager / Trader / Risk Manager)을 제거. 12에이전트 분석은 포지션 정보 없이 완전 객관적으로 수행.
+- [ ] **PA 프롬프트 강화**: PA가 유일하게 포지션 정보를 받는 에이전트로서, 분석 결과(가중치 6) > 과거 경험(가중치 4) 기반 판단. 디바이어싱 지시 포함. HybridMemory에서 과거 매매 기억 검색하여 판단에 활용.
+- [ ] **Experience 아카이빙**: 포지션 close 시 `tickers/{TICKER}/` 데이터를 `experience/{TICKER}/{n}/` 으로 이동하고 tickers 초기화. 분석만 하고 포지션을 잡지 않은 경우는 저장하지 않음 (포지션이 있어야 '검증'이 가능).
+- [ ] **RAG 소스 전환**: 활성 매매 데이터(tickers/) 대신 완료된 경험(experience/)만 RAG 인덱싱. 미결론 데이터가 학습을 오염시키지 않도록.
 
 ---
 
@@ -330,13 +337,13 @@ Portfolio Agent 프롬프트에 다음 판단 기준을 명시적으로 포함�
 
 1. **초기 자금**: 사용자 설정, 기본값 $1,000. 스케줄 등록 시 지정.
 2. **멀티 티커 자금 공유: 없음**. 목적은 가상 투자가 아닌 **분석 정확도 검증**. 종목별 독립 자금.
-3. **SELL 정책 (단계적 진화)**:
-   - Phase 0~3: SELL = **전량 청산**. 단순하게 시작하여 시스템 안정성 확보.
-   - Phase 4: SELL도 **전략 기반 비중 조절**로 전환. "전략 정확도 검증"이 목적이므로 BUY/HOLD/SELL 모두 전략 테스팅 대상.
-4. **Embedding**: 로컬 모델 (`sentence-transformers`). API 호출 비용 없음, 품질 차이 미미.
+3. **SELL 정책**: BUY/SELL = 방향성, 전략이 실행 디테일(수량, 타점, 비중)을 결정. 매수·매도 모두 PA가 전략에 따라 수량 결정 (부분 매수/매도 지원). 분석-실행-결과의 반복으로 RAG에 풍부한 데이터가 축적되어 통찰력이 자기 개선된다.
+4. **Embedding**: ChromaDB 내장 ONNX 임베딩 (`all-MiniLM-L6-v2`). API 호출 비용 없음, 별도 설치 불필요.
 5. **메모리 구조**: 에이전트별 메모리 파일이지만 **티커 구분 없이 통합**. 매매 인사이트는 종목 불문 축적.
 6. **reflect_and_remember 입력 구조화**: 처음부터 구조체 (ticker, return_pct, holding_days, analysis_count, market_condition, has_memory). 나중에 변경 시 기존 데이터와 호환 불가하므로 초기 확정.
 7. **부트스트랩 기간 태깅**: 모든 분석에 `has_memory` 플래그. Memory 유무에 따른 수익률 비교 기준선.
+8. **분석플로우 객관성**: 12에이전트 파이프라인은 포지션 정보 없이 완전 객관적 분석. 포지션 기반 판단은 PA에게만 위임.
+9. **Experience 아카이빙**: 완료된 매매 사이클은 `experience/{TICKER}/{n}/`에 보관. RAG는 experience만 인덱싱 (활성 데이터 제외).
 
 ### 크로스 티커 학습
 

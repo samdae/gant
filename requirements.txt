@@ -5,7 +5,6 @@ pandas
 yfinance
 stockstats
 langgraph
-rank-bm25
 setuptools
 backtrader
 parsel

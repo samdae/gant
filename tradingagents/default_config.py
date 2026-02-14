@@ -2,7 +2,6 @@ import os
 
 DEFAULT_CONFIG = {
     "project_dir": os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
-    "results_dir": os.getenv("TRADINGAGENTS_RESULTS_DIR", "./results"),
     "data_cache_dir": os.path.join(
         os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
         "dataflows/data_cache",
@@ -30,23 +29,18 @@ DEFAULT_CONFIG = {
     "tool_vendors": {
         # Example: "get_stock_data": "alpha_vantage",  # Override category default
     },
-    # FR-015, FR-028: Hybrid RAG Memory (경로 변경: memory/data/ → memory/experience/)
-    "memory_dir": os.getenv(
-        "TRADINGAGENTS_MEMORY_DIR",
-        os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")), "memory", "experience")
+    # FR-030: Database path (SQLite)
+    "database_path": os.getenv(
+        "TRADINGAGENTS_DATABASE_PATH",
+        os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")), "memory", "trading.db")
     ),
-    # FR-013, FR-028: Virtual Trading (경로 변경: virtual_trade/tickers/ → memory/trade/)
-    "virtual_trade_dir": os.getenv(
-        "TRADINGAGENTS_TRADE_DIR",
-        os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")), "memory", "trade")
+    # FR-030: ChromaDB path (Vector store)
+    "chroma_path": os.getenv(
+        "TRADINGAGENTS_CHROMA_PATH",
+        os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")), "memory", "chroma")
     ),
     "default_initial_capital": 1000.0,
-    # FR-023: Archive (완료된 매매 사이클 보관)
-    "archive_dir": os.path.join(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
-        "memory", "archive"
-    ),
     # FR-016: Scheduler
-    "schedules": [],  # List[{"ticker": str, "interval_days": int, "initial_capital": float}]
+    "schedules": [],  # List[{"ticker": str, "interval_days": int}]
     "scheduler_enabled": False,
 }

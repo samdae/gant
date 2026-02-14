@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import json
 from datetime import date
-from typing import Dict, Any, Tuple, List, Optional
+from typing import Dict, Any, Tuple, List, Optional, Callable
 
 from langgraph.prebuilt import ToolNode
 
@@ -12,8 +12,8 @@ from tradingagents.llm_clients import create_llm_client
 
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
-# Use HybridMemory (backward compat re-exported as FinancialSituationMemory)
-from tradingagents.memory.hybrid_memory import HybridMemory as FinancialSituationMemory
+# FR-031: Single HybridMemory instance (replaces 5 per-agent instances)
+from tradingagents.memory.hybrid_memory import HybridMemory
 from tradingagents.agents.utils.agent_states import (
     AgentState,
     InvestDebateState,
@@ -50,6 +50,7 @@ class TradingAgentsGraph:
         debug=False,
         config: Dict[str, Any] = None,
         callbacks: Optional[List] = None,
+        status_callback: Optional[Callable[[str, str, str], None]] = None,
     ):
         """Initialize the trading agents graph and components.
 
@@ -62,6 +63,7 @@ class TradingAgentsGraph:
         self.debug = debug
         self.config = config or DEFAULT_CONFIG
         self.callbacks = callbacks or []
+        self.status_callback = status_callback
 
         # Update the interface's config
         set_config(self.config)
@@ -95,16 +97,8 @@ class TradingAgentsGraph:
         self.deep_thinking_llm = deep_client.get_llm()
         self.quick_thinking_llm = quick_client.get_llm()
 
-        # Initialize memories
-        self.bull_memory = FinancialSituationMemory("bull_memory", self.config)
-        self.bear_memory = FinancialSituationMemory("bear_memory", self.config)
-        self.trader_memory = FinancialSituationMemory("trader_memory", self.config)
-        self.invest_judge_memory = FinancialSituationMemory(
-            "invest_judge_memory", self.config
-        )
-        self.risk_manager_memory = FinancialSituationMemory(
-            "risk_manager_memory", self.config
-        )
+        # FR-031: Single HybridMemory instance shared by all agents
+        self.memory = HybridMemory("shared_memory", self.config)
 
         # Bootstrap tagging flag (FR-019)
         self._last_had_memory = False
@@ -118,16 +112,13 @@ class TradingAgentsGraph:
             self.quick_thinking_llm,
             self.deep_thinking_llm,
             self.tool_nodes,
-            self.bull_memory,
-            self.bear_memory,
-            self.trader_memory,
-            self.invest_judge_memory,
-            self.risk_manager_memory,
+            self.memory,
             self.conditional_logic,
+            status_callback=self.status_callback,
         )
 
         self.propagator = Propagator()
-        self.reflector = Reflector(self.quick_thinking_llm)
+        self.reflector = Reflector(self.deep_thinking_llm)  # FR-031: Changed to deep_thinking_llm
         self.signal_processor = SignalProcessor(self.quick_thinking_llm)
 
         # State tracking
@@ -137,6 +128,12 @@ class TradingAgentsGraph:
 
         # Set up the graph
         self.graph = self.graph_setup.setup_graph(selected_analysts)
+
+    def set_status_callback(
+        self, callback: Optional[Callable[[str, str, str], None]]
+    ) -> None:
+        self.status_callback = callback
+        self.graph_setup.set_status_callback(callback)
 
     def _get_provider_kwargs(self) -> Dict[str, Any]:
         """Get provider-specific kwargs for LLM client creation."""
@@ -193,8 +190,8 @@ class TradingAgentsGraph:
             depth: Optional debate rounds (1=shallow, 3=medium, 5=deep).
                    Sets both max_debate_rounds and max_risk_discuss_rounds.
                    If None, uses config defaults.
-            current_position: Current trading position summary (FR-017)
-                             (e.g., "Holding 2 shares NVDA avg $257.50")
+            current_position: (DEPRECATED - FR-021) No longer used by 12 agents.
+                             Keep for backward compatibility but value is ignored.
         """
 
         if depth is not None:
@@ -238,14 +235,8 @@ class TradingAgentsGraph:
         self.curr_state = final_state
 
         # Set bootstrap tagging flag (FR-019)
-        # Check if any memory query had results during this propagation
-        self._last_had_memory = (
-            self.bull_memory.last_query_had_results
-            or self.bear_memory.last_query_had_results
-            or self.trader_memory.last_query_had_results
-            or self.invest_judge_memory.last_query_had_results
-            or self.risk_manager_memory.last_query_had_results
-        )
+        # FR-031: Single memory instance — check once
+        self._last_had_memory = self.memory.last_query_had_results
 
         # Log state
         self._log_state(trade_date, final_state)
@@ -254,7 +245,12 @@ class TradingAgentsGraph:
         return final_state, self.process_signal(final_state["final_trade_decision"])
 
     def _log_state(self, trade_date, final_state):
-        """Log the final state to a JSON file."""
+        """Log the final state to in-memory dict (P3-A: file I/O removed).
+
+        Legacy eval_results/ file output has been removed per FR-030.
+        State data is now stored in DB via reports table.
+        In-memory dict retained for debugging/introspection only.
+        """
         self.log_states_dict[str(trade_date)] = {
             "company_of_interest": final_state["company_of_interest"],
             "trade_date": final_state["trade_date"],
@@ -289,126 +285,93 @@ class TradingAgentsGraph:
             "final_trade_decision": final_state["final_trade_decision"],
         }
 
-        # Save to file
-        directory = Path(f"eval_results/{self.ticker}/TradingAgentsStrategy_logs/")
-        directory.mkdir(parents=True, exist_ok=True)
+    def reflect_and_remember(self, position_id: int, db):
+        """Reflect on a closed position and store to memory.
 
-        with open(
-            f"eval_results/{self.ticker}/TradingAgentsStrategy_logs/full_states_log_{trade_date}.json",
-            "w",
-        ) as f:
-            json.dump(self.log_states_dict, f, indent=4)
-
-    def reflect_and_remember(self, returns_losses):
-        """Reflect on decisions and update memory based on returns.
+        FR-031: Simplified reflection - now takes position_id and db,
+        calls Reflector.reflect_on_position() once instead of 5 per-agent calls.
 
         Args:
-            returns_losses: Union[int, float, dict]
-                - If int/float: Backward compat - wrapped as {"return_pct": value}
-                - If dict: Structured input with keys:
-                    - ticker (str, optional)
-                    - return_pct (float, required)
-                    - holding_days (int, optional)
-                    - analysis_count (int, optional)
-                    - market_condition (str, optional)
-                    - has_memory (bool, optional) - defaults to self._last_had_memory
-                    - outcome (str, optional) - auto-calculated from return_pct
-                    - market (str, optional) - auto-fetched from yfinance
-                    - sector (str, optional) - auto-fetched from yfinance
-                    - industry (str, optional) - auto-fetched from yfinance
-                    - schema_version (int, optional) - defaults to 1
+            position_id: Position ID to reflect on (must be closed)
+            db: Database instance for accessing repositories
+
+        Note: This method no longer uses curr_state or individual agent memories.
+              All reflection is centralized and stored via HybridMemory.
         """
-        # Normalize input to structured dict (FR-018)
-        if isinstance(returns_losses, (int, float)):
-            # Backward compatibility: wrap numeric input
-            structured_context = {
-                "return_pct": float(returns_losses),
-                "has_memory": self._last_had_memory,
-            }
-        elif isinstance(returns_losses, dict):
-            # Structured input
-            structured_context = returns_losses.copy()
-            # Auto-fill has_memory if not provided
-            if "has_memory" not in structured_context:
-                structured_context["has_memory"] = self._last_had_memory
-        else:
-            raise TypeError(
-                f"returns_losses must be int, float, or dict, got {type(returns_losses)}"
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Call centralized reflection (FR-031)
+            reflection_result = self.reflector.reflect_on_position(
+                position_id=position_id,
+                db=db
             )
 
-        # Ensure schema_version
-        if "schema_version" not in structured_context:
-            structured_context["schema_version"] = 1
+            # Store to HybridMemory (which stores to SQLite + ChromaDB)
+            # FR-033: HybridMemory now uses ReflectionRepository internally
+            # We pass position_id in metadata for proper storage
+            from tradingagents.storage import PositionRepository
+            position_repo = PositionRepository(db)
+            position = position_repo.get_by_id(position_id)
+            
+            if not position:
+                logger.error(f"Position {position_id} not found for reflection storage")
+                return
 
-        # FR-029: Auto-tag metadata (outcome, market, sector, industry)
-        # 1. Outcome: win/lose based on return_pct
-        if "outcome" not in structured_context and "return_pct" in structured_context:
-            structured_context["outcome"] = (
-                "win" if structured_context["return_pct"] >= 0 else "lose"
-            )
+            ticker = position["ticker"]
 
-        # 2. Fetch market/sector/industry from yfinance (if ticker provided)
-        ticker = structured_context.get("ticker")
-        if ticker:
+            # FR-029: Auto-tag metadata (sector, industry, market from yfinance)
+            sector = None
+            industry = None
+            market = None
+            
             try:
                 import yfinance as yf
+                ticker_obj = yf.Ticker(ticker)
+                info = ticker_obj.info
                 
-                yf_ticker = yf.Ticker(ticker)
-                info = yf_ticker.info
-
-                # Market: fullExchangeName (e.g., "NasdaqGS", "KSE")
-                if "market" not in structured_context:
-                    structured_context["market"] = info.get("fullExchangeName")
-
-                # Sector: sector (e.g., "Technology")
-                if "sector" not in structured_context:
-                    structured_context["sector"] = info.get("sector")
-
-                # Industry: industry (e.g., "Semiconductors")
-                if "industry" not in structured_context:
-                    structured_context["industry"] = info.get("industry")
-
-                # Crypto fallback: quoteType == "CRYPTOCURRENCY"
-                quote_type = info.get("quoteType")
-                if quote_type == "CRYPTOCURRENCY":
-                    if not structured_context.get("sector"):
-                        structured_context["sector"] = "Cryptocurrency"
-                    if not structured_context.get("industry"):
-                        structured_context["industry"] = "Cryptocurrency"
-                    if not structured_context.get("market"):
-                        structured_context["market"] = "Crypto"
-
-            except Exception as e:
-                # Graceful degradation: log warning, set to null
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(
-                    f"Failed to fetch metadata for {ticker}: {e}, "
-                    "setting market/sector/industry to null"
+                sector = info.get("sector")
+                industry = info.get("industry")
+                # FR-029: Prefer fullExchangeName; fall back to exchange
+                market = info.get("fullExchangeName") or info.get("exchange")
+                if info.get("quoteType") == "CRYPTOCURRENCY":
+                    market = "Crypto"
+                
+                logger.info(
+                    f"Fetched metadata for {ticker}: sector={sector}, industry={industry}, market={market}"
                 )
-                if "market" not in structured_context:
-                    structured_context["market"] = None
-                if "sector" not in structured_context:
-                    structured_context["sector"] = None
-                if "industry" not in structured_context:
-                    structured_context["industry"] = None
+            except Exception as e:
+                logger.warning(f"Failed to fetch yfinance metadata for {ticker}: {e}")
 
-        # Call reflector with structured context
-        self.reflector.reflect_bull_researcher(
-            self.curr_state, structured_context, self.bull_memory
-        )
-        self.reflector.reflect_bear_researcher(
-            self.curr_state, structured_context, self.bear_memory
-        )
-        self.reflector.reflect_trader(
-            self.curr_state, structured_context, self.trader_memory
-        )
-        self.reflector.reflect_invest_judge(
-            self.curr_state, structured_context, self.invest_judge_memory
-        )
-        self.reflector.reflect_risk_manager(
-            self.curr_state, structured_context, self.risk_manager_memory
-        )
+            # Store reflection via HybridMemory
+            # Note: HybridMemory.add_situations expects (situation, recommendation) tuples
+            # We store (key_lessons, reflection) to match RAG query patterns
+            metadata = {
+                "position_id": position_id,
+                "ticker": ticker,
+                "outcome": reflection_result["outcome"],
+                "return_pct": reflection_result["return_pct"],
+                # FR-029: Add auto-tagged metadata
+                "sector": sector,
+                "industry": industry,
+                "market": market,
+            }
+
+            # FR-031: Store via single HybridMemory instance
+            self.memory.add_situations(
+                [(reflection_result["key_lessons"], reflection_result["reflection"])],
+                metadata=metadata
+            )
+
+            logger.info(
+                f"Reflection stored for position {position_id} ({ticker}): "
+                f"{reflection_result['outcome']} ({reflection_result['return_pct']:.2f}%)"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to reflect and remember for position {position_id}: {e}")
+            # Don't raise - reflection failure shouldn't block scheduler
 
     def process_signal(self, full_signal):
         """Process a signal to extract the core decision."""

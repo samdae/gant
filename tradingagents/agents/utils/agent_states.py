@@ -51,8 +51,8 @@ class AgentState(MessagesState):
 
     sender: Annotated[str, "Agent that sent this message"]
 
-    # FR-017: Position-aware analysis
-    current_position: Annotated[str, "Current virtual trading position summary"]
+    # FR-021: Removed current_position - 12 agents should not see position
+    # Position context is only available to Portfolio Agent (outside graph)
 
     # research step
     market_report: Annotated[str, "Report from the Market Analyst"]

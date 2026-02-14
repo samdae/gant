@@ -22,7 +22,11 @@ from .alpha_vantage import (
     get_news as get_alpha_vantage_news,
     get_global_news as get_alpha_vantage_global_news,
 )
+import time
+
 from .alpha_vantage_common import AlphaVantageRateLimitError
+from tradingagents.errors import DataVendorError
+from tradingagents.runtime_context import log_schedule_error
 
 # Configuration and routing logic
 from .config import get_config
@@ -147,6 +151,8 @@ def route_to_vendor(method: str, *args, **kwargs):
         if vendor not in fallback_vendors:
             fallback_vendors.append(vendor)
 
+    errors = []
+
     for vendor in fallback_vendors:
         if vendor not in VENDOR_METHODS[method]:
             continue
@@ -154,9 +160,29 @@ def route_to_vendor(method: str, *args, **kwargs):
         vendor_impl = VENDOR_METHODS[method][vendor]
         impl_func = vendor_impl[0] if isinstance(vendor_impl, list) else vendor_impl
 
-        try:
-            return impl_func(*args, **kwargs)
-        except AlphaVantageRateLimitError:
-            continue  # Only rate limits trigger fallback
+        for attempt in range(1, 4):  # initial + 2 retries
+            try:
+                return impl_func(*args, **kwargs)
+            except AlphaVantageRateLimitError as e:
+                error_msg = f"{method} vendor={vendor} rate limited (attempt {attempt}/3)"
+                errors.append({
+                    "vendor": vendor,
+                    "attempt": attempt,
+                    "error": str(e),
+                })
+                log_schedule_error("vendor_retry", error_msg, str(e))
+            except Exception as e:
+                error_msg = f"{method} vendor={vendor} failed (attempt {attempt}/3)"
+                errors.append({
+                    "vendor": vendor,
+                    "attempt": attempt,
+                    "error": str(e),
+                })
+                log_schedule_error("vendor_retry", error_msg, str(e))
 
-    raise RuntimeError(f"No available vendor for '{method}'")
+            if attempt < 3:
+                time.sleep(30)
+
+        # After retries, fall back to next vendor
+
+    raise DataVendorError(f"No available vendor for '{method}'", details=errors)

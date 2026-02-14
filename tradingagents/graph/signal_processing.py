@@ -2,6 +2,8 @@
 
 from langchain_core.language_models import BaseChatModel
 
+from tradingagents.errors import DecisionParseError
+
 
 class SignalProcessor:
     """Processes trading signals to extract actionable decisions."""
@@ -28,4 +30,10 @@ class SignalProcessor:
             ("human", full_signal),
         ]
 
-        return self.quick_thinking_llm.invoke(messages).content
+        result = self.quick_thinking_llm.invoke(messages).content.strip().upper()
+        if result not in {"BUY", "SELL", "HOLD"}:
+            raise DecisionParseError(
+                "Invalid final trade decision output",
+                raw_text=result,
+            )
+        return result

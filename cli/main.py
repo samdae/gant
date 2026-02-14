@@ -978,15 +978,9 @@ def run_analysis():
     # Track start time for elapsed display
     start_time = time.time()
 
-    # Create result directory
-    results_dir = (
-        Path(config["results_dir"]) / selections["ticker"] / selections["analysis_date"]
-    )
-    results_dir.mkdir(parents=True, exist_ok=True)
-    report_dir = results_dir / "reports"
-    report_dir.mkdir(parents=True, exist_ok=True)
-    log_file = results_dir / "message_tool.log"
-    log_file.touch(exist_ok=True)
+    # File output disabled (DB-based storage only)
+    report_dir = None
+    log_file = None
 
     def save_message_decorator(obj, func_name):
         func = getattr(obj, func_name)
@@ -994,6 +988,8 @@ def run_analysis():
         @wraps(func)
         def wrapper(*args, **kwargs):
             func(*args, **kwargs)
+            if not log_file:
+                return
             timestamp, message_type, content = obj.messages[-1]
             content = content.replace("\n", " ")  # Replace newlines with spaces
             with open(log_file, "a") as f:
@@ -1007,6 +1003,8 @@ def run_analysis():
         @wraps(func)
         def wrapper(*args, **kwargs):
             func(*args, **kwargs)
+            if not log_file:
+                return
             timestamp, tool_name, args = obj.tool_calls[-1]
             args_str = ", ".join(f"{k}={v}" for k, v in args.items())
             with open(log_file, "a") as f:
@@ -1024,6 +1022,8 @@ def run_analysis():
                 section_name in obj.report_sections
                 and obj.report_sections[section_name] is not None
             ):
+                if not report_dir:
+                    return
                 content = obj.report_sections[section_name]
                 if content:
                     file_name = f"{section_name}.md"

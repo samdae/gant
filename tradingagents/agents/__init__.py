@@ -1,9 +1,6 @@
 from .utils.agent_utils import create_msg_delete
 from .utils.agent_states import AgentState, InvestDebateState, RiskDebateState
 
-# Backward compatibility: Re-export HybridMemory as FinancialSituationMemory
-from tradingagents.memory.hybrid_memory import HybridMemory as FinancialSituationMemory
-
 from .analysts.fundamentals_analyst import create_fundamentals_analyst
 from .analysts.market_analyst import create_market_analyst
 from .analysts.news_analyst import create_news_analyst
@@ -22,7 +19,6 @@ from .managers.risk_manager import create_risk_manager
 from .trader.trader import create_trader
 
 __all__ = [
-    "FinancialSituationMemory",
     "AgentState",
     "create_msg_delete",
     "InvestDebateState",

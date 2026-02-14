@@ -35,6 +35,9 @@ async def analyze_ws(websocket: WebSocket, ticker: str):
             "agent": str,          # Current agent name
             "status": str,         # "running" | "completed" | "error"
             "message": str,        # Agent output summary
+            "step": int,           # Optional step number
+            "phase": str,          # Optional phase label
+            "total_steps": int,    # Optional total steps
             "timestamp": str       # ISO 8601
         }
 

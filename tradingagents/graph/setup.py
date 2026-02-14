@@ -1,6 +1,6 @@
 # TradingAgents/graph/setup.py
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Callable
 from langchain_core.language_models import BaseChatModel
 from langgraph.graph import END, StateGraph, START
 from langgraph.prebuilt import ToolNode
@@ -19,23 +19,41 @@ class GraphSetup:
         quick_thinking_llm: BaseChatModel,
         deep_thinking_llm: BaseChatModel,
         tool_nodes: Dict[str, ToolNode],
-        bull_memory,
-        bear_memory,
-        trader_memory,
-        invest_judge_memory,
-        risk_manager_memory,
+        memory,
         conditional_logic: ConditionalLogic,
+        status_callback: Optional[Callable[[str, str, str], None]] = None,
     ):
-        """Initialize with required components."""
+        """Initialize with required components.
+
+        FR-031: Single shared memory instance replaces 5 per-agent memories.
+        """
         self.quick_thinking_llm = quick_thinking_llm
         self.deep_thinking_llm = deep_thinking_llm
         self.tool_nodes = tool_nodes
-        self.bull_memory = bull_memory
-        self.bear_memory = bear_memory
-        self.trader_memory = trader_memory
-        self.invest_judge_memory = invest_judge_memory
-        self.risk_manager_memory = risk_manager_memory
+        self.memory = memory
         self.conditional_logic = conditional_logic
+        self.status_callback = status_callback
+
+    def set_status_callback(
+        self, callback: Optional[Callable[[str, str, str], None]]
+    ) -> None:
+        self.status_callback = callback
+
+    def _wrap_node(self, name: str, node):
+        def wrapped(state):
+            if self.status_callback:
+                self.status_callback(name, "running", f"{name} running")
+            try:
+                result = node(state)
+            except Exception as e:
+                if self.status_callback:
+                    self.status_callback(name, "error", f"{name} error: {e}")
+                raise
+            if self.status_callback:
+                self.status_callback(name, "completed", f"{name} completed")
+            return result
+
+        return wrapped
 
     def setup_graph(
         self, selected_analysts=["market", "social", "news", "fundamentals"]
@@ -58,47 +76,72 @@ class GraphSetup:
         tool_nodes = {}
 
         if "market" in selected_analysts:
-            analyst_nodes["market"] = create_market_analyst(self.quick_thinking_llm)
+            analyst_nodes["market"] = self._wrap_node(
+                "Market Analyst",
+                create_market_analyst(self.quick_thinking_llm),
+            )
             delete_nodes["market"] = create_msg_delete()
             tool_nodes["market"] = self.tool_nodes["market"]
 
         if "social" in selected_analysts:
-            analyst_nodes["social"] = create_social_media_analyst(
-                self.quick_thinking_llm
+            analyst_nodes["social"] = self._wrap_node(
+                "Social Analyst",
+                create_social_media_analyst(self.quick_thinking_llm),
             )
             delete_nodes["social"] = create_msg_delete()
             tool_nodes["social"] = self.tool_nodes["social"]
 
         if "news" in selected_analysts:
-            analyst_nodes["news"] = create_news_analyst(self.quick_thinking_llm)
+            analyst_nodes["news"] = self._wrap_node(
+                "News Analyst",
+                create_news_analyst(self.quick_thinking_llm),
+            )
             delete_nodes["news"] = create_msg_delete()
             tool_nodes["news"] = self.tool_nodes["news"]
 
         if "fundamentals" in selected_analysts:
-            analyst_nodes["fundamentals"] = create_fundamentals_analyst(
-                self.quick_thinking_llm
+            analyst_nodes["fundamentals"] = self._wrap_node(
+                "Fundamentals Analyst",
+                create_fundamentals_analyst(self.quick_thinking_llm),
             )
             delete_nodes["fundamentals"] = create_msg_delete()
             tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
 
         # Create researcher and manager nodes
-        bull_researcher_node = create_bull_researcher(
-            self.quick_thinking_llm, self.bull_memory
+        # FR-031: All agents share single HybridMemory instance
+        bull_researcher_node = self._wrap_node(
+            "Bull Researcher",
+            create_bull_researcher(self.quick_thinking_llm),
         )
-        bear_researcher_node = create_bear_researcher(
-            self.quick_thinking_llm, self.bear_memory
+        bear_researcher_node = self._wrap_node(
+            "Bear Researcher",
+            create_bear_researcher(self.quick_thinking_llm),
         )
-        research_manager_node = create_research_manager(
-            self.deep_thinking_llm, self.invest_judge_memory
+        research_manager_node = self._wrap_node(
+            "Research Manager",
+            create_research_manager(self.deep_thinking_llm),
         )
-        trader_node = create_trader(self.quick_thinking_llm, self.trader_memory)
+        trader_node = self._wrap_node(
+            "Trader",
+            create_trader(self.quick_thinking_llm),
+        )
 
         # Create risk analysis nodes
-        aggressive_analyst = create_aggressive_debator(self.quick_thinking_llm)
-        neutral_analyst = create_neutral_debator(self.quick_thinking_llm)
-        conservative_analyst = create_conservative_debator(self.quick_thinking_llm)
-        risk_manager_node = create_risk_manager(
-            self.deep_thinking_llm, self.risk_manager_memory
+        aggressive_analyst = self._wrap_node(
+            "Aggressive Analyst",
+            create_aggressive_debator(self.quick_thinking_llm),
+        )
+        neutral_analyst = self._wrap_node(
+            "Neutral Analyst",
+            create_neutral_debator(self.quick_thinking_llm),
+        )
+        conservative_analyst = self._wrap_node(
+            "Conservative Analyst",
+            create_conservative_debator(self.quick_thinking_llm),
+        )
+        risk_manager_node = self._wrap_node(
+            "Risk Judge",
+            create_risk_manager(self.deep_thinking_llm),
         )
 
         # Create workflow

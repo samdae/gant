@@ -28,10 +28,10 @@ def check_admin_token(credentials: HTTPAuthorizationCredentials = Security(secur
         HTTPException: 401 if invalid or missing
     """
     # Load admin token from environment
-    admin_token = os.getenv("ADMIN_TOKEN")
+    admin_token = os.getenv("TRADINGAGENTS_ADMIN_TOKEN")
 
     if not admin_token:
-        logger.error("ADMIN_TOKEN not configured in .env")
+        logger.error("TRADINGAGENTS_ADMIN_TOKEN not configured in .env")
         raise HTTPException(
             status_code=500,
             detail="Server authentication not configured"

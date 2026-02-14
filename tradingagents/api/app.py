@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.scheduler.ticker_scheduler import TickerScheduler
+import tradingagents.scheduler.ticker_scheduler as ticker_scheduler_module
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,32 @@ current_running_ticker: Optional[str] = None
 ws_subscribers: Dict[str, List[asyncio.Queue]] = defaultdict(list)
 
 
+_AGENT_STEPS = {
+    "Market Analyst": (1, "Data Collection"),
+    "Social Analyst": (2, "Data Collection"),
+    "News Analyst": (3, "Data Collection"),
+    "Fundamentals Analyst": (4, "Data Collection"),
+    "Bull Researcher": (5, "Investment Debate"),
+    "Bear Researcher": (6, "Investment Debate"),
+    "Research Manager": (7, "Investment Debate"),
+    "Trader": (8, "Trade Decision"),
+    "Aggressive Analyst": (9, "Risk Assessment"),
+    "Neutral Analyst": (10, "Risk Assessment"),
+    "Conservative Analyst": (11, "Risk Assessment"),
+    "Risk Judge": (12, "Risk Assessment"),
+    "Portfolio Agent": (13, "Execution"),
+}
+_TOTAL_STEPS = 13
+
+
+def _get_cors_origins() -> List[str]:
+    raw = os.getenv("TRADINGAGENTS_CORS_ORIGINS", "").strip()
+    if not raw:
+        return ["*"]
+    origins = [item.strip() for item in raw.split(",") if item.strip()]
+    return origins or ["*"]
+
+
 def broadcast_status(ticker: str, agent: str, status: str, message: str):
     """Thread-safe broadcast to WebSocket subscribers.
 
@@ -53,12 +80,17 @@ def broadcast_status(ticker: str, agent: str, status: str, message: str):
     if ticker not in ws_subscribers or not ws_subscribers[ticker]:
         return
 
+    step_info = _AGENT_STEPS.get(agent)
     msg = {
         "agent": agent,
         "status": status,
         "message": message,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    if step_info:
+        msg["step"] = step_info[0]
+        msg["phase"] = step_info[1]
+        msg["total_steps"] = _TOTAL_STEPS
 
     for q in ws_subscribers[ticker]:
         if _event_loop and _event_loop.is_running():
@@ -86,9 +118,9 @@ async def _queue_worker():
                 ticker, "system", "running", f"Starting analysis for {ticker}"
             )
 
-            # Set status callback on scheduler for step-level WS updates
-            if scheduler:
-                scheduler._status_callback = (
+            # Set status callback on graph for step-level WS updates
+            if graph:
+                graph.set_status_callback(
                     lambda agent, status, msg, t=ticker: broadcast_status(
                         t, agent, status, msg
                     )
@@ -100,10 +132,14 @@ async def _queue_worker():
                 broadcast_status(
                     ticker, "system", "completed", f"Analysis complete for {ticker}"
                 )
+                if graph:
+                    graph.set_status_callback(None)
             except Exception as e:
                 broadcast_status(
                     ticker, "system", "error", f"Analysis failed: {str(e)}"
                 )
+                if graph:
+                    graph.set_status_callback(None)
                 raise
 
             analysis_queue.task_done()
@@ -133,23 +169,53 @@ async def lifespan(app: FastAPI):
 
     logger.info("Starting TradingAgents API...")
 
+    # P3-D: Fail fast if ADMIN_TOKEN not set
+    if not os.getenv("TRADINGAGENTS_ADMIN_TOKEN"):
+        raise RuntimeError(
+            "TRADINGAGENTS_ADMIN_TOKEN environment variable is required. "
+            "Set it before starting the server."
+        )
+
+    # P1-A: Initialize global analysis queue
+    ticker_scheduler_module.analysis_queue = asyncio.Queue()
+
     # Initialize graph
     graph = TradingAgentsGraph(config=DEFAULT_CONFIG)
     logger.info("TradingAgentsGraph initialized")
 
     # Initialize scheduler
     scheduler = TickerScheduler(graph=graph, config=DEFAULT_CONFIG)
+    scheduler.set_queue(ticker_scheduler_module.analysis_queue, _event_loop)
 
     # Auto-load schedules from config
     for schedule_item in DEFAULT_CONFIG.get("schedules", []):
         ticker = schedule_item["ticker"]
         interval_days = schedule_item.get("interval_days", 4)
-        initial_capital = schedule_item.get(
-            "initial_capital", DEFAULT_CONFIG["default_initial_capital"]
-        )
 
-        scheduler.add_ticker(ticker, interval_days, initial_capital)
+        scheduler.add_ticker(ticker, interval_days)
         logger.info(f"Auto-loaded schedule: {ticker} (every {interval_days} days)")
+
+    # Recover pending/running schedules into queue
+    try:
+        from tradingagents.storage import ScheduleRepository
+
+        schedule_repo = ScheduleRepository(scheduler.db)
+        pending = schedule_repo.get_by_status(["pending", "running"])
+        queued = set(ticker_scheduler_module.analysis_queue._queue)
+        if current_running_ticker:
+            queued.add(current_running_ticker)
+
+        for s in pending:
+            ticker = s.get("ticker")
+            if not ticker or ticker in queued:
+                continue
+            if s.get("status") == "running":
+                schedule_repo.update_status(s["id"], "pending")
+            ticker_scheduler_module.analysis_queue.put_nowait(ticker)
+            queued.add(ticker)
+        logger.info(f"Recovered {len(queued)} pending schedules into queue")
+    except Exception as e:
+        logger.warning(f"Failed to recover pending schedules: {e}")
 
     # Start scheduler
     if DEFAULT_CONFIG.get("scheduler_enabled", False):
@@ -199,11 +265,13 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS: Allow all (behind Cloudflare Tunnel)
+    # CORS: Allow from configured origins
+    cors_origins = _get_cors_origins()
+    allow_credentials = "*" not in cors_origins
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=cors_origins,
+        allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )
