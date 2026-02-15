@@ -607,6 +607,47 @@ async def get_reports(
     return reports
 
 
+
+
+@router.get("/reports/tickers", response_model=List[dict], tags=["Reports"])
+async def get_report_tickers():
+    """Get ticker summaries for reports page (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    cursor_obj = scheduler.db.get_connection().execute(
+        """
+        SELECT s.ticker,
+               COUNT(*) AS report_count,
+               MAX(r.created_at) AS latest_at
+        FROM reports r
+        JOIN schedules s ON r.schedule_id = s.id
+        GROUP BY s.ticker
+        ORDER BY MAX(r.created_at) DESC
+        """
+    )
+    summaries = [dict(row) for row in cursor_obj.fetchall()]
+
+    # Attach latest decision snippet per ticker
+    for item in summaries:
+        dec_cur = scheduler.db.get_connection().execute(
+            """
+            SELECT r.final_trade_decision
+            FROM reports r
+            JOIN schedules s ON r.schedule_id = s.id
+            WHERE s.ticker = %s
+            ORDER BY r.id DESC LIMIT 1
+            """,
+            (item["ticker"],),
+        )
+        dec_row = dec_cur.fetchone()
+        raw = (dec_row["final_trade_decision"] or "") if dec_row else ""
+        item["last_decision"] = raw[:120].strip() if raw else ""
+
+    return summaries
+
+
 # FR-025: Schedules/Cycles endpoints
 @router.get("/schedules/{ticker}/cycles", response_model=List[dict], tags=["Schedules"])
 async def get_ticker_cycles(

@@ -108,10 +108,6 @@
       </div>
     </div>
 
-    <div class="trade-actions">
-      <a href={`#/archive/${ticker.toLowerCase()}`} class="btn btn-ghost" id="viewArchiveBtn">View archive</a>
-    </div>
-
     <div class="tab-bar">
       <button class={`tab-btn ${tab === "report" ? "active" : ""}`} on:click={() => (tab = "report")}>Latest Report</button>
       <button class={`tab-btn ${tab === "history" ? "active" : ""}`} on:click={() => (tab = "history")}>History</button>

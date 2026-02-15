@@ -33,11 +33,11 @@ export const createSchedule = (payload: ScheduleRequest) =>
 export const deleteSchedule = (ticker: string) =>
   deleteJson(`/schedules/${ticker}`);
 
-export const fetchReportsByTicker = (ticker: string) =>
-  getJson(`/reports?ticker=${encodeURIComponent(ticker)}`);
+export const fetchReportsByTicker = (ticker: string, limit = 1) =>
+  getJson(`/reports?ticker=${encodeURIComponent(ticker)}&limit=${limit}`);
+
+export const fetchReportTickers = () =>
+  getJson("/reports/tickers");
 
 export const fetchPositionDetail = (id: number) =>
   getJson(`/positions/${id}`);
-
-export const searchMemories = (query: string) =>
-  getJson(`/search?query=${encodeURIComponent(query)}`);

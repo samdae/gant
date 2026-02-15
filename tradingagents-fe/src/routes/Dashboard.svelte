@@ -134,13 +134,22 @@
   <div class="page-container">
     <div class="page-header">
       <h2>Dashboard</h2>
-      <span class="badge badge-gain">
-        <span
-          class="status-dot status-ok"
-          style="width:6px;height:6px;margin-right:4px"
-        ></span>
-        {error ? "System issue" : "System ok"}
-      </span>
+      {#if error}
+        <span class="badge badge-loss">
+          <span class="status-dot status-err" style="width:6px;height:6px;margin-right:4px"></span>
+          Offline
+        </span>
+      {:else if queue.running}
+        <span class="badge badge-info">
+          <span class="status-dot status-ok" style="width:6px;height:6px;margin-right:4px"></span>
+          Running · {queue.running}
+        </span>
+      {:else}
+        <span class="badge badge-gain">
+          <span class="status-dot status-ok" style="width:6px;height:6px;margin-right:4px"></span>
+          Online · Idle
+        </span>
+      {/if}
     </div>
 
     <button class="card summary-banner" type="button" on:click={goArchive}>

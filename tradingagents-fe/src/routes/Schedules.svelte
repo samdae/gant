@@ -171,15 +171,6 @@
                 <span>Last run: -</span>
               {/if}
             </div>
-            <div class="schedule-actions">
-              <a
-                class="btn btn-ghost"
-                href={`#/trade/${schedule.ticker.toLowerCase()}`}
-                on:click|stopPropagation
-              >
-                Report
-              </a>
-            </div>
             <button
               class="btn-icon btn-danger schedule-delete"
               title="Delete"
