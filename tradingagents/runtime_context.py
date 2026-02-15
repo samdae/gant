@@ -7,6 +7,9 @@ from typing import Callable, Optional, Tuple
 _current_schedule_id: ContextVar[Optional[int]] = ContextVar(
     "current_schedule_id", default=None
 )
+_current_schedule_job_id: ContextVar[Optional[int]] = ContextVar(
+    "current_schedule_job_id", default=None
+)
 _error_logger: ContextVar[Optional[Callable[[int, str, str, Optional[str]], None]]] = (
     ContextVar("schedule_error_logger", default=None)
 )
@@ -14,17 +17,28 @@ _error_logger: ContextVar[Optional[Callable[[int, str, str, Optional[str]], None
 
 def set_schedule_context(
     schedule_id: int,
+    schedule_job_id: Optional[int],
     error_logger: Callable[[int, str, str, Optional[str]], None],
-) -> Tuple[Token, Token]:
+) -> Tuple[Token, Token, Token]:
     token_id: Token = _current_schedule_id.set(schedule_id)
+    token_job: Token = _current_schedule_job_id.set(schedule_job_id)
     token_logger: Token = _error_logger.set(error_logger)
-    return token_id, token_logger
+    return token_id, token_job, token_logger
 
 
-def reset_schedule_context(tokens: Tuple[Token, Token]) -> None:
-    token_id, token_logger = tokens
+def reset_schedule_context(tokens: Tuple[Token, Token, Token]) -> None:
+    token_id, token_job, token_logger = tokens
     _current_schedule_id.reset(token_id)
+    _current_schedule_job_id.reset(token_job)
     _error_logger.reset(token_logger)
+
+
+def get_current_schedule_id() -> Optional[int]:
+    return _current_schedule_id.get()
+
+
+def get_current_schedule_job_id() -> Optional[int]:
+    return _current_schedule_job_id.get()
 
 
 def log_schedule_error(

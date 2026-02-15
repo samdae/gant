@@ -32,18 +32,20 @@ class PositionRepository:
         """
         now = datetime.now().isoformat()
 
-        connection = conn or self.conn
+        connection = conn or self.db.get_connection()
         cursor = connection.execute(
             """
             INSERT INTO positions (ticker, status, shares, opened_at, created_at)
-            VALUES (?, 'active', 0, ?, ?)
+            VALUES (%s, 'active', 0, %s, %s)
+            RETURNING id
             """,
             (ticker, now, now)
         )
         if commit:
             connection.commit()
 
-        position_id = cursor.lastrowid
+        row = cursor.fetchone()
+        position_id = row["id"] if row else 0
         logger.info(f"Created position {position_id} for {ticker}")
         return position_id
 
@@ -56,12 +58,12 @@ class PositionRepository:
         Returns:
             Position dict or None if no active position
         """
-        cursor = self.conn.execute(
+        cursor = self.db.get_connection().execute(
             """
             SELECT id, ticker, status, shares, avg_cost, return_pct,
                    opened_at, closed_at, created_at
             FROM positions
-            WHERE ticker = ? AND status = 'active'
+            WHERE ticker = %s AND status = 'active'
             ORDER BY created_at DESC
             LIMIT 1
             """,
@@ -80,12 +82,12 @@ class PositionRepository:
         Returns:
             Position dict or None if not found
         """
-        cursor = self.conn.execute(
+        cursor = self.db.get_connection().execute(
             """
             SELECT id, ticker, status, shares, avg_cost, return_pct,
                    opened_at, closed_at, created_at
             FROM positions
-            WHERE id = ?
+            WHERE id = %s
             """,
             (position_id,)
         )
@@ -108,12 +110,12 @@ class PositionRepository:
             shares: New total shares
             avg_cost: New average cost per share
         """
-        connection = conn or self.conn
+        connection = conn or self.db.get_connection()
         connection.execute(
             """
             UPDATE positions
-            SET shares = ?, avg_cost = ?
-            WHERE id = ?
+            SET shares = %s, avg_cost = %s
+            WHERE id = %s
             """,
             (shares, avg_cost, position_id)
         )
@@ -139,12 +141,12 @@ class PositionRepository:
         """
         closed_at = datetime.now().isoformat()
 
-        connection = conn or self.conn
+        connection = conn or self.db.get_connection()
         connection.execute(
             """
             UPDATE positions
-            SET status = 'closed', return_pct = ?, closed_at = ?
-            WHERE id = ?
+            SET status = 'closed', return_pct = %s, closed_at = %s
+            WHERE id = %s
             """,
             (return_pct, closed_at, position_id)
         )
@@ -168,8 +170,12 @@ if __name__ == "__main__":
         import os
         from .database import Database
 
-        db_path = os.path.join(temp_dir, "test_trading.db")
-        db = Database(db_path)
+        db_url = os.getenv("SUPABASE_DB_URL")
+        if not db_url:
+            print("SUPABASE_DB_URL not set; skipping test")
+            raise SystemExit(0)
+
+        db = Database(db_url)
         db.init_schema()
 
         repo = PositionRepository(db)

@@ -1,91 +1,130 @@
-"""SQLite database connection management and schema initialization.
+"""Postgres database connection management and schema initialization.
 
 This module provides:
-- Connection management with WAL mode for concurrent read/write
-- Schema initialization (tables + FTS5 + triggers)
+- Connection management with per-thread connections
+- Schema initialization (tables + indexes + FTS)
 - Transaction support
 """
 
-import os
-import sqlite3
 import logging
+import os
+import threading
 from typing import Callable, Optional
-from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+
+import psycopg
+from psycopg.rows import dict_row
 
 logger = logging.getLogger(__name__)
 
 
 class Database:
-    """SQLite connection manager with schema initialization."""
+    """Postgres connection manager with schema initialization."""
 
-    def __init__(self, db_path: str = "memory/trading.db"):
+    def __init__(self, db_url: str):
         """Initialize database connection.
 
         Args:
-            db_path: Path to SQLite database file
+            db_url: Postgres connection URL
         """
-        self.db_path = db_path
+        if not db_url:
+            raise RuntimeError("Database URL is required")
 
-        # Ensure parent directory exists
-        db_dir = os.path.dirname(db_path)
-        if db_dir:
-            os.makedirs(db_dir, exist_ok=True)
+        self.db_url = self._normalize_db_url(db_url)
+        self.direct_url = self._normalize_db_url(os.getenv("SUPABASE_DIRECT_URL", ""))
+        self._connections = []
+        self._connections_lock = threading.Lock()
+        self._local = threading.local()
 
-        # Initialize connection
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row  # Enable column access by name
+        # Initialize primary connection
+        self.conn = self._create_connection()
+        logger.info("Database initialized")
 
-        # Enable WAL mode for concurrent read/write
-        self.conn.execute("PRAGMA journal_mode=WAL")
+    def _normalize_db_url(self, db_url: str) -> str:
+        try:
+            parts = urlsplit(db_url)
+            query = parse_qsl(parts.query, keep_blank_values=True)
+            filtered = [(k, v) for k, v in query if k.lower() != "pgbouncer"]
+            if len(filtered) != len(query):
+                db_url = urlunsplit(
+                    (parts.scheme, parts.netloc, parts.path, urlencode(filtered), parts.fragment)
+                )
+                logger.info("Removed unsupported query param 'pgbouncer' from DB URL")
+        except Exception:
+            pass
+        return db_url
 
-        # Enable foreign key constraints
-        self.conn.execute("PRAGMA foreign_keys=ON")
+    def _create_connection(self) -> psycopg.Connection:
+        connection = psycopg.connect(
+            self.db_url,
+            row_factory=dict_row,
+            connect_timeout=5,
+        )
+        connection.autocommit = False
 
-        # Set busy timeout (5 seconds)
-        self.conn.execute("PRAGMA busy_timeout=5000")
+        with self._connections_lock:
+            self._connections.append(connection)
 
-        logger.info(f"Database initialized at {db_path}")
+        return connection
 
     def init_schema(self) -> None:
-        """Initialize database schema (tables + FTS5 + triggers).
+        """Initialize database schema.
 
         Creates all tables if they don't exist. Idempotent (safe to call multiple times).
         """
         logger.info("Initializing database schema...")
 
-        # DDL from proposal_v3.md and arch-be.md Section 2
+        ddl_conn = self.conn
+        ddl_conn_created = False
+        if self.direct_url:
+            try:
+                ddl_conn = psycopg.connect(
+                    self.direct_url,
+                    row_factory=dict_row,
+                    connect_timeout=5,
+                )
+                ddl_conn.autocommit = True
+                ddl_conn_created = True
+                logger.info("Using SUPABASE_DIRECT_URL for schema init")
+            except Exception as exc:
+                logger.warning(f"Failed to use SUPABASE_DIRECT_URL: {exc}")
+                ddl_conn = self.conn
+
         schema_sql = """
-        -- ① schedules: 분석 실행 단위
         CREATE TABLE IF NOT EXISTS schedules (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            id              BIGSERIAL PRIMARY KEY,
             ticker          TEXT    NOT NULL,
             interval_days   INTEGER NOT NULL DEFAULT 4,
             scheduled_cycle INTEGER NOT NULL,
-            status          TEXT    NOT NULL DEFAULT 'pending',
-            error_message   TEXT,
-            created_at      TEXT    NOT NULL
+            created_at      TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_schedules_ticker ON schedules(ticker);
 
-        -- ② positions: 매매 사이클 (진입 → 청산)
+        CREATE TABLE IF NOT EXISTS schedule_configs (
+            id            BIGSERIAL PRIMARY KEY,
+            ticker        TEXT    NOT NULL UNIQUE,
+            interval_days INTEGER NOT NULL DEFAULT 4,
+            created_at    TIMESTAMPTZ NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_schedule_configs_ticker ON schedule_configs(ticker);
+
         CREATE TABLE IF NOT EXISTS positions (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            id          BIGSERIAL PRIMARY KEY,
             ticker      TEXT    NOT NULL,
             status      TEXT    NOT NULL DEFAULT 'active',
             shares      INTEGER NOT NULL DEFAULT 0,
-            avg_cost    REAL,
-            return_pct  REAL,
-            opened_at   TEXT    NOT NULL,
-            closed_at   TEXT,
-            created_at  TEXT    NOT NULL
+            avg_cost    DOUBLE PRECISION,
+            return_pct  DOUBLE PRECISION,
+            opened_at   TIMESTAMPTZ NOT NULL,
+            closed_at   TIMESTAMPTZ,
+            created_at  TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_positions_ticker_status ON positions(ticker, status);
 
-        -- ③ reports: 에이전트별 요약 (스케줄마다 1건)
         CREATE TABLE IF NOT EXISTS reports (
-            id                                INTEGER PRIMARY KEY AUTOINCREMENT,
-            schedule_id                       INTEGER NOT NULL REFERENCES schedules(id),
-            position_id                       INTEGER REFERENCES positions(id),
+            id                                BIGSERIAL PRIMARY KEY,
+            schedule_id                       BIGINT NOT NULL REFERENCES schedules(id),
+            position_id                       BIGINT REFERENCES positions(id),
             market_report                     TEXT,
             fundamentals_report               TEXT,
             bull_history                      TEXT,
@@ -99,179 +138,146 @@ class Database:
             investment_plan                   TEXT,
             final_trade_decision              TEXT,
             pa_opinion                        TEXT,
-            created_at                        TEXT    NOT NULL
+            created_at                        TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_reports_schedule ON reports(schedule_id);
         CREATE INDEX IF NOT EXISTS idx_reports_position ON reports(position_id);
 
-        -- ④ trades: 개별 BUY/SELL 액션
         CREATE TABLE IF NOT EXISTS trades (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            position_id INTEGER NOT NULL REFERENCES positions(id),
-            report_id   INTEGER NOT NULL REFERENCES reports(id),
+            id          BIGSERIAL PRIMARY KEY,
+            position_id BIGINT NOT NULL REFERENCES positions(id),
+            report_id   BIGINT NOT NULL REFERENCES reports(id),
             action      TEXT    NOT NULL,
             shares      INTEGER NOT NULL,
-            price       REAL    NOT NULL,
-            executed_at TEXT    NOT NULL
+            price       DOUBLE PRECISION NOT NULL,
+            executed_at TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_trades_position ON trades(position_id);
         CREATE INDEX IF NOT EXISTS idx_trades_report ON trades(report_id);
 
-        -- ⑤ reflections: 청산 시 반성에이전트 산출물
         CREATE TABLE IF NOT EXISTS reflections (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            position_id INTEGER NOT NULL REFERENCES positions(id),
+            id          BIGSERIAL PRIMARY KEY,
+            position_id BIGINT NOT NULL REFERENCES positions(id),
             reflection  TEXT    NOT NULL,
             key_lessons TEXT,
             outcome     TEXT,
-            return_pct  REAL,
+            return_pct  DOUBLE PRECISION,
             market      TEXT,
             sector      TEXT,
             industry    TEXT,
-            created_at  TEXT    NOT NULL
+            created_at  TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_reflections_position ON reflections(position_id);
 
-        -- ⑥ schedule_jobs: 에러/재시도 이력
         CREATE TABLE IF NOT EXISTS schedule_jobs (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            schedule_id   INTEGER NOT NULL REFERENCES schedules(id),
-            error_type    TEXT    NOT NULL,
-            error_message TEXT    NOT NULL,
+            id            BIGSERIAL PRIMARY KEY,
+            schedule_id   BIGINT NOT NULL REFERENCES schedules(id),
+            status        TEXT    NOT NULL,
+            error_type    TEXT,
+            error_message TEXT,
             error_detail  TEXT,
-            created_at    TEXT    NOT NULL
+            created_at    TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_schedule_jobs_schedule ON schedule_jobs(schedule_id);
+
+        CREATE TABLE IF NOT EXISTS schedule_job_events (
+            id              BIGSERIAL PRIMARY KEY,
+            schedule_job_id BIGINT REFERENCES schedule_jobs(id),
+            schedule_id     BIGINT REFERENCES schedules(id),
+            ticker          TEXT,
+            agent           TEXT,
+            status          TEXT,
+            message         TEXT,
+            step            INTEGER,
+            phase           TEXT,
+            created_at      TIMESTAMPTZ NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_schedule_job_events_job ON schedule_job_events(schedule_job_id);
+        CREATE INDEX IF NOT EXISTS idx_schedule_job_events_schedule ON schedule_job_events(schedule_id);
+        CREATE INDEX IF NOT EXISTS idx_schedule_job_events_ticker ON schedule_job_events(ticker);
+        CREATE INDEX IF NOT EXISTS idx_schedule_job_events_created_at ON schedule_job_events(created_at);
+
+        CREATE INDEX IF NOT EXISTS idx_reflections_search
+            ON reflections
+            USING GIN (to_tsvector('simple', coalesce(reflection, '') || ' ' || coalesce(key_lessons, '')));
         """
 
-        # Execute schema creation
-        self.conn.executescript(schema_sql)
-        self.conn.commit()
+        for statement in (s.strip() for s in schema_sql.split(";")):
+            if not statement:
+                continue
+            ddl_conn.execute(statement)
+        if ddl_conn is self.conn:
+            self.conn.commit()
+        if ddl_conn_created:
+            ddl_conn.close()
 
-        # Ensure new columns exist on legacy databases
         self._ensure_column("schedules", "interval_days", "INTEGER NOT NULL DEFAULT 4")
         self._ensure_column("reflections", "market", "TEXT")
         self._ensure_column("reflections", "sector", "TEXT")
         self._ensure_column("reflections", "industry", "TEXT")
 
-        # FTS5 table creation (separate for better error handling)
-        try:
-            # Check if FTS5 table exists
-            cursor = self.conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='reflections_fts'"
-            )
-            if not cursor.fetchone():
-                # Create FTS5 table
-                self.conn.execute("""
-                    CREATE VIRTUAL TABLE reflections_fts USING fts5(
-                        reflection,
-                        key_lessons,
-                        content='reflections',
-                        content_rowid='id'
-                    )
-                """)
-                logger.info("Created FTS5 table: reflections_fts")
-
-            # Check if trigger exists
-            cursor = self.conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='trigger' AND name='reflections_ai'"
-            )
-            if not cursor.fetchone():
-                # Create FTS5 sync trigger
-                self.conn.execute("""
-                    CREATE TRIGGER reflections_ai AFTER INSERT ON reflections BEGIN
-                        INSERT INTO reflections_fts(rowid, reflection, key_lessons)
-                        VALUES (new.id, new.reflection, new.key_lessons);
-                    END
-                """)
-                logger.info("Created FTS5 sync trigger: reflections_ai")
-
-            self.conn.commit()
-
-        except Exception as e:
-            logger.warning(f"Failed to create FTS5 table/trigger: {e}")
-            # Continue without FTS5 (graceful degradation)
-
         logger.info("Schema initialization complete")
 
-    def get_connection(self) -> sqlite3.Connection:
+    def get_connection(self) -> psycopg.Connection:
         """Get the database connection.
 
         Returns:
-            SQLite connection object
+            psycopg connection object
         """
-        return self.conn
+        connection = getattr(self._local, "conn", None)
+        if connection is None or getattr(connection, "closed", False):
+            connection = self._create_connection()
+            self._local.conn = connection
+            return connection
+
+        try:
+            connection.execute("SELECT 1")
+        except Exception:
+            try:
+                connection.close()
+            except Exception:
+                pass
+            connection = self._create_connection()
+            self._local.conn = connection
+
+        return connection
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:
         """Add a column if missing (safe for legacy DBs)."""
         try:
-            cursor = self.conn.execute(f"PRAGMA table_info({table})")
-            existing = {row["name"] for row in cursor.fetchall()}
-            if column not in existing:
-                self.conn.execute(
-                    f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"
-                )
-                self.conn.commit()
-                logger.info(f"Added column {table}.{column}")
-        except Exception as e:
-            logger.warning(f"Failed to ensure column {table}.{column}: {e}")
+            self.conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}"
+            )
+            self.conn.commit()
+        except Exception as exc:
+            logger.warning(f"Failed to ensure column {table}.{column}: {exc}")
 
-    def execute_in_transaction(self, operations: Callable[[sqlite3.Connection], None]) -> None:
+    def execute_in_transaction(
+        self, operations: Callable[[psycopg.Connection], None]
+    ) -> None:
         """Execute operations in a single transaction.
 
         Args:
             operations: Callable that takes connection and performs operations
         """
+        connection: Optional[psycopg.Connection] = None
         try:
-            operations(self.conn)
-            self.conn.commit()
-        except Exception as e:
-            self.conn.rollback()
-            logger.error(f"Transaction failed, rolled back: {e}")
+            connection = self.get_connection()
+            operations(connection)
+            connection.commit()
+        except Exception as exc:
+            if connection:
+                connection.rollback()
+            logger.error(f"Transaction failed, rolled back: {exc}")
             raise
 
     def close(self) -> None:
         """Close the database connection."""
-        if self.conn:
-            self.conn.close()
-            logger.info("Database connection closed")
-
-
-if __name__ == "__main__":
-    # Test database initialization
-    import tempfile
-    import shutil
-
-    temp_dir = tempfile.mkdtemp()
-    print(f"Test directory: {temp_dir}")
-
-    try:
-        db_path = os.path.join(temp_dir, "test_trading.db")
-        db = Database(db_path)
-
-        # Initialize schema
-        db.init_schema()
-
-        # Test connection
-        conn = db.get_connection()
-        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
-        print(f"Created tables: {tables}")
-
-        # Test WAL mode
-        cursor = conn.execute("PRAGMA journal_mode")
-        mode = cursor.fetchone()[0]
-        print(f"Journal mode: {mode}")
-
-        # Test foreign keys
-        cursor = conn.execute("PRAGMA foreign_keys")
-        fk_enabled = cursor.fetchone()[0]
-        print(f"Foreign keys enabled: {fk_enabled == 1}")
-
-        print("\n✅ Database initialization test passed!")
-
-        db.close()
-
-    finally:
-        shutil.rmtree(temp_dir)
-        print(f"Cleaned up test directory")
+        with self._connections_lock:
+            for connection in self._connections:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            self._connections = []
+        logger.info("Database connections closed")

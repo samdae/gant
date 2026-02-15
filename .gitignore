@@ -7,3 +7,10 @@ __pycache__/
 .venv/
 .DS_Store
 node_modules
+dataflows/data_cache/
+tradingagents/dataflows/data_cache/
+tradingagents/memory/chroma/
+.python-version
+.cache/
+tradingagents.egg-info/
+.idea

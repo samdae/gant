@@ -1,13 +1,12 @@
-"""Hybrid RAG Memory using SQLite FTS5 + Vector Search with RRF Fusion.
+"""Hybrid RAG Memory using Postgres FTS + Vector Search with RRF Fusion.
 
 This module provides a memory system that combines:
-- SQLite FTS5 lexical search for keyword matching (BM25 내장)
+- Postgres FTS lexical search for keyword matching
 - Vector search (via ChromaDB with built-in ONNX embedding) for semantic matching
 - RRF (Reciprocal Rank Fusion) for combining results from both retrievers
 
 Storage:
-- SQLite reflections table: Source of truth for reflections (managed by ReflectionRepository)
-- SQLite FTS5 virtual table: Derived index for BM25 search (auto-synced via trigger)
+- Postgres reflections table: Source of truth for reflections (managed by ReflectionRepository)
 - ChromaDB: Vector index for semantic search
 """
 
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class HybridMemory:
-    """Memory system combining SQLite FTS5 lexical search and ChromaDB vector search."""
+    """Memory system combining Postgres FTS lexical search and ChromaDB vector search."""
 
     def __init__(self, name: str, config: dict = None, db=None):
         """Initialize the hybrid memory system.
@@ -34,24 +33,21 @@ class HybridMemory:
         self.name = name
         self.config = config or {}
 
-        # Get database path from config
+        # Get database URL from config
         project_dir = self.config.get("project_dir", os.path.abspath("."))
-        database_path = self.config.get(
-            "database_path",
-            os.path.join(project_dir, "memory", "trading.db")
-        )
+        database_url = self.config.get("database_path") or os.getenv("SUPABASE_DB_URL", "")
 
         # Initialize Database connection (if not provided)
         if db is None:
             from tradingagents.storage import Database
-            self.db = Database(database_path)
+            self.db = Database(database_url)
             self.db.init_schema()
             self._owns_db = True
         else:
             self.db = db
             self._owns_db = False
 
-        # Initialize ReflectionRepository for FTS5 search
+        # Initialize ReflectionRepository for FTS search
         from tradingagents.storage import ReflectionRepository
         self.reflection_repo = ReflectionRepository(self.db)
 
@@ -70,13 +66,13 @@ class HybridMemory:
         # Query tracking flag for bootstrap tagging (FR-019)
         self.last_query_had_results = False
 
-        logger.info(f"HybridMemory initialized (name={name}, FTS5 + ChromaDB)")
+        logger.info(f"HybridMemory initialized (name={name}, FTS + ChromaDB)")
 
     def _lazy_init_vector(self):
         """Lazy initialization of ChromaDB.
 
         Only initializes on first get_memories() call.
-        Graceful degradation: If ChromaDB fails, fall back to FTS5-only mode.
+        Graceful degradation: If ChromaDB fails, fall back to FTS-only mode.
         """
         if self.chroma_client is not None:
             return  # Already initialized
@@ -110,7 +106,7 @@ class HybridMemory:
         except Exception as e:
             logger.warning(
                 f"ChromaDB initialization failed, "
-                f"falling back to FTS5-only mode: {e}"
+                f"falling back to FTS-only mode: {e}"
             )
             self.chroma_available = False
 
@@ -195,7 +191,7 @@ class HybridMemory:
                 return
 
         for situation, recommendation in situations_and_advice:
-            # FR-033: Use ReflectionRepository to store (auto-syncs FTS5 via trigger)
+            # FR-033: Use ReflectionRepository to store in Postgres
             if store_sqlite:
                 try:
                     reflection_id = self.reflection_repo.create(
@@ -208,10 +204,10 @@ class HybridMemory:
                         sector=sector,
                         industry=industry,
                     )
-                    logger.info(f"Stored reflection {reflection_id} to SQLite + FTS5")
+                    logger.info(f"Stored reflection {reflection_id} to Postgres + FTS")
 
                 except Exception as e:
-                    logger.error(f"Failed to store reflection to SQLite: {e}")
+                    logger.error(f"Failed to store reflection to Postgres: {e}")
                     continue
 
             # Add to ChromaDB if available
@@ -233,7 +229,7 @@ class HybridMemory:
                 except Exception as e:
                     logger.warning(
                         f"Failed to add to ChromaDB (reflection_id={reflection_id}), "
-                        f"continuing with FTS5-only: {e}"
+                        f"continuing with FTS-only: {e}"
                     )
                     self.chroma_available = False
 
@@ -242,9 +238,9 @@ class HybridMemory:
         current_situation: str,
         n_matches: int = 1
     ) -> List[Dict[str, Any]]:
-        """Find matching recommendations using Hybrid RAG (FTS5 + Vector + RRF).
+        """Find matching recommendations using Hybrid RAG (FTS + Vector + RRF).
 
-        FR-033: Replaces rank_bm25 with SQLite FTS5.
+        FR-033: Replaces rank_bm25 with Postgres FTS.
 
         Args:
             current_situation: The current financial situation to match against
@@ -260,8 +256,8 @@ class HybridMemory:
         if not self.chroma_available and self.chroma_client is None:
             self._lazy_init_vector()
 
-        # FTS5 retrieval (BM25)
-        fts5_results = self._fts5_retrieve(current_situation, n_results=10)
+        # FTS retrieval
+        fts_results = self._fts_retrieve(current_situation, n_results=10)
 
         # Vector retrieval (if available)
         vector_results = []
@@ -269,14 +265,14 @@ class HybridMemory:
             vector_results = self._vector_retrieve(current_situation, n_results=10)
 
         # RRF fusion
-        if vector_results and fts5_results:
+        if vector_results and fts_results:
             # Hybrid mode
-            fused_results = self._rrf_fusion(fts5_results, vector_results, k=60)
-        elif fts5_results:
-            # FTS5-only fallback
-            fused_results = [(idx, score) for idx, score in fts5_results]
+            fused_results = self._rrf_fusion(fts_results, vector_results, k=60)
+        elif fts_results:
+            # FTS-only fallback
+            fused_results = [(idx, score) for idx, score in fts_results]
         elif vector_results:
-            # Vector-only fallback (rare case: FTS5 failed but vector worked)
+            # Vector-only fallback (rare case: FTS failed but vector worked)
             fused_results = [(idx, score) for idx, score in vector_results]
         else:
             # No results from either
@@ -324,27 +320,25 @@ class HybridMemory:
 
         return results
 
-    def _fts5_retrieve(
+    def _fts_retrieve(
         self,
         query: str,
         n_results: int = 10
     ) -> List[Tuple[int, float]]:
-        """Retrieve top-n reflections using SQLite FTS5 BM25.
+        """Retrieve top-n reflections using Postgres FTS.
 
         FR-033: Replaces _bm25_retrieve (rank_bm25 removal).
 
         Returns:
             List of (reflection_id, score) sorted by score desc
-            Empty list if FTS5 search fails
+            Empty list if FTS search fails
         """
         try:
             results_dicts = self.reflection_repo.search_fts(query, limit=n_results)
-            # Convert to (id, score) tuples
-            # FTS5 rank is negative (lower = better), invert for consistency
-            return [(r["id"], -r.get("bm25_rank", 0.0)) for r in results_dicts]
+            return [(r["id"], float(r.get("ts_rank", 0.0))) for r in results_dicts]
 
         except Exception as e:
-            logger.warning(f"FTS5 search failed (query: '{query}'): {e}")
+            logger.warning(f"FTS search failed (query: '{query}'): {e}")
             return []
 
     def _vector_retrieve(
@@ -427,7 +421,7 @@ class HybridMemory:
 
 if __name__ == "__main__":
     # Example usage
-    print("Testing HybridMemory with FTS5...")
+    print("Testing HybridMemory with FTS...")
 
     # Create test memory
     import tempfile
@@ -484,7 +478,7 @@ if __name__ == "__main__":
             print(f"  Metadata: {rec['metadata']}")
             print()
 
-        print("✅ HybridMemory FTS5 test completed!")
+        print("✅ HybridMemory FTS test completed!")
 
         memory.close()
 

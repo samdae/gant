@@ -9,32 +9,31 @@
 ## 0. Summary
 
 ### Goal
-Deliver a responsive, API-driven dashboard UI that visualizes trading schedules, positions, live analysis, and memory search in a single-page experience aligned to the current prototype.
+Build a Svelte-based SPA that mirrors the current prototype screens, integrates the existing API/WS, and supports PWA install for personal use.
 
 ### Non-goals
-- No backend changes beyond documented API surface.
-- No production-grade auth or multi-user management (single admin token only).
-- No real trading execution or order placement UI.
+- No SSR or server-side routing in this phase.
+- No multi-user auth or OAuth login.
+- No real trading execution UI.
 
 ### Success metrics
-- All prototype screens render with live API data.
-- Live Analysis updates within 1s of WS events.
-- Schedule CRUD succeeds with token flow and error handling.
+- All prototype screens render live data from API.
+- WS live feed updates within 1s of events.
+- Schedule CRUD works with admin token flow.
 
 ---
 
 ## 1. Scope
 
 ### In scope
-- Dashboard, Positions, Schedules, Live Analysis, Memory Search, Trade Detail, Archive screens.
-- Hash-based routing and navigation.
-- API wiring for all required endpoints including WS.
-- PWA support (manifest + service worker) for installable UI.
+- Dashboard, Positions, Schedules, Live Analysis, Memory Search, Trade Detail, Archive, Auth.
+- SPA routing + token gating for WRITE actions.
+- PWA install support (manifest + service worker).
 
 ### Out of scope
-- Full SPA framework migration (React/Vue) in this phase.
-- Server-side rendering.
-- Multi-user auth, RBAC, or OAuth login.
+- SvelteKit/SSR.
+- Backend changes beyond documented API.
+- Multi-user sessions or RBAC.
 
 ---
 
@@ -42,16 +41,17 @@ Deliver a responsive, API-driven dashboard UI that visualizes trading schedules,
 
 ```yaml
 tech_stack:
-  framework: "Vanilla JS (hash-router)"
-  language: "JavaScript (ES2020)"
-  state_management: "Lightweight in-memory store"
-  styling: "Custom CSS (docs/tradingagents/prototype/styles.css)"
-  routing: "Hash-based routing (app.js)"
-  api_client: "Fetch API"
-  form_handling: "Native form inputs"
-  build_tool: "None (static assets)"
-  testing: "TBD"
-  third_party: []
+  framework: "Svelte 4 + Vite 5"
+  language: "TypeScript 5.x"
+  state_management: "Svelte stores"
+  styling: "Custom CSS (migrated from prototype)"
+  routing: "svelte-spa-router (hash)"
+  api_client: "Fetch wrapper"
+  form_handling: "Native inputs + custom validation"
+  build_tool: "Vite"
+  testing: "Vitest (unit) / Playwright (e2e)"
+  third_party:
+    - "vite-plugin-pwa"
 ```
 
 ---
@@ -59,18 +59,33 @@ tech_stack:
 ## 1.6. Dependencies
 
 ```yaml
-package_manager: "none (static)"
+package_manager: "npm"
 project_type: "existing"
 
 dependencies:
-  - name: "fetch"
-    version: "browser built-in"
-    purpose: "REST API calls"
+  - name: "svelte"
+    version: "^4"
+    purpose: "UI framework"
     status: "approved"
 
-  - name: "WebSocket"
-    version: "browser built-in"
-    purpose: "Live analysis streaming"
+  - name: "svelte-spa-router"
+    version: "^3"
+    purpose: "hash-based routing"
+    status: "approved"
+
+  - name: "vite"
+    version: "^5"
+    purpose: "build tool"
+    status: "approved"
+
+  - name: "@sveltejs/vite-plugin-svelte"
+    version: "^3"
+    purpose: "Svelte + Vite integration"
+    status: "approved"
+
+  - name: "vite-plugin-pwa"
+    version: "^0.20"
+    purpose: "PWA manifest + service worker"
     status: "approved"
 ```
 
@@ -85,61 +100,61 @@ component_structure:
   pages:
     - path: "/"
       component: "DashboardPage"
-      file: "docs/tradingagents/prototype/index.html#page-dashboard"
+      file: "src/routes/Dashboard.svelte"
       description: "System status, KPI, positions, queue, activity"
     - path: "/positions"
       component: "PositionsPage"
-      file: "docs/tradingagents/prototype/index.html#page-positions"
+      file: "src/routes/Positions.svelte"
       description: "Active positions table/cards"
     - path: "/schedules"
       component: "SchedulesPage"
-      file: "docs/tradingagents/prototype/index.html#page-schedules"
+      file: "src/routes/Schedules.svelte"
       description: "Schedule list + CRUD modals"
     - path: "/trade/:ticker"
       component: "TradeDetailPage"
-      file: "docs/tradingagents/prototype/index.html#page-trade"
+      file: "src/routes/TradeDetail.svelte"
       description: "Position detail + latest report + history"
     - path: "/archive/:ticker"
       component: "ArchivePage"
-      file: "docs/tradingagents/prototype/index.html#page-archive"
+      file: "src/routes/Archive.svelte"
       description: "Ticker report archive"
     - path: "/live"
       component: "LiveAnalysisPage"
-      file: "docs/tradingagents/prototype/index.html#page-live"
+      file: "src/routes/Live.svelte"
       description: "Queue + WS live feed"
     - path: "/search"
       component: "MemorySearchPage"
-      file: "docs/tradingagents/prototype/index.html#page-search"
+      file: "src/routes/Search.svelte"
       description: "Hybrid memory search"
     - path: "/auth"
       component: "AuthPage"
-      file: "docs/tradingagents/prototype/index.html#page-auth"
+      file: "src/routes/Auth.svelte"
       description: "Admin token entry (localStorage)"
 
   features:
     - name: "api"
-      path: "docs/tradingagents/prototype/app.js"
+      path: "src/lib/api/"
       components:
-        - name: "ApiClient"
+        - name: "apiClient"
           type: "container"
-          description: "Fetch wrappers + auth header"
+          description: "Fetch wrapper + auth header"
     - name: "live"
-      path: "docs/tradingagents/prototype/app.js"
+      path: "src/lib/ws/"
       components:
-        - name: "LiveStream"
+        - name: "liveStream"
           type: "container"
-          description: "WebSocket connect/reconnect + event routing"
+          description: "WS connect/reconnect + event routing"
 
   shared:
     - name: "AppHeader"
-      path: "docs/tradingagents/prototype/index.html"
+      path: "src/components/AppHeader.svelte"
       props:
         - name: "currentRoute"
           type: "string"
           required: true
       description: "Top nav + logo"
     - name: "BottomNav"
-      path: "docs/tradingagents/prototype/index.html"
+      path: "src/components/BottomNav.svelte"
       props:
         - name: "currentRoute"
           type: "string"
@@ -150,10 +165,37 @@ component_structure:
 ### File Structure
 
 ```
-docs/tradingagents/prototype/
-├── index.html              # Page containers + modals
-├── styles.css              # Design tokens + layout
-└── app.js                  # Router, UI events, API wiring (to be extended)
+src/
+├── routes/
+│   ├── Dashboard.svelte
+│   ├── Positions.svelte
+│   ├── Schedules.svelte
+│   ├── TradeDetail.svelte
+│   ├── Archive.svelte
+│   ├── Live.svelte
+│   ├── Search.svelte
+│   └── Auth.svelte
+├── components/
+│   ├── AppHeader.svelte
+│   ├── BottomNav.svelte
+│   ├── Modals.svelte
+│   └── Cards.svelte
+├── lib/
+│   ├── api/
+│   │   ├── client.ts
+│   │   └── endpoints.ts
+│   ├── ws/
+│   │   └── liveStream.ts
+│   └── utils/
+├── stores/
+│   ├── auth.ts
+│   ├── ui.ts
+│   └── data.ts
+├── styles/
+│   ├── base.css
+│   └── tokens.css
+├── App.svelte
+└── main.ts
 ```
 
 ---
@@ -163,25 +205,27 @@ docs/tradingagents/prototype/
 ```yaml
 state_management:
   global_state:
-    - name: "uiState"
-      file: "docs/tradingagents/prototype/app.js"
+    - name: "authStore"
+      file: "src/stores/auth.ts"
+      state:
+        - field: "token"
+          type: "string | null"
+          initial: "localStorage.gant_admin_token || null"
+      actions:
+        - name: "setToken"
+          description: "Persist token to localStorage"
+        - name: "clearToken"
+          description: "Remove token + reset auth"
+
+    - name: "uiStore"
+      file: "src/stores/ui.ts"
       state:
         - field: "currentRoute"
           type: "string"
           initial: "/"
-        - field: "adminToken"
-          type: "string | null"
-          initial: "localStorage.gant_admin_token || null"
         - field: "liveTicker"
           type: "string | null"
           initial: null
-      actions:
-        - name: "setRoute"
-          description: "Update active page"
-        - name: "setToken"
-          description: "Persist admin token to localStorage for write calls"
-        - name: "setLiveTicker"
-          description: "Bind WS stream to ticker"
 
   server_state:
     - query_key: "dashboard"
@@ -256,6 +300,10 @@ routes:
   - path: "/auth"
     component: "AuthPage"
     auth_required: false
+
+  - path: "*"
+    component: "NotFoundRedirect"
+    auth_required: false
 ```
 
 ---
@@ -266,14 +314,14 @@ routes:
 
 ```yaml
 api_client:
-  base_url: "{API_BASE_URL}"
+  base_url: "${VITE_API_BASE_URL || http://localhost:8000}"
   timeout: 30000
   headers:
     - name: "Content-Type"
       value: "application/json"
   interceptors:
     request:
-      - "addAuthToken (if adminToken exists)"
+      - "addAuthToken (if token exists)"
     response:
       - "handleUnauthorized (clear token + redirect to /auth)"
 ```
@@ -284,55 +332,53 @@ api_client:
 api_integration:
   - endpoint: "GET /metrics"
     hook: "fetchMetrics"
-    file: "docs/tradingagents/prototype/app.js"
-    options:
-      stale_time: "30s"
+    file: "src/lib/api/endpoints.ts"
 
   - endpoint: "GET /positions/market"
     hook: "fetchPositionsMarket"
-    file: "docs/tradingagents/prototype/app.js"
+    file: "src/lib/api/endpoints.ts"
 
   - endpoint: "GET /queue"
     hook: "fetchQueue"
-    file: "docs/tradingagents/prototype/app.js"
+    file: "src/lib/api/endpoints.ts"
 
   - endpoint: "GET /activity"
     hook: "fetchActivity"
-    file: "docs/tradingagents/prototype/app.js"
+    file: "src/lib/api/endpoints.ts"
 
   - endpoint: "GET /schedules"
     hook: "fetchSchedules"
-    file: "docs/tradingagents/prototype/app.js"
+    file: "src/lib/api/endpoints.ts"
 
   - endpoint: "POST /schedules"
     hook: "createSchedule"
-    file: "docs/tradingagents/prototype/app.js"
+    file: "src/lib/api/endpoints.ts"
     invalidates:
       - "schedules"
       - "queue"
 
   - endpoint: "DELETE /schedules/{ticker}"
     hook: "deleteSchedule"
-    file: "docs/tradingagents/prototype/app.js"
+    file: "src/lib/api/endpoints.ts"
     invalidates:
       - "schedules"
       - "queue"
 
   - endpoint: "GET /reports?ticker={ticker}"
     hook: "fetchReportsByTicker"
-    file: "docs/tradingagents/prototype/app.js"
+    file: "src/lib/api/endpoints.ts"
 
   - endpoint: "GET /positions/{id}"
     hook: "fetchPositionDetail"
-    file: "docs/tradingagents/prototype/app.js"
+    file: "src/lib/api/endpoints.ts"
 
   - endpoint: "GET /search?query={query}"
     hook: "searchMemories"
-    file: "docs/tradingagents/prototype/app.js"
+    file: "src/lib/api/endpoints.ts"
 
   - endpoint: "WS /ws/analyze/{ticker}"
     hook: "connectLiveStream"
-    file: "docs/tradingagents/prototype/app.js"
+    file: "src/lib/ws/liveStream.ts"
 ```
 
 ---
@@ -341,18 +387,19 @@ api_integration:
 
 | # | Spec Ref | Feature | File | Component/Hook | Props/Params | Action | Impl |
 |---|----------|---------|------|----------------|--------------|--------|------|
-| 1 | FR-025 | Hash router + page switching | docs/tradingagents/prototype/app.js | navigate() | route, param | Map routes to page sections | [ ] |
-| 2 | FR-034 | Dashboard metrics | docs/tradingagents/prototype/app.js | fetchMetrics() | — | Render KPI cards | [ ] |
-| 3 | FR-025 | Queue status | docs/tradingagents/prototype/app.js | fetchQueue() | — | Render queue cards | [ ] |
-| 4 | FR-013 | Positions market view | docs/tradingagents/prototype/app.js | fetchPositionsMarket() | — | Render positions table/cards | [ ] |
-| 5 | FR-025 | Schedules list | docs/tradingagents/prototype/app.js | fetchSchedules() | — | Render schedule cards | [ ] |
-| 6 | FR-026 | Schedule create/delete auth | docs/tradingagents/prototype/app.js | createSchedule(), deleteSchedule() | token | Inject Bearer token | [ ] |
-| 7 | FR-025 | Live analysis stream | docs/tradingagents/prototype/app.js | connectLiveStream() | ticker | WS connect + render steps | [ ] |
-| 8 | FR-015 | Memory search | docs/tradingagents/prototype/app.js | searchMemories() | query | Render RAG results | [ ] |
-| 9 | FR-013 | Trade detail | docs/tradingagents/prototype/app.js | fetchPositionDetail() | position_id | Render trades + reports | [ ] |
-| 10 | FR-032 | Archive report list | docs/tradingagents/prototype/app.js | fetchReportsByTicker() | ticker | Render archive cards | [ ] |
-| 11 | FR-025 | Activity feed | docs/tradingagents/prototype/app.js | fetchActivity() | — | Render recent activity | [ ] |
-| 12 | FR-026 | Admin token auth page | docs/tradingagents/prototype/app.js | AuthPage | token | Persist token + redirect | [ ] |
+| 1 | FR-025 | SPA routing | src/App.svelte | Router | routes | Map routes to pages | [ ] |
+| 2 | FR-034 | Dashboard metrics | src/routes/Dashboard.svelte | fetchMetrics | — | Render KPI cards | [ ] |
+| 3 | FR-025 | Queue status | src/routes/Dashboard.svelte | fetchQueue | — | Render queue cards | [ ] |
+| 4 | FR-013 | Positions market view | src/routes/Positions.svelte | fetchPositionsMarket | — | Render positions table/cards | [ ] |
+| 5 | FR-025 | Schedules list | src/routes/Schedules.svelte | fetchSchedules | — | Render schedule cards | [ ] |
+| 6 | FR-026 | Schedule create/delete auth | src/routes/Schedules.svelte | createSchedule/deleteSchedule | token | Inject Bearer token | [ ] |
+| 7 | FR-025 | Live analysis stream | src/routes/Live.svelte | connectLiveStream | ticker | WS connect + render steps | [ ] |
+| 8 | FR-015 | Memory search | src/routes/Search.svelte | searchMemories | query | Render RAG results | [ ] |
+| 9 | FR-013 | Trade detail | src/routes/TradeDetail.svelte | fetchPositionDetail | position_id | Render trades + reports | [ ] |
+| 10 | FR-032 | Archive report list | src/routes/Archive.svelte | fetchReportsByTicker | ticker | Render archive cards | [ ] |
+| 11 | FR-025 | Activity feed | src/routes/Dashboard.svelte | fetchActivity | — | Render recent activity | [ ] |
+| 12 | FR-026 | Admin token auth page | src/routes/Auth.svelte | AuthPage | token | Persist token + redirect | [ ] |
+| 13 | FR-025 | PWA setup | public/manifest.webmanifest | — | — | Installable PWA + SW | [ ] |
 
 ---
 
@@ -362,39 +409,39 @@ api_integration:
 
 | File | Reference Purpose |
 |------|------------------|
-| docs/tradingagents/prototype/index.html | Page sections + DOM ids |
-| docs/tradingagents/prototype/styles.css | Design tokens + class names |
-| docs/tradingagents/prototype/app.js | Existing router + modal behaviors |
+| docs/tradingagents/prototype/index.html | Screen layout + copy |
+| docs/tradingagents/prototype/styles.css | Tokens + styles |
+| docs/tradingagents/prototype/app.js | Router + modal behaviors |
 
 ### Step-by-Step Implementation
 
-1. **Step 1: API client helpers**
-   - Add base URL config + token injection
-   - Add error handler to surface 401 for token modal
+1. **Scaffold Svelte app**
+   - Vite + Svelte template
+   - Add TypeScript + vite-plugin-pwa
 
-2. **Step 2: Dashboard data wiring**
-   - Fetch metrics, queue, activity, positions/market in parallel
-   - Map responses into KPI cards + tables
+2. **Base layout + styles**
+   - Port tokens + base CSS to `src/styles`
+   - Build AppHeader/BottomNav components
 
-3. **Step 3: Schedules CRUD**
-   - Wire add/delete modals to API
-   - Refresh schedules and queue on success
+3. **API client + stores**
+   - Implement `client.ts` with token injection
+   - Add auth/ui stores with localStorage sync
 
-4. **Step 4: Trade detail + archive**
-   - Resolve ticker → position_id
-   - Render reports + trade history
+4. **Routes + pages**
+   - Implement page components per ui.md
+   - Add NotFound redirect
 
-5. **Step 5: Live analysis**
-   - Connect WS to running ticker
-   - Render step/phase updates and status icons
+5. **Schedules CRUD**
+   - Form validation + error handling
+   - Token redirect on 401
 
-6. **Step 6: Memory search**
-   - Bind search input to `/search`
-   - Render outcome labels + RRF scores
+6. **Live analysis**
+   - WS connect/reconnect
+   - Step/phase rendering
 
-7. **Step 7: PWA enablement**
-   - Add `manifest.webmanifest` + icons
-   - Add `sw.js` for static asset caching (network-first for API)
+7. **PWA**
+   - Add manifest + icons
+   - Configure SW cache strategy
 
 ---
 
@@ -463,19 +510,19 @@ styling_convention:
 ## 10. Risks & Tradeoffs (Debate Conclusion)
 
 ### Chosen Option
-- Keep a lightweight static frontend (HTML/CSS/JS) to match existing prototype and reduce integration cost.
+- Svelte + Vite SPA for fast local development and minimal overhead.
 
 ### Rejected Alternatives
-- Full SPA framework migration (React/Vue) in this phase due to schedule and refactor cost.
+- SvelteKit/SSR due to unnecessary complexity for an authenticated dashboard.
 
 ### Reasoning
-- Project constraints: no existing frontend stack, prototype already matches UI requirements.
-- Best practice adoption: add minimal API abstraction and WS handling without full framework.
-- Future improvement points: migrate to Vite + TypeScript when UI expands.
+- Project constraints: personal dashboard with local backend.
+- Best practice adoption: typed API client + localStorage token sync.
+- Future improvement points: migrate to SvelteKit if public marketing pages are needed.
 
 ### Assumptions
 - **Confirmed**: Backend API surface is stable and matches ui.md endpoints.
-- **Estimated**: Single-user token handling is sufficient for initial UI.
+- **Confirmed**: Auth token stored in localStorage for persistent sessions.
 
 ---
 
@@ -485,7 +532,7 @@ styling_convention:
 
 | State | Component | Handling | User Feedback |
 |-------|-----------|----------|---------------|
-| Loading | Dashboard | Skeleton cards | "Loading metrics..." |
+| Loading | Dashboard | Skeleton cards | "Loading..." |
 | Empty | Positions | Empty state + CTA | "No active positions" |
 | Error | Schedules | Inline error + retry | "Failed to load schedules" |
 
@@ -493,15 +540,47 @@ styling_convention:
 
 | Item | Target | Measurement | Optimization |
 |------|--------|-------------|--------------|
-| LCP | < 2.5s | Lighthouse | Minimize blocking JS, preload fonts |
-| Bundle size | < 100KB | Build output | Keep static assets, no framework |
-| Re-renders | Minimal | DevTools | Update only affected DOM nodes |
+| LCP | < 2.5s | Lighthouse | Preload fonts, minimize blocking JS |
+| Bundle size | < 250KB | Build output | Lazy-load routes |
+| Re-renders | Minimal | DevTools | Use derived stores + keyed blocks |
 
 ### Accessibility
 
 | Item | Requirement | Implementation |
 |------|-------------|----------------|
-| Keyboard nav | All interactive elements | Tab order preserved, buttons focusable |
-| Screen reader | Semantic HTML + ARIA | Use role and aria-label on modals |
+| Keyboard nav | All interactive elements | Focus styles + tab order |
+| Screen reader | Semantic HTML + ARIA | aria-label for buttons/modals |
 | Color contrast | WCAG AA | Use existing token palette |
-| Focus visible | Clear focus indicator | Use outline styles in CSS |
+| Focus visible | Clear focus indicator | CSS focus-visible styles |
+
+---
+
+## 12. Additional Design Details (from Review)
+
+### Auth & Token
+- Token storage: `localStorage.gant_admin_token`
+- On 401: clear token + redirect to `/auth`
+- Token entry page: `/auth` with return redirect
+
+### Forms & Validation
+- Schedule create:
+  - `ticker`: A–Z, 1–10 chars
+  - `interval_days`: 1–365 integer
+- Errors: inline + toast
+- Submit: disable button + spinner
+
+### Routing
+- Unknown routes redirect to `/` with one-time toast
+
+### API UI States
+- All pages provide loading/empty/error states
+- Retry button on network failure
+
+### Responsive
+- Touch target >= 44px
+- Tables collapse to cards under 640px
+
+### PWA
+- `manifest.webmanifest`: name, short_name, icons, start_url, display=standalone
+- `sw.js`: static assets precache, API network-first, fallback to cached shell
+- Update: autoUpdate on new SW

@@ -47,7 +47,7 @@ class ReportRepository:
         created_at = datetime.now().isoformat()
 
         # Extract summaries (use None for missing keys)
-        connection = conn or self.conn
+        connection = conn or self.db.get_connection()
         cursor = connection.execute(
             """
             INSERT INTO reports (
@@ -58,7 +58,8 @@ class ReportRepository:
                 trader_investment_judge_decision, trader_investment_decision,
                 investment_plan, final_trade_decision, pa_opinion,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (
                 schedule_id,
@@ -82,7 +83,8 @@ class ReportRepository:
         if commit:
             connection.commit()
 
-        report_id = int(cursor.lastrowid)
+        row = cursor.fetchone()
+        report_id = int(row["id"]) if row else 0
         logger.info(f"Created report {report_id} for schedule {schedule_id}")
         return report_id
 
@@ -95,7 +97,7 @@ class ReportRepository:
         Returns:
             List of report dicts (ordered oldest to newest)
         """
-        cursor = self.conn.execute(
+        cursor = self.db.get_connection().execute(
             """
             SELECT id, schedule_id, position_id,
                    market_report, fundamentals_report,
@@ -105,7 +107,7 @@ class ReportRepository:
                    investment_plan, final_trade_decision, pa_opinion,
                    created_at
             FROM reports
-            WHERE position_id = ?
+            WHERE position_id = %s
             ORDER BY created_at ASC
             """,
             (position_id,)
@@ -122,7 +124,7 @@ class ReportRepository:
         Returns:
             Report dict or None if not found
         """
-        cursor = self.conn.execute(
+        cursor = self.db.get_connection().execute(
             """
             SELECT id, schedule_id, position_id,
                    market_report, fundamentals_report,
@@ -132,7 +134,7 @@ class ReportRepository:
                    investment_plan, final_trade_decision, pa_opinion,
                    created_at
             FROM reports
-            WHERE schedule_id = ?
+            WHERE schedule_id = %s
             """,
             (schedule_id,)
         )
@@ -155,8 +157,12 @@ if __name__ == "__main__":
         from .schedule_repo import ScheduleRepository
         from .position_repo import PositionRepository
 
-        db_path = os.path.join(temp_dir, "test_trading.db")
-        db = Database(db_path)
+        db_url = os.getenv("SUPABASE_DB_URL")
+        if not db_url:
+            print("SUPABASE_DB_URL not set; skipping test")
+            raise SystemExit(0)
+
+        db = Database(db_url)
         db.init_schema()
 
         # Create dependencies

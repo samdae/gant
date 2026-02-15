@@ -16,3 +16,4 @@ chainlit
 rich
 typer
 questionary
+psycopg[binary]

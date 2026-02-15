@@ -65,6 +65,9 @@ class TickerScheduler:
         self._analysis_queue: Optional[asyncio.Queue] = analysis_queue
         self._queue_loop: Optional[asyncio.AbstractEventLoop] = None
 
+        # Requeue guard
+        self._requeued_schedule_ids: set[int] = set()
+
         # FR-030: Initialize Database and components
         from tradingagents.storage import Database
         from tradingagents.virtual_trade import TradeManager, PortfolioAgent
@@ -106,34 +109,117 @@ class TickerScheduler:
         self._analysis_queue = queue
         self._queue_loop = loop
 
-    def _enqueue_ticker(self, ticker: str) -> None:
-        """Enqueue ticker for sequential analysis.
+    def _queue_item_ticker(self, item: Any) -> Optional[str]:
+        if isinstance(item, dict):
+            return item.get("ticker")
+        if isinstance(item, str):
+            return item
+        return None
 
-        Uses run_coroutine_threadsafe for cross-thread safety.
-        """
+    def _queue_snapshot(self) -> List[str]:
+        if not self._analysis_queue:
+            return []
+        try:
+            pending = list(getattr(self._analysis_queue, "_queue", []))
+        except Exception:
+            return []
+
+        tickers = []
+        for item in pending:
+            ticker = self._queue_item_ticker(item)
+            if ticker:
+                tickers.append(str(ticker))
+        return tickers
+
+    def _is_ticker_queued(self, ticker: str) -> bool:
+        if not self._analysis_queue:
+            return False
+        try:
+            pending = list(self._analysis_queue._queue)
+            return any(self._queue_item_ticker(item) == ticker for item in pending)
+        except Exception:
+            return False
+
+    def _enqueue_item(self, item: Dict[str, Any]) -> None:
         if not self._analysis_queue or not self._queue_loop:
             logger.error(
-                f"Analysis queue not initialized; cannot enqueue {ticker}"
+                f"Analysis queue not initialized; cannot enqueue {item.get('ticker')}"
             )
             return
 
         if not self._queue_loop.is_running():
             logger.error(
-                f"Event loop not running; cannot enqueue {ticker}"
+                f"Event loop not running; cannot enqueue {item.get('ticker')}"
             )
             return
 
-        try:
-            pending = list(self._analysis_queue._queue)
-            if ticker in pending:
-                logger.info(f"{ticker} already queued; skipping enqueue")
-                return
-        except Exception:
-            pass
+        ticker = item.get("ticker")
+        if ticker and self._is_ticker_queued(ticker):
+            logger.info(f"{ticker} already queued; skipping enqueue")
+            return
 
         asyncio.run_coroutine_threadsafe(
-            self._analysis_queue.put(ticker), self._queue_loop
+            self._analysis_queue.put(item), self._queue_loop
         )
+        logger.info(
+            "Queue enqueue: ticker=%s pending=%s",
+            ticker,
+            self._queue_snapshot(),
+        )
+
+    def enqueue_schedule(
+        self,
+        ticker: str,
+        schedule_id: Optional[int] = None,
+        error_type: Optional[str] = None,
+        error_message: Optional[str] = None,
+    ) -> Optional[int]:
+        """Create schedule/job and enqueue for analysis."""
+        if self._is_ticker_queued(ticker):
+            logger.info(f"{ticker} already queued; skipping enqueue")
+            return None
+
+        from tradingagents.storage import ScheduleRepository, ScheduleJobRepository
+
+        schedule_repo = ScheduleRepository(self.db)
+        schedule_job_repo = ScheduleJobRepository(self.db)
+
+        if schedule_id is None:
+            latest_cycle = schedule_repo.get_latest_cycle(ticker)
+            current_cycle = latest_cycle + 1
+            interval_days = self._ticker_intervals.get(ticker, 4)
+            schedule_id = schedule_repo.create(
+                ticker,
+                current_cycle,
+                interval_days=interval_days,
+            )
+
+        job_id = schedule_job_repo.create(
+            schedule_id,
+            "pending",
+            error_type=error_type,
+            error_message=error_message,
+        )
+
+        logger.info(
+            "Schedule queued: ticker=%s schedule_id=%s job_id=%s",
+            ticker,
+            schedule_id,
+            job_id,
+        )
+
+        self._enqueue_item(
+            {
+                "ticker": ticker,
+                "schedule_id": schedule_id,
+                "job_id": job_id,
+            }
+        )
+        return schedule_id
+
+    def _enqueue_ticker(self, ticker: str) -> None:
+        """APScheduler hook: enqueue ticker for analysis."""
+        self.enqueue_schedule(ticker)
 
     def add_ticker(
         self,
@@ -242,10 +328,16 @@ class TickerScheduler:
                 if hasattr(job.trigger, 'interval'):
                     interval_days = job.trigger.interval.days
 
+                next_run_time = getattr(job, "next_run_time", None)
+                if next_run_time is None:
+                    next_run_time = getattr(job, "next_fire_time", None)
+                if isinstance(next_run_time, datetime):
+                    next_run_time = next_run_time.isoformat()
+
                 schedules.append({
                     "ticker": ticker,
                     "interval_days": interval_days,
-                    "next_run_time": job.next_run_time,
+                    "next_run_time": next_run_time,
                 })
 
         return schedules
@@ -271,7 +363,12 @@ class TickerScheduler:
 
         logger.info("Self-heal scan complete")
 
-    def _run_analysis_cycle(self, ticker: str):
+    def _run_analysis_cycle(
+        self,
+        ticker: str,
+        schedule_id: Optional[int] = None,
+        schedule_job_id: Optional[int] = None,
+    ):
         """Run full analysis cycle for a ticker.
 
         Flow:
@@ -303,8 +400,46 @@ class TickerScheduler:
             return
 
         try:
-            # Run analysis cycle (P3-E: no retry)
-            self._run_analysis_cycle_impl(ticker)
+            from tradingagents.storage import ScheduleRepository, ScheduleJobRepository
+
+            schedule_repo = ScheduleRepository(self.db)
+            schedule_job_repo = ScheduleJobRepository(self.db)
+
+            if schedule_id is None:
+                latest_cycle = schedule_repo.get_latest_cycle(ticker)
+                current_cycle = latest_cycle + 1
+                interval_days = self._ticker_intervals.get(ticker, 4)
+                schedule_id = schedule_repo.create(
+                    ticker,
+                    current_cycle,
+                    interval_days=interval_days,
+                )
+
+            if schedule_job_id is None:
+                schedule_job_id = schedule_job_repo.create(schedule_id, "running")
+            else:
+                schedule_job_repo.update_status(
+                    schedule_job_id,
+                    "running",
+                    error_type=None,
+                    error_message=None,
+                    error_detail=None,
+                )
+
+            context_tokens = set_schedule_context(
+                schedule_id,
+                schedule_job_id,
+                self._log_schedule_job,
+            )
+            try:
+                # Run analysis cycle (P3-E: no retry)
+                self._run_analysis_cycle_impl(
+                    ticker,
+                    schedule_id,
+                    schedule_job_id,
+                )
+            finally:
+                reset_schedule_context(context_tokens)
 
         except Exception as e:
             logger.error(f"Analysis cycle failed for {ticker}: {e}")
@@ -313,7 +448,12 @@ class TickerScheduler:
             # Always release lock
             lock.release()
 
-    def _run_analysis_cycle_impl(self, ticker: str):
+    def _run_analysis_cycle_impl(
+        self,
+        ticker: str,
+        schedule_id: int,
+        schedule_job_id: int,
+    ):
         """Implementation of analysis cycle with DB transaction pattern.
 
         FR-030: Complete rewrite for SQLite-based storage.
@@ -358,19 +498,6 @@ class TickerScheduler:
             logger.info(f"{ticker}: Created new position {position_id}")
         else:
             position_id = active_position["id"]
-
-        # 2. Create schedule entry
-        latest_cycle = schedule_repo.get_latest_cycle(ticker)
-        current_cycle = latest_cycle + 1
-        interval_days = self._ticker_intervals.get(ticker, 4)
-        schedule_id = schedule_repo.create(
-            ticker,
-            current_cycle,
-            interval_days=interval_days,
-        )
-        schedule_repo.update_status(schedule_id, "running")
-
-        context_tokens = set_schedule_context(schedule_id, self._log_schedule_job)
 
         # 3. Get current price (with retries)
         current_price = self._get_current_price(ticker, schedule_id)
@@ -496,9 +623,12 @@ class TickerScheduler:
             def transaction_operations(conn):
                 nonlocal trade_result
                 # 9. Update schedule status
-                schedule_repo.update_status(
-                    schedule_id,
+                schedule_job_repo.update_status(
+                    schedule_job_id,
                     "done",
+                    error_type=None,
+                    error_message=None,
+                    error_detail=None,
                     commit=False,
                     conn=conn,
                 )
@@ -574,12 +704,6 @@ class TickerScheduler:
                     )
                     logger.info(f"{ticker}: Reflection complete")
                 except Exception as e:
-                    schedule_job_repo.create(
-                        schedule_id,
-                        "reflection_failure",
-                        f"Reflection failed: {e}",
-                        traceback.format_exc(),
-                    )
                     logger.error(f"{ticker}: Reflection failed: {e}")
                     reflection_result = None
 
@@ -630,76 +754,54 @@ class TickerScheduler:
                         )
                         logger.info(f"{ticker}: Reflection stored to ChromaDB")
                     except Exception as e:
-                        schedule_job_repo.create(
-                            schedule_id,
-                            "reflection_store_failure",
-                            f"ChromaDB storage failed: {e}",
-                            traceback.format_exc(),
-                        )
                         logger.warning(f"{ticker}: ChromaDB storage failed: {e}")
 
             logger.info(f"{ticker}: Analysis cycle complete")
 
         except DecisionParseError as e:
-            schedule_job_repo.create(
-                schedule_id,
-                "parse_failure",
-                str(e),
-                e.raw_text or traceback.format_exc(),
-            )
-            schedule_repo.update_status(
-                schedule_id,
+            schedule_job_repo.update_status(
+                schedule_job_id,
                 "failed",
+                error_type="parse_failure",
                 error_message=str(e)[:500],
+                error_detail=e.raw_text or traceback.format_exc(),
             )
             self._requeue_schedule(schedule_id, ticker, "parse_failure")
             logger.error(f"{ticker}: Parse failure: {e}")
             raise
         except DataVendorError as e:
-            schedule_job_repo.create(
-                schedule_id,
-                "vendor_failure",
-                str(e),
-                str(getattr(e, "details", None)) or traceback.format_exc(),
-            )
-            schedule_repo.update_status(
-                schedule_id,
+            schedule_job_repo.update_status(
+                schedule_job_id,
                 "failed",
+                error_type="vendor_failure",
                 error_message=str(e)[:500],
+                error_detail=str(getattr(e, "details", None)) or traceback.format_exc(),
             )
             logger.error(f"{ticker}: Data vendor failure: {e}")
             raise
         except AgentExecutionError as e:
-            schedule_job_repo.create(
-                schedule_id,
-                "agent_failure",
-                str(e),
-                traceback.format_exc(),
-            )
-            schedule_repo.update_status(
-                schedule_id,
+            schedule_job_repo.update_status(
+                schedule_job_id,
                 "failed",
+                error_type="agent_failure",
                 error_message=str(e)[:500],
+                error_detail=traceback.format_exc(),
             )
             self._requeue_schedule(schedule_id, ticker, "agent_failure")
             logger.error(f"{ticker}: Agent failure: {e}")
             raise
         except Exception as e:
-            schedule_job_repo.create(
-                schedule_id,
-                "analysis_failure",
-                str(e),
-                traceback.format_exc(),
-            )
-            schedule_repo.update_status(
-                schedule_id,
+            schedule_job_repo.update_status(
+                schedule_job_id,
                 "failed",
+                error_type="analysis_failure",
                 error_message=str(e)[:500],
+                error_detail=traceback.format_exc(),
             )
             logger.error(f"{ticker}: Analysis cycle failed: {e}")
             raise
         finally:
-            reset_schedule_context(context_tokens)
+            pass
 
     def _log_schedule_job(
         self,
@@ -712,35 +814,30 @@ class TickerScheduler:
 
         try:
             repo = ScheduleJobRepository(self.db)
-            repo.create(
+            repo.update_latest_by_schedule(
                 schedule_id,
-                error_type,
-                error_message,
-                error_detail,
+                error_type=error_type,
+                error_message=error_message,
+                error_detail=error_detail,
             )
         except Exception as e:
             logger.warning(f"Failed to log schedule_job: {e}")
 
     def _requeue_schedule(self, schedule_id: int, ticker: str, reason: str) -> bool:
-        from tradingagents.storage import ScheduleJobRepository
-
         try:
-            repo = ScheduleJobRepository(self.db)
-            existing = repo.list_by_schedule(schedule_id)
-            requeue_count = len([j for j in existing if j.get("error_type") == "requeue"])
-            if requeue_count >= 1:
+            if schedule_id in self._requeued_schedule_ids:
                 logger.info(
                     f"{ticker}: Requeue skipped (already requeued once)"
                 )
                 return False
 
-            repo.create(
-                schedule_id,
-                "requeue",
-                f"Requeued after {reason}",
-                None,
+            self._requeued_schedule_ids.add(schedule_id)
+            self.enqueue_schedule(
+                ticker,
+                schedule_id=schedule_id,
+                error_type="requeue",
+                error_message=f"Requeued after {reason}",
             )
-            self._enqueue_ticker(ticker)
             logger.info(f"{ticker}: Requeued after {reason}")
             return True
         except Exception as e:

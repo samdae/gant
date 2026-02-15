@@ -150,10 +150,35 @@ async def get_schedules(
     if not scheduler:
         raise HTTPException(status_code=503, detail="Scheduler not initialized")
 
-    schedules = scheduler.list_schedules()
+    from tradingagents.storage import ScheduleConfigRepository
+    schedule_config_repo = ScheduleConfigRepository(scheduler.db)
+
+    configs = schedule_config_repo.get_all()
     start = cursor or 0
     end = start + limit
-    return schedules[start:end]
+
+    jobs = {job.id: job for job in scheduler.scheduler.get_jobs()} if scheduler else {}
+    results = []
+    for cfg in configs[start:end]:
+        ticker = cfg["ticker"]
+        job = jobs.get(f"ticker_{ticker}")
+        next_run_time = None
+        if job:
+            next_run_time = getattr(job, "next_run_time", None) or getattr(
+                job, "next_fire_time", None
+            )
+            if isinstance(next_run_time, datetime):
+                next_run_time = next_run_time.isoformat()
+
+        results.append(
+            {
+                "ticker": ticker,
+                "interval_days": cfg["interval_days"],
+                "next_run_time": next_run_time,
+            }
+        )
+
+    return results
 
 
 @router.post("/schedules", response_model=dict, tags=["Schedules"])
@@ -168,14 +193,17 @@ async def create_schedule(req: ScheduleRequest, _: bool = Depends(check_admin_to
         raise HTTPException(status_code=503, detail="Scheduler not initialized")
 
     # Check for duplicate
-    existing = scheduler.list_schedules()
-    if any(s["ticker"] == req.ticker for s in existing):
-        raise HTTPException(
-            status_code=409, detail=f"Schedule already exists for {req.ticker}"
-        )
+    from tradingagents.storage import ScheduleConfigRepository
+    schedule_config_repo = ScheduleConfigRepository(scheduler.db)
 
-    # Add ticker
+    existing = schedule_config_repo.get_by_ticker(req.ticker)
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Schedule already exists for {req.ticker}")
+
+    # Persist schedule config and add ticker
+    schedule_config_repo.create(req.ticker, req.interval_days)
     scheduler.add_ticker(req.ticker, req.interval_days)
+    scheduler.enqueue_schedule(req.ticker)
 
     return {"message": f"Schedule created for {req.ticker}"}
 
@@ -191,12 +219,16 @@ async def delete_schedule(ticker: str, _: bool = Depends(check_admin_token)):
         raise HTTPException(status_code=503, detail="Scheduler not initialized")
 
     # Check existence
-    existing = scheduler.list_schedules()
-    if not any(s["ticker"] == ticker for s in existing):
+    from tradingagents.storage import ScheduleConfigRepository
+    schedule_config_repo = ScheduleConfigRepository(scheduler.db)
+
+    existing = schedule_config_repo.get_by_ticker(ticker)
+    if not existing:
         raise HTTPException(status_code=404, detail=f"Schedule not found for {ticker}")
 
     # Remove from scheduler
     scheduler.remove_ticker(ticker)
+    schedule_config_repo.delete(ticker)
 
     # FR-025: Remove from queue if present
     from tradingagents.scheduler.ticker_scheduler import analysis_queue
@@ -207,7 +239,12 @@ async def delete_schedule(ticker: str, _: bool = Depends(check_admin_token)):
         while not analysis_queue.empty():
             try:
                 item = analysis_queue.get_nowait()
-                if item != ticker:
+                if isinstance(item, dict):
+                    item_ticker = item.get("ticker")
+                else:
+                    item_ticker = item
+
+                if item_ticker != ticker:
                     remaining.append(item)
                 analysis_queue.task_done()
             except Exception:
@@ -249,22 +286,21 @@ async def get_positions(
     if status:
         if status not in ["active", "closed"]:
             raise HTTPException(status_code=400, detail="Invalid status filter")
-        where_clauses.append("status = ?")
+        where_clauses.append("status = %s")
         params.append(status)
 
     if cursor:
-        where_clauses.append("id < ?")
+        where_clauses.append("id < %s")
         params.append(cursor)
 
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
 
-    query += " ORDER BY id DESC LIMIT ?"
+    query += " ORDER BY id DESC LIMIT %s"
     params.append(limit)
 
-    cursor_obj = scheduler.db.conn.execute(query, tuple(params))
-    columns = [desc[0] for desc in cursor_obj.description]
-    positions = [dict(zip(columns, row)) for row in cursor_obj.fetchall()]
+    cursor_obj = scheduler.db.get_connection().execute(query, tuple(params))
+    positions = [dict(row) for row in cursor_obj.fetchall()]
 
     return positions
 
@@ -276,7 +312,7 @@ async def get_positions_market():
     if not scheduler:
         raise HTTPException(status_code=503, detail="Scheduler not initialized")
 
-    cursor_obj = scheduler.db.conn.execute(
+    cursor_obj = scheduler.db.get_connection().execute(
         """
         SELECT id, ticker, shares, avg_cost
         FROM positions
@@ -327,20 +363,21 @@ async def get_metrics():
 
     as_of = datetime.now().isoformat()
 
-    active_positions = scheduler.db.conn.execute(
-        "SELECT COUNT(*) FROM positions WHERE status = 'active'"
-    ).fetchone()[0]
-    closed_positions = scheduler.db.conn.execute(
-        "SELECT COUNT(*) FROM positions WHERE status = 'closed'"
-    ).fetchone()[0]
-    wins = scheduler.db.conn.execute(
-        "SELECT COUNT(*) FROM positions WHERE status = 'closed' AND return_pct > 0"
-    ).fetchone()[0]
-    losses = scheduler.db.conn.execute(
-        "SELECT COUNT(*) FROM positions WHERE status = 'closed' AND return_pct <= 0"
-    ).fetchone()[0]
+    conn = scheduler.db.get_connection()
+    active_positions = conn.execute(
+        "SELECT COUNT(*) AS count FROM positions WHERE status = 'active'"
+    ).fetchone()["count"]
+    closed_positions = conn.execute(
+        "SELECT COUNT(*) AS count FROM positions WHERE status = 'closed'"
+    ).fetchone()["count"]
+    wins = conn.execute(
+        "SELECT COUNT(*) AS count FROM positions WHERE status = 'closed' AND return_pct > 0"
+    ).fetchone()["count"]
+    losses = conn.execute(
+        "SELECT COUNT(*) AS count FROM positions WHERE status = 'closed' AND return_pct <= 0"
+    ).fetchone()["count"]
 
-    cursor_obj = scheduler.db.conn.execute(
+    cursor_obj = scheduler.db.get_connection().execute(
         "SELECT ticker, shares, avg_cost FROM positions WHERE status = 'active'"
     )
     rows = [dict(row) for row in cursor_obj.fetchall()]
@@ -401,16 +438,16 @@ async def get_activity(
         JOIN positions p ON t.position_id = p.id
         JOIN reports r ON t.report_id = r.id
         JOIN schedules s ON r.schedule_id = s.id
-        WHERE t.executed_at >= ?
+        WHERE t.executed_at >= %s
     """
     trade_params: List[Any] = [since_ts]
     if ticker:
-        trade_query += " AND p.ticker = ?"
+        trade_query += " AND p.ticker = %s"
         trade_params.append(ticker)
-    trade_query += " ORDER BY t.executed_at DESC LIMIT ?"
+    trade_query += " ORDER BY t.executed_at DESC LIMIT %s"
     trade_params.append(limit)
 
-    trade_rows = scheduler.db.conn.execute(
+    trade_rows = scheduler.db.get_connection().execute(
         trade_query, tuple(trade_params)
     ).fetchall()
 
@@ -440,16 +477,16 @@ async def get_activity(
         FROM reports r
         JOIN schedules s ON r.schedule_id = s.id
         LEFT JOIN trades t ON t.report_id = r.id
-        WHERE t.id IS NULL AND r.created_at >= ?
+        WHERE t.id IS NULL AND r.created_at >= %s
     """
     report_params: List[Any] = [since_ts]
     if ticker:
-        report_query += " AND s.ticker = ?"
+        report_query += " AND s.ticker = %s"
         report_params.append(ticker)
-    report_query += " ORDER BY r.created_at DESC LIMIT ?"
+    report_query += " ORDER BY r.created_at DESC LIMIT %s"
     report_params.append(limit)
 
-    report_rows = scheduler.db.conn.execute(
+    report_rows = scheduler.db.get_connection().execute(
         report_query, tuple(report_params)
     ).fetchall()
 
@@ -538,26 +575,25 @@ async def get_reports(
     where_clauses: List[str] = []
 
     if ticker:
-        where_clauses.append("s.ticker = ?")
+        where_clauses.append("s.ticker = %s")
         params.append(ticker)
 
     if position_id:
-        where_clauses.append("r.position_id = ?")
+        where_clauses.append("r.position_id = %s")
         params.append(position_id)
 
     if cursor:
-        where_clauses.append("r.id < ?")
+        where_clauses.append("r.id < %s")
         params.append(cursor)
 
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
 
-    query += " ORDER BY r.id DESC LIMIT ?"
+    query += " ORDER BY r.id DESC LIMIT %s"
     params.append(limit)
 
-    cursor_obj = scheduler.db.conn.execute(query, tuple(params))
-    columns = [desc[0] for desc in cursor_obj.description]
-    reports = [dict(zip(columns, row)) for row in cursor_obj.fetchall()]
+    cursor_obj = scheduler.db.get_connection().execute(query, tuple(params))
+    reports = [dict(row) for row in cursor_obj.fetchall()]
     return reports
 
 
@@ -581,22 +617,25 @@ async def get_ticker_cycles(
     schedule_repo = ScheduleRepository(scheduler.db)
     
     # Get schedules for ticker with cursor pagination
-    query = "SELECT * FROM schedules WHERE ticker = ?"
+    query = """
+        SELECT id, ticker, interval_days, scheduled_cycle, created_at
+        FROM schedules
+        WHERE ticker = %s
+    """
     params: List[Any] = [ticker]
 
     if cursor:
-        query += " AND id < ?"
+        query += " AND id < %s"
         params.append(cursor)
 
-    query += " ORDER BY id DESC LIMIT ?"
+    query += " ORDER BY id DESC LIMIT %s"
     params.append(limit)
 
-    cursor_obj = scheduler.db.conn.execute(query, tuple(params))
-    columns = [desc[0] for desc in cursor_obj.description]
-    cycles = [dict(zip(columns, row)) for row in cursor_obj.fetchall()]
+    cursor_obj = scheduler.db.get_connection().execute(query, tuple(params))
+    cycles = [dict(row) for row in cursor_obj.fetchall()]
     
     if not cycles:
-        raise HTTPException(status_code=404, detail=f"No cycles found for {ticker}")
+        return []
     
     return cycles
 
@@ -626,22 +665,21 @@ async def get_reflections(
     if outcome:
         if outcome not in ["win", "loss"]:
             raise HTTPException(status_code=400, detail="Invalid outcome filter")
-        where_clauses.append("outcome = ?")
+        where_clauses.append("outcome = %s")
         params.append(outcome)
 
     if cursor:
-        where_clauses.append("id < ?")
+        where_clauses.append("id < %s")
         params.append(cursor)
 
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
     
-    query += " ORDER BY id DESC LIMIT ?"
+    query += " ORDER BY id DESC LIMIT %s"
     params.append(limit)
     
-    cursor_obj = scheduler.db.conn.execute(query, tuple(params))
-    columns = [desc[0] for desc in cursor_obj.description]
-    reflections = [dict(zip(columns, row)) for row in cursor_obj.fetchall()]
+    cursor_obj = scheduler.db.get_connection().execute(query, tuple(params))
+    reflections = [dict(row) for row in cursor_obj.fetchall()]
     
     return reflections
 
@@ -652,7 +690,7 @@ async def search_memories(
     query: str = Query(..., description="Search query"),
     limit: int = Query(5, ge=1, le=20)
 ):
-    """Hybrid RAG search (ChromaDB + FTS5) (PUBLIC).
+    """Hybrid RAG search (ChromaDB + FTS) (PUBLIC).
     
     Query params:
         query: Search text
@@ -669,7 +707,23 @@ async def search_memories(
     # Use HybridMemory for search
     try:
         results = graph.memory.get_memories(query, n_matches=limit)
-        return results
+    return results
+
+
+@router.get("/live/{ticker}/events", response_model=List[dict], tags=["Live"])
+async def get_live_events(
+    ticker: str,
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Get recent live events for a ticker (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.storage import ScheduleEventRepository
+
+    repo = ScheduleEventRepository(scheduler.db)
+    return repo.list_by_ticker(ticker, limit=limit)
     except Exception as e:
         logger.error(f"Search failed: {e}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
@@ -683,15 +737,20 @@ async def retry_failed_schedule(ticker: str, _: bool = Depends(check_admin_token
     if not scheduler:
         raise HTTPException(status_code=503, detail="Scheduler not initialized")
     
-    from tradingagents.storage import ScheduleRepository
+    from tradingagents.storage import ScheduleRepository, ScheduleJobRepository
     schedule_repo = ScheduleRepository(scheduler.db)
+    schedule_job_repo = ScheduleJobRepository(scheduler.db)
     
     schedules = schedule_repo.get_by_ticker(ticker)
     if not schedules:
         raise HTTPException(status_code=404, detail=f"No schedule found for {ticker}")
 
     latest_schedule = schedules[0]
-    latest_status = latest_schedule.get("status")
+    latest_job = schedule_job_repo.get_latest_by_schedule(latest_schedule["id"])
+    if not latest_job:
+        raise HTTPException(status_code=404, detail=f"No schedule job found for {ticker}")
+
+    latest_status = latest_job.get("status")
 
     if latest_status in ["pending", "running"]:
         raise HTTPException(
@@ -712,8 +771,12 @@ async def retry_failed_schedule(ticker: str, _: bool = Depends(check_admin_token
         if not analysis_queue:
             raise HTTPException(status_code=503, detail="Analysis queue not initialized")
 
-        schedule_repo.update_status(latest_schedule["id"], "pending")
-        analysis_queue.put_nowait(ticker)
+        scheduler.enqueue_schedule(
+            ticker,
+            schedule_id=latest_schedule["id"],
+            error_type="requeue",
+            error_message="Re-enqueued by retry",
+        )
         logger.info(f"Re-enqueued failed schedule: {ticker}")
         return {"message": f"Re-enqueued {ticker} for retry"}
     except asyncio.QueueFull:
@@ -732,7 +795,14 @@ async def get_queue_status():
     if analysis_queue and not analysis_queue.empty():
         # Peek without removing (approximation)
         queue_any: Any = analysis_queue
-        pending = list(getattr(queue_any, "_queue", []))
+        raw_pending = list(getattr(queue_any, "_queue", []))
+        for item in raw_pending:
+            if isinstance(item, dict):
+                ticker = item.get("ticker")
+            else:
+                ticker = item
+            if ticker:
+                pending.append(ticker)
 
     return QueueStatusResponse(
         running=running,
@@ -752,7 +822,10 @@ async def health_check():
     
     scheduler_running = scheduler is not None and scheduler.is_running()
     queue_length = analysis_queue.qsize() if analysis_queue else 0
-    schedules_count = len(scheduler.list_schedules()) if scheduler else 0
+    schedules_count = 0
+    if scheduler:
+        from tradingagents.storage import ScheduleConfigRepository
+        schedules_count = len(ScheduleConfigRepository(scheduler.db).get_all())
     uptime = time.time() - app_module._app_start_time
 
     return HealthResponse(

@@ -383,8 +383,12 @@ if __name__ == "__main__":
         import os
         from tradingagents.storage import Database
 
-        db_path = os.path.join(temp_dir, "test_trading.db")
-        db = Database(db_path)
+        db_url = os.getenv("SUPABASE_DB_URL")
+        if not db_url:
+            print("SUPABASE_DB_URL not set; skipping test")
+            raise SystemExit(0)
+
+        db = Database(db_url)
         db.init_schema()
 
         manager = TradeManager(db)

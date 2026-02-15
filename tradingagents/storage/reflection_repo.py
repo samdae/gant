@@ -1,4 +1,4 @@
-"""Reflection repository for CRUD operations on reflections table and FTS5 search."""
+"""Reflection repository for CRUD operations on reflections table and FTS search."""
 
 import logging
 from typing import Dict, Any, List, Optional
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReflectionRepository:
-    """Repository for reflections table CRUD operations + FTS5 search."""
+    """Repository for reflections table CRUD operations + FTS search."""
 
     def __init__(self, db: Database):
         """Initialize repository with database connection.
@@ -46,17 +46,18 @@ class ReflectionRepository:
         Returns:
             Reflection ID
 
-        Note: FTS5 sync happens automatically via trigger
+        Note: FTS is backed by Postgres tsvector index
         """
         created_at = datetime.now().isoformat()
 
-        connection = conn or self.conn
+        connection = conn or self.db.get_connection()
         cursor = connection.execute(
             """
             INSERT INTO reflections (
                 position_id, reflection, key_lessons, outcome, return_pct,
                 market, sector, industry, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (
                 position_id, reflection, key_lessons, outcome, return_pct,
@@ -66,7 +67,8 @@ class ReflectionRepository:
         if commit:
             connection.commit()
 
-        reflection_id = int(cursor.lastrowid)
+        row = cursor.fetchone()
+        reflection_id = int(row["id"]) if row else 0
         logger.info(
             f"Created reflection {reflection_id} for position {position_id} "
             f"(outcome={outcome}, return={return_pct:.2f}%)"
@@ -76,7 +78,7 @@ class ReflectionRepository:
     def get_by_id(self, reflection_id: int) -> Optional[Dict[str, Any]]:
         """Get reflection by its own ID.
 
-        P1-D: Used by HybridMemory.get_memories() to look up FTS5/vector results.
+        P1-D: Used by HybridMemory.get_memories() to look up FTS/vector results.
 
         Args:
             reflection_id: Reflection ID (primary key)
@@ -84,12 +86,12 @@ class ReflectionRepository:
         Returns:
             Reflection dict or None if not found
         """
-        cursor = self.conn.execute(
+        cursor = self.db.get_connection().execute(
             """
             SELECT id, position_id, reflection, key_lessons, outcome, return_pct,
                    market, sector, industry, created_at
             FROM reflections
-            WHERE id = ?
+            WHERE id = %s
             """,
             (reflection_id,)
         )
@@ -106,12 +108,12 @@ class ReflectionRepository:
         Returns:
             Reflection dict or None if not found
         """
-        cursor = self.conn.execute(
+        cursor = self.db.get_connection().execute(
             """
             SELECT id, position_id, reflection, key_lessons, outcome, return_pct,
                    market, sector, industry, created_at
             FROM reflections
-            WHERE position_id = ?
+            WHERE position_id = %s
             """,
             (position_id,)
         )
@@ -120,40 +122,41 @@ class ReflectionRepository:
         return dict(row) if row else None
 
     def search_fts(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Search reflections using FTS5 BM25.
+        """Search reflections using Postgres FTS.
 
         Args:
-            query: Search query (FTS5 syntax)
+            query: Search query
             limit: Maximum number of results (default 5)
 
         Returns:
             List of reflection dicts with BM25 rank scores
-            Empty list if FTS5 not available or query fails
+            Empty list if FTS not available or query fails
         """
         try:
-            # FTS5 MATCH query with BM25 rank
-            cursor = self.conn.execute(
+            cursor = self.db.get_connection().execute(
                 """
                 SELECT r.id, r.position_id, r.reflection, r.key_lessons,
                        r.outcome, r.return_pct, r.market, r.sector, r.industry,
                        r.created_at,
-                       fts.rank as bm25_rank
-                FROM reflections_fts fts
-                JOIN reflections r ON fts.rowid = r.id
-                WHERE reflections_fts MATCH ?
-                ORDER BY fts.rank
-                LIMIT ?
+                       ts_rank_cd(
+                           to_tsvector('simple', coalesce(r.reflection, '') || ' ' || coalesce(r.key_lessons, '')),
+                           plainto_tsquery('simple', %s)
+                       ) AS ts_rank
+                FROM reflections r
+                WHERE to_tsvector('simple', coalesce(r.reflection, '') || ' ' || coalesce(r.key_lessons, ''))
+                      @@ plainto_tsquery('simple', %s)
+                ORDER BY ts_rank DESC
+                LIMIT %s
                 """,
-                (query, limit)
+                (query, query, limit)
             )
 
             results = [dict(row) for row in cursor.fetchall()]
-            logger.info(f"FTS5 search for '{query}': found {len(results)} results")
+            logger.info(f"FTS search for '{query}': found {len(results)} results")
             return results
 
         except Exception as e:
-            logger.warning(f"FTS5 search failed (query: '{query}'): {e}")
-            # Graceful degradation: return empty list
+            logger.warning(f"FTS search failed (query: '{query}'): {e}")
             return []
 
 
@@ -170,8 +173,12 @@ if __name__ == "__main__":
         from .database import Database
         from .position_repo import PositionRepository
 
-        db_path = os.path.join(temp_dir, "test_trading.db")
-        db = Database(db_path)
+        db_url = os.getenv("SUPABASE_DB_URL")
+        if not db_url:
+            print("SUPABASE_DB_URL not set; skipping test")
+            raise SystemExit(0)
+
+        db = Database(db_url)
         db.init_schema()
 
         # Create position
@@ -209,15 +216,15 @@ if __name__ == "__main__":
         print(f"   Outcome: {reflection['outcome']}, Return: {reflection['return_pct']}%")
         print(f"   Key lessons: {reflection['key_lessons'][:50]}...")
 
-        # Test FTS5 search
-        print("\n3. Testing FTS5 search...")
+        # Test FTS search
+        print("\n3. Testing FTS search...")
         results = repo.search_fts("momentum RSI", limit=5)
         if results:
             print(f"   Found {len(results)} results")
             for r in results:
                 print(f"   - Reflection {r['id']}: rank={r.get('bm25_rank', 'N/A')}")
         else:
-            print("   No results (FTS5 might not be available)")
+            print("   No results (FTS might not be available)")
 
         print("\n✅ ReflectionRepository test passed!")
 

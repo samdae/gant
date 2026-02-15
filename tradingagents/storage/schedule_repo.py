@@ -1,7 +1,7 @@
 """Schedule repository for CRUD operations on schedules table."""
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime
 
 from .database import Database
@@ -33,52 +33,25 @@ class ScheduleRepository:
         """
         created_at = datetime.now().isoformat()
 
-        connection = conn or self.conn
+        connection = conn or self.db.get_connection()
         cursor = connection.execute(
             """
-            INSERT INTO schedules (ticker, interval_days, scheduled_cycle, status, created_at)
-            VALUES (?, ?, ?, 'pending', ?)
+            INSERT INTO schedules (ticker, interval_days, scheduled_cycle, created_at)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
             """,
             (ticker, interval_days, cycle, created_at)
         )
         if commit:
             connection.commit()
 
-        schedule_id = cursor.lastrowid
+        row = cursor.fetchone()
+        schedule_id = row["id"] if row else None
         if schedule_id is None:
             raise RuntimeError("Failed to create schedule entry")
         schedule_id = int(schedule_id)
         logger.info(f"Created schedule {schedule_id} for {ticker} (cycle {cycle})")
         return schedule_id
-
-    def update_status(
-        self,
-        schedule_id: int,
-        status: str,
-        error_message: Optional[str] = None,
-        commit: bool = True,
-        conn=None,
-    ) -> None:
-        """Update schedule status.
-
-        Args:
-            schedule_id: Schedule ID
-            status: New status (pending/running/done/failed)
-            error_message: Optional error message (for failed status)
-        """
-        connection = conn or self.conn
-        connection.execute(
-            """
-            UPDATE schedules
-            SET status = ?, error_message = ?
-            WHERE id = ?
-            """,
-            (status, error_message, schedule_id)
-        )
-        if commit:
-            connection.commit()
-
-        logger.info(f"Updated schedule {schedule_id} status to {status}")
 
     def get_by_ticker(self, ticker: str) -> List[Dict[str, Any]]:
         """Get all schedules for a ticker.
@@ -89,11 +62,11 @@ class ScheduleRepository:
         Returns:
             List of schedule dicts
         """
-        cursor = self.conn.execute(
+        cursor = self.db.get_connection().execute(
             """
-            SELECT id, ticker, interval_days, scheduled_cycle, status, error_message, created_at
+            SELECT id, ticker, interval_days, scheduled_cycle, created_at
             FROM schedules
-            WHERE ticker = ?
+            WHERE ticker = %s
             ORDER BY created_at DESC
             """,
             (ticker,)
@@ -110,40 +83,19 @@ class ScheduleRepository:
         Returns:
             Latest cycle number (0 if no schedules exist)
         """
-        cursor = self.conn.execute(
+        cursor = self.db.get_connection().execute(
             """
             SELECT MAX(scheduled_cycle) as max_cycle
             FROM schedules
-            WHERE ticker = ?
+            WHERE ticker = %s
             """,
             (ticker,)
         )
 
         result = cursor.fetchone()
-        max_cycle = result[0] if result[0] is not None else 0
+        max_cycle = result["max_cycle"] if result and result["max_cycle"] is not None else 0
 
         return max_cycle
-
-    def get_by_status(self, statuses: List[str]) -> List[Dict[str, Any]]:
-        """Get schedules by status (for recovery on server restart).
-
-        Args:
-            statuses: List of status values (e.g., ['pending', 'running'])
-
-        Returns:
-            List of schedule dicts
-        """
-        placeholders = ', '.join(['?'] * len(statuses))
-        query = f"""
-            SELECT id, ticker, interval_days, scheduled_cycle, status, error_message, created_at
-            FROM schedules
-            WHERE status IN ({placeholders})
-            ORDER BY created_at ASC
-        """
-
-        cursor = self.conn.execute(query, statuses)
-        return [dict(row) for row in cursor.fetchall()]
-
 
 if __name__ == "__main__":
     # Test schedule repository
@@ -157,8 +109,12 @@ if __name__ == "__main__":
         import os
         from .database import Database
 
-        db_path = os.path.join(temp_dir, "test_trading.db")
-        db = Database(db_path)
+        db_url = os.getenv("SUPABASE_DB_URL")
+        if not db_url:
+            print("SUPABASE_DB_URL not set; skipping test")
+            raise SystemExit(0)
+
+        db = Database(db_url)
         db.init_schema()
 
         repo = ScheduleRepository(db)
@@ -176,22 +132,12 @@ if __name__ == "__main__":
         print(f"   Latest cycle: {latest_cycle}")
         assert latest_cycle == 2, f"Expected 2, got {latest_cycle}"
 
-        # Test update_status
-        print("\n3. Updating status...")
-        repo.update_status(schedule_id_1, "done")
-        repo.update_status(schedule_id_2, "failed", "Test error message")
-
         # Test get_by_ticker
-        print("\n4. Getting schedules for NVDA...")
+        print("\n3. Getting schedules for NVDA...")
         schedules = repo.get_by_ticker("NVDA")
         print(f"   Found {len(schedules)} schedules")
         for s in schedules:
-            print(f"   - Schedule {s['id']}: cycle={s['scheduled_cycle']}, status={s['status']}")
-
-        # Test get_by_status
-        print("\n5. Getting schedules by status...")
-        pending_schedules = repo.get_by_status(['pending', 'running'])
-        print(f"   Found {len(pending_schedules)} pending/running schedules")
+            print(f"   - Schedule {s['id']}: cycle={s['scheduled_cycle']}")
 
         print("\n✅ ScheduleRepository test passed!")
 

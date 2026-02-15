@@ -31,6 +31,22 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.scheduler.ticker_scheduler import TickerScheduler
 import tradingagents.scheduler.ticker_scheduler as ticker_scheduler_module
 
+def _configure_logging() -> None:
+    level_name = os.getenv("TRADINGAGENTS_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        force=True,
+    )
+    logging.getLogger("uvicorn").setLevel(level)
+    logging.getLogger("uvicorn.error").setLevel(level)
+    logging.getLogger("uvicorn.access").setLevel(level)
+
+
+_configure_logging()
+
 logger = logging.getLogger(__name__)
 
 # Global instances (initialized in lifespan)
@@ -71,7 +87,14 @@ def _get_cors_origins() -> List[str]:
     return origins or ["*"]
 
 
-def broadcast_status(ticker: str, agent: str, status: str, message: str):
+def broadcast_status(
+    ticker: str,
+    agent: str,
+    status: str,
+    message: str,
+    schedule_id: Optional[int] = None,
+    schedule_job_id: Optional[int] = None,
+):
     """Thread-safe broadcast to WebSocket subscribers.
 
     Can be called from any thread (including analysis worker thread).
@@ -92,6 +115,39 @@ def broadcast_status(ticker: str, agent: str, status: str, message: str):
         msg["phase"] = step_info[1]
         msg["total_steps"] = _TOTAL_STEPS
 
+    try:
+        from tradingagents.runtime_context import (
+            get_current_schedule_id,
+            get_current_schedule_job_id,
+        )
+        from tradingagents.storage import ScheduleEventRepository
+
+        if schedule_id is None:
+            schedule_id = get_current_schedule_id()
+        if schedule_job_id is None:
+            schedule_job_id = get_current_schedule_job_id()
+
+        ScheduleEventRepository(scheduler.db).create(
+            ticker=ticker,
+            agent=agent,
+            status=status,
+            message=message,
+            schedule_id=schedule_id,
+            schedule_job_id=schedule_job_id,
+            step=msg.get("step"),
+            phase=msg.get("phase"),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to store schedule event: {e}")
+
+    logger.info(
+        "Status update: ticker=%s agent=%s status=%s message=%s",
+        ticker,
+        agent,
+        status,
+        message,
+    )
+
     for q in ws_subscribers[ticker]:
         if _event_loop and _event_loop.is_running():
             asyncio.run_coroutine_threadsafe(q.put(msg), _event_loop)
@@ -108,14 +164,56 @@ async def _queue_worker():
 
     logger.info("Queue worker started")
 
+    def _queue_snapshot(queue: Optional[asyncio.Queue]) -> list[str]:
+        if not queue:
+            return []
+        try:
+            pending = list(getattr(queue, "_queue", []))
+        except Exception:
+            return []
+
+        tickers = []
+        for item in pending:
+            if isinstance(item, dict):
+                ticker = item.get("ticker")
+            else:
+                ticker = item
+            if ticker:
+                tickers.append(str(ticker))
+        return tickers
+
     while True:
         try:
-            ticker = await analysis_queue.get()
+            item = await analysis_queue.get()
+            if isinstance(item, dict):
+                ticker = item.get("ticker")
+                schedule_id = item.get("schedule_id")
+                job_id = item.get("job_id")
+            else:
+                ticker = item
+                schedule_id = None
+                job_id = None
+
+            if not ticker:
+                logger.warning("Queue worker: Skipping empty ticker")
+                analysis_queue.task_done()
+                continue
+
+            logger.info(
+                "Queue dequeue: ticker=%s pending=%s",
+                ticker,
+                _queue_snapshot(analysis_queue),
+            )
             current_running_ticker = ticker
             logger.info(f"Queue worker: Processing {ticker}")
 
             broadcast_status(
-                ticker, "system", "running", f"Starting analysis for {ticker}"
+                ticker,
+                "system",
+                "running",
+                f"Starting analysis for {ticker}",
+                schedule_id=schedule_id,
+                schedule_job_id=job_id,
             )
 
             # Set status callback on graph for step-level WS updates
@@ -128,15 +226,30 @@ async def _queue_worker():
 
             # Run analysis in thread (blocking I/O)
             try:
-                await asyncio.to_thread(scheduler._run_analysis_cycle, ticker)
+                await asyncio.to_thread(
+                    scheduler._run_analysis_cycle,
+                    ticker,
+                    schedule_id,
+                    job_id,
+                )
                 broadcast_status(
-                    ticker, "system", "completed", f"Analysis complete for {ticker}"
+                    ticker,
+                    "system",
+                    "completed",
+                    f"Analysis complete for {ticker}",
+                    schedule_id=schedule_id,
+                    schedule_job_id=job_id,
                 )
                 if graph:
                     graph.set_status_callback(None)
             except Exception as e:
                 broadcast_status(
-                    ticker, "system", "error", f"Analysis failed: {str(e)}"
+                    ticker,
+                    "system",
+                    "error",
+                    f"Analysis failed: {str(e)}",
+                    schedule_id=schedule_id,
+                    schedule_job_id=job_id,
                 )
                 if graph:
                     graph.set_status_callback(None)
@@ -187,35 +300,41 @@ async def lifespan(app: FastAPI):
     scheduler = TickerScheduler(graph=graph, config=DEFAULT_CONFIG)
     scheduler.set_queue(ticker_scheduler_module.analysis_queue, _event_loop)
 
-    # Auto-load schedules from config
+    # Auto-load schedules from config into DB + scheduler
+    from tradingagents.storage import ScheduleConfigRepository
+
+    schedule_config_repo = ScheduleConfigRepository(scheduler.db)
     for schedule_item in DEFAULT_CONFIG.get("schedules", []):
         ticker = schedule_item["ticker"]
         interval_days = schedule_item.get("interval_days", 4)
 
-        scheduler.add_ticker(ticker, interval_days)
+        schedule_config_repo.upsert(ticker, interval_days)
         logger.info(f"Auto-loaded schedule: {ticker} (every {interval_days} days)")
 
-    # Recover pending/running schedules into queue
+    # Load schedules from DB into scheduler
     try:
-        from tradingagents.storage import ScheduleRepository
-
-        schedule_repo = ScheduleRepository(scheduler.db)
-        pending = schedule_repo.get_by_status(["pending", "running"])
-        queued = set(ticker_scheduler_module.analysis_queue._queue)
-        if current_running_ticker:
-            queued.add(current_running_ticker)
-
-        for s in pending:
-            ticker = s.get("ticker")
-            if not ticker or ticker in queued:
-                continue
-            if s.get("status") == "running":
-                schedule_repo.update_status(s["id"], "pending")
-            ticker_scheduler_module.analysis_queue.put_nowait(ticker)
-            queued.add(ticker)
-        logger.info(f"Recovered {len(queued)} pending schedules into queue")
+        for cfg in schedule_config_repo.get_all():
+            scheduler.add_ticker(cfg["ticker"], cfg["interval_days"])
     except Exception as e:
-        logger.warning(f"Failed to recover pending schedules: {e}")
+        logger.warning(f"Failed to load schedules from DB: {e}")
+
+    # Recover schedules into queue (if not done today)
+    try:
+        from tradingagents.storage import ScheduleJobRepository
+
+        schedule_job_repo = ScheduleJobRepository(scheduler.db)
+        tickers = [item["ticker"] for item in schedule_config_repo.get_all()]
+        today = datetime.now().date().isoformat()
+        for ticker in tickers:
+            if not ticker:
+                continue
+            if schedule_job_repo.has_done_today_for_ticker(ticker, today):
+                continue
+            scheduler.enqueue_schedule(ticker)
+
+        logger.info("Recovered schedules into queue")
+    except Exception as e:
+        logger.warning(f"Failed to recover schedules: {e}")
 
     # Start scheduler
     if DEFAULT_CONFIG.get("scheduler_enabled", False):

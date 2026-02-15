@@ -45,18 +45,20 @@ class TradeRepository:
         """
         executed_at = datetime.now().isoformat()
 
-        connection = conn or self.conn
+        connection = conn or self.db.get_connection()
         cursor = connection.execute(
             """
             INSERT INTO trades (position_id, report_id, action, shares, price, executed_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (position_id, report_id, action, shares, price, executed_at)
         )
         if commit:
             connection.commit()
 
-        trade_id = int(cursor.lastrowid)
+        row = cursor.fetchone()
+        trade_id = int(row["id"]) if row else 0
         logger.info(
             f"Created trade {trade_id}: {action} {shares} shares @ ${price:.2f} "
             f"(position={position_id})"
@@ -72,11 +74,11 @@ class TradeRepository:
         Returns:
             List of trade dicts (ordered oldest to newest)
         """
-        cursor = self.conn.execute(
+        cursor = self.db.get_connection().execute(
             """
             SELECT id, position_id, report_id, action, shares, price, executed_at
             FROM trades
-            WHERE position_id = ?
+            WHERE position_id = %s
             ORDER BY executed_at ASC
             """,
             (position_id,)
@@ -94,15 +96,15 @@ class TradeRepository:
         Returns:
             List of trade dicts with position info (ordered newest to oldest)
         """
-        cursor = self.conn.execute(
+        cursor = self.db.get_connection().execute(
             """
             SELECT t.id, t.position_id, t.report_id, t.action, t.shares, t.price, t.executed_at,
                    p.ticker
             FROM trades t
             JOIN positions p ON t.position_id = p.id
-            WHERE p.ticker = ?
+            WHERE p.ticker = %s
             ORDER BY t.executed_at DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (ticker, limit)
         )
@@ -125,8 +127,12 @@ if __name__ == "__main__":
         from .position_repo import PositionRepository
         from .report_repo import ReportRepository
 
-        db_path = os.path.join(temp_dir, "test_trading.db")
-        db = Database(db_path)
+        db_url = os.getenv("SUPABASE_DB_URL")
+        if not db_url:
+            print("SUPABASE_DB_URL not set; skipping test")
+            raise SystemExit(0)
+
+        db = Database(db_url)
         db.init_schema()
 
         # Create dependencies

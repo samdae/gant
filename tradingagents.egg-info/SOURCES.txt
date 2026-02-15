@@ -78,6 +78,7 @@ tradingagents/storage/database.py
 tradingagents/storage/position_repo.py
 tradingagents/storage/reflection_repo.py
 tradingagents/storage/report_repo.py
+tradingagents/storage/schedule_config_repo.py
 tradingagents/storage/schedule_job_repo.py
 tradingagents/storage/schedule_repo.py
 tradingagents/storage/trade_repo.py

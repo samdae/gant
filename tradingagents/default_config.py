@@ -1,5 +1,29 @@
 import os
 
+
+def _get_env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _get_database_url() -> str:
+    for key in ("SUPABASE_DB_URL", "TRADINGAGENTS_DB_URL", "DATABASE_URL"):
+        value = os.getenv(key)
+        if value:
+            return value
+
+    user = os.getenv("POSTGRES_USER")
+    password = os.getenv("POSTGRES_PASSWORD")
+    database = os.getenv("POSTGRES_DB")
+    if not (user and password and database):
+        return ""
+
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    return f"postgresql://{user}:{password}@{host}:{port}/{database}"
+
 DEFAULT_CONFIG = {
     "project_dir": os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
     "data_cache_dir": os.path.join(
@@ -29,11 +53,8 @@ DEFAULT_CONFIG = {
     "tool_vendors": {
         # Example: "get_stock_data": "alpha_vantage",  # Override category default
     },
-    # FR-030: Database path (SQLite)
-    "database_path": os.getenv(
-        "TRADINGAGENTS_DATABASE_PATH",
-        os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")), "memory", "trading.db")
-    ),
+    # FR-030: Database URL (Postgres)
+    "database_path": _get_database_url(),
     # FR-030: ChromaDB path (Vector store)
     "chroma_path": os.getenv(
         "TRADINGAGENTS_CHROMA_PATH",
@@ -42,5 +63,5 @@ DEFAULT_CONFIG = {
     "default_initial_capital": 1000.0,
     # FR-016: Scheduler
     "schedules": [],  # List[{"ticker": str, "interval_days": int}]
-    "scheduler_enabled": False,
+    "scheduler_enabled": _get_env_bool("TRADINGAGENTS_SCHEDULER_ENABLED", False),
 }

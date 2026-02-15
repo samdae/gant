@@ -81,8 +81,8 @@ async def analyze_ws(websocket: WebSocket, ticker: str):
                 )
                 await websocket.send_json(msg)
 
-                # If analysis completed or errored, close connection
-                if msg.get("status") in ("completed", "error"):
+                # Close only when the system marks analysis end
+                if msg.get("agent") == "system" and msg.get("status") in ("completed", "error"):
                     break
 
             except asyncio.TimeoutError:

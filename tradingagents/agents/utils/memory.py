@@ -4,6 +4,6 @@
 #
 # This file is kept as a tombstone to prevent accidental re-creation.
 # The original FinancialSituationMemory class (rank_bm25-based) has been
-# replaced by HybridMemory (SQLite FTS5 + ChromaDB vector search).
+# replaced by HybridMemory (Postgres FTS + ChromaDB vector search).
 #
 # Safe to delete this file entirely.
