@@ -8,6 +8,7 @@
     fetchReportsByTicker,
   } from "../lib/api/endpoints";
   import { formatMoney, formatPercent, formatDateTime, formatErrorMessage } from "../lib/utils/format";
+  import { tickerNames } from "../stores/tickerNames";
 
   type PositionMarket = {
     ticker: string;
@@ -88,7 +89,7 @@
   <div class="page-container">
     <div class="page-header">
       <button class="back-btn" on:click={() => history.back()}>&larr;</button>
-      <h2>{ticker} Report</h2>
+      <h2>{ticker}{#if $tickerNames[ticker]} <span class="ticker-tag">{$tickerNames[ticker]}</span>{/if} Report</h2>
       <span class={`pnl-banner ${summary && summary.return_pct >= 0 ? "pnl-pos" : "pnl-neg"}`}>
         {summary ? formatPercent(summary.return_pct) : "-"}
       </span>

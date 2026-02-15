@@ -2,6 +2,7 @@
   import { params } from "svelte-spa-router";
   import { fetchScheduleCycles, fetchScheduleCycleEvents } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
+  import { tickerNames } from "../stores/tickerNames";
 
   type ScheduleCycle = {
     id: number;

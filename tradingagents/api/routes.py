@@ -24,6 +24,7 @@ router = APIRouter()
 class ScheduleRequest(BaseModel):
     ticker: str
     interval_days: int = 1
+    display_name: str = None
 
 
 class ScheduleResponse(BaseModel):
@@ -211,7 +212,7 @@ async def create_schedule(req: ScheduleRequest, _: bool = Depends(check_admin_to
         raise HTTPException(status_code=409, detail=f"Schedule already exists for {req.ticker}")
 
     # Persist schedule config and add ticker
-    schedule_config_repo.create(req.ticker, req.interval_days)
+    schedule_config_repo.create(req.ticker, req.interval_days, display_name=req.display_name)
     scheduler.add_ticker(req.ticker, req.interval_days)
     scheduler.enqueue_schedule(req.ticker)
 
@@ -646,6 +647,23 @@ async def get_report_tickers():
         item["last_decision"] = raw[:120].strip() if raw else ""
 
     return summaries
+
+
+
+
+
+
+@router.get("/tickers/names", response_model=dict, tags=["Tickers"])
+async def get_ticker_names():
+    """Return {ticker: display_name} map for all tickers with display names."""
+    from tradingagents.storage import ScheduleConfigRepository
+
+    scheduler = app_module.scheduler
+    if not scheduler or not scheduler.db:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    repo = ScheduleConfigRepository(scheduler.db)
+    return repo.get_all_display_names()
 
 
 

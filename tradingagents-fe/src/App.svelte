@@ -12,6 +12,7 @@
   import Live from "./routes/Live.svelte";
   import Auth from "./routes/Auth.svelte";
   import NotFoundRedirect from "./routes/NotFoundRedirect.svelte";
+  import { loadTickerNames } from "./stores/tickerNames";
 
   const routes = {
     "/": Dashboard,
@@ -30,7 +31,9 @@
     if (!window.location.hash) {
       window.location.hash = "#/";
     }
+    loadTickerNames();
   });
+
 </script>
 
 <main class="main-content">

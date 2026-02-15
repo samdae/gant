@@ -363,6 +363,7 @@ class TickerScheduler:
 
         logger.info("Self-heal scan complete")
 
+
     def _run_analysis_cycle(
         self,
         ticker: str,
@@ -538,6 +539,7 @@ class TickerScheduler:
         schedule_job_repo = ScheduleJobRepository(self.db)
 
         # ===== LLM CALLS (outside transaction) =====
+        today = datetime.now().strftime("%Y-%m-%d")
 
         # 1. Get or create active position
         active_position = position_repo.get_active(ticker)
@@ -553,7 +555,6 @@ class TickerScheduler:
 
         try:
             # 5. Run G-ANT pipeline (12 agents, objective analysis)
-            today = datetime.now().strftime("%Y-%m-%d")
 
             logger.info(f"{ticker}: Running G-ANT pipeline...")
             try:

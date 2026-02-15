@@ -20,6 +20,7 @@ class ScheduleConfigRepository:
         self,
         ticker: str,
         interval_days: int,
+        display_name: str = None,
         commit: bool = True,
         conn=None,
     ) -> int:
@@ -27,11 +28,11 @@ class ScheduleConfigRepository:
         connection = conn or self.db.get_connection()
         cursor = connection.execute(
             """
-            INSERT INTO schedule_configs (ticker, interval_days, created_at)
-            VALUES (%s, %s, %s)
+            INSERT INTO schedule_configs (ticker, interval_days, display_name, created_at)
+            VALUES (%s, %s, %s, %s)
             RETURNING id
             """,
-            (ticker, interval_days, created_at),
+            (ticker, interval_days, display_name, created_at),
         )
         if commit:
             connection.commit()
@@ -47,6 +48,7 @@ class ScheduleConfigRepository:
         self,
         ticker: str,
         interval_days: int,
+        display_name: str = None,
         commit: bool = True,
         conn=None,
     ) -> int:
@@ -54,12 +56,13 @@ class ScheduleConfigRepository:
         connection = conn or self.db.get_connection()
         connection.execute(
             """
-            INSERT INTO schedule_configs (ticker, interval_days, created_at)
-            VALUES (%s, %s, %s)
+            INSERT INTO schedule_configs (ticker, interval_days, display_name, created_at)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT(ticker)
-            DO UPDATE SET interval_days = excluded.interval_days
+            DO UPDATE SET interval_days = excluded.interval_days,
+                          display_name = COALESCE(excluded.display_name, schedule_configs.display_name)
             """,
-            (ticker, interval_days, created_at),
+            (ticker, interval_days, display_name, created_at),
         )
         if commit:
             connection.commit()
@@ -75,7 +78,7 @@ class ScheduleConfigRepository:
     def get_all(self) -> List[Dict[str, Any]]:
         cursor = self.db.get_connection().execute(
             """
-            SELECT id, ticker, interval_days, last_data_date, created_at
+            SELECT id, ticker, interval_days, display_name, last_data_date, created_at
             FROM schedule_configs
             ORDER BY created_at ASC
             """
@@ -85,7 +88,7 @@ class ScheduleConfigRepository:
     def get_by_ticker(self, ticker: str) -> Optional[Dict[str, Any]]:
         cursor = self.db.get_connection().execute(
             """
-            SELECT id, ticker, interval_days, last_data_date, created_at
+            SELECT id, ticker, interval_days, display_name, last_data_date, created_at
             FROM schedule_configs
             WHERE ticker = %s
             LIMIT 1
@@ -105,6 +108,36 @@ class ScheduleConfigRepository:
             connection.commit()
 
         logger.info(f"Deleted schedule_config for {ticker}")
+
+    def update_display_name(
+        self,
+        ticker: str,
+        display_name: str,
+        commit: bool = True,
+        conn=None,
+    ) -> None:
+        connection = conn or self.db.get_connection()
+        connection.execute(
+            """
+            UPDATE schedule_configs
+            SET display_name = %s
+            WHERE ticker = %s
+            """,
+            (display_name, ticker),
+        )
+        if commit:
+            connection.commit()
+
+    def get_all_display_names(self) -> dict:
+        """Return {ticker: display_name} map for all tickers with a display_name."""
+        cursor = self.db.get_connection().execute(
+            """
+            SELECT ticker, display_name
+            FROM schedule_configs
+            WHERE display_name IS NOT NULL
+            """
+        )
+        return {row["ticker"]: row["display_name"] for row in cursor.fetchall()}
 
     def update_last_data_date(
         self,

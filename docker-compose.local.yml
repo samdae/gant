@@ -6,6 +6,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-trading}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tradingpass}
       POSTGRES_DB: ${POSTGRES_DB:-tradingagents}
+      TZ: Asia/Seoul
+    command: ["postgres", "-c", "timezone=Asia/Seoul"]
     ports:
       - "5432:5432"
     volumes:

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { fetchReportTickers } from "../lib/api/endpoints";
   import { formatDateTime, formatAgo, formatErrorMessage } from "../lib/utils/format";
+  import { tickerNames } from "../stores/tickerNames";
 
   type TickerSummary = {
     ticker: string;
@@ -59,6 +60,9 @@
           <a href={`#/reports/${item.ticker.toLowerCase()}`} class="card report-ticker-card">
             <div class="report-ticker-left">
               <span class="ticker-badge">{item.ticker}</span>
+              {#if $tickerNames[item.ticker]}
+                <span class="ticker-tag">{$tickerNames[item.ticker]}</span>
+              {/if}
               {#if action}
                 <span class="action-tag action-{action.toLowerCase()}">{action}</span>
               {/if}

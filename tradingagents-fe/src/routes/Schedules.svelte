@@ -9,6 +9,7 @@
     searchTickers,
   } from "../lib/api/endpoints";
   import { formatDateTime, formatAgo, formatErrorMessage } from "../lib/utils/format";
+  import { tickerNames, setTickerName, loadTickerNames } from "../stores/tickerNames";
 
   type Schedule = {
     ticker: string;
@@ -46,6 +47,7 @@
   let deleteTarget: string | null = null;
   let formTicker = "";
   let formInterval = 1;
+  let formDisplayName = "";
   let formError = "";
   let submitting = false;
 
@@ -86,6 +88,7 @@
   const openAdd = () => {
     formTicker = "";
     formInterval = 1;
+    formDisplayName = "";
     formError = "";
     suggestions = [];
     showSuggestions = false;
@@ -118,8 +121,9 @@
     }, 250);
   };
 
-  const selectTicker = (symbol: string) => {
-    formTicker = symbol;
+  const selectTicker = (item: TickerResult) => {
+    formTicker = item.symbol;
+    if (!formDisplayName) formDisplayName = item.name;
     suggestions = [];
     showSuggestions = false;
     selectedIndex = -1;
@@ -135,7 +139,7 @@
       selectedIndex = Math.max(selectedIndex - 1, 0);
     } else if (e.key === "Enter" && selectedIndex >= 0) {
       e.preventDefault();
-      selectTicker(suggestions[selectedIndex].symbol);
+      selectTicker(suggestions[selectedIndex]);
     } else if (e.key === "Escape") {
       showSuggestions = false;
     }
@@ -158,7 +162,8 @@
       formError = "Interval must be an integer between 1 and 365.";
       return null;
     }
-    return { ticker, interval_days: formInterval };
+    const dn = formDisplayName.trim() || undefined;
+    return { ticker, interval_days: formInterval, display_name: dn };
   };
 
   const submitAdd = async () => {
@@ -168,8 +173,10 @@
     formError = "";
     try {
       await createSchedule(payload);
+      if (payload.display_name) setTickerName(payload.ticker, payload.display_name);
       showAdd = false;
       await loadSchedules();
+      loadTickerNames();
     } catch (err) {
       formError = formatErrorMessage(err, "Failed to create schedule.");
     } finally {
@@ -222,9 +229,13 @@
           {@const status = statusBadge(schedule.ticker)}
           <div class="card schedule-card" on:click={() => goSchedule(schedule.ticker)}>
             <div class="schedule-top">
-              <span class="ticker-badge">{schedule.ticker}</span>
+              <div class="schedule-top-left">
+                <span class="ticker-badge">{schedule.ticker}</span>
+                {#if $tickerNames[schedule.ticker]}
+                  <span class="ticker-tag">{$tickerNames[schedule.ticker]}</span>
+                {/if}
+              </div>
               <span class={status.className}>{status.label}</span>
-              <span class="interval-label">{schedule.interval_days} days</span>
             </div>
             <div class="schedule-details">
               <span>Every {schedule.interval_days} day(s)</span>
@@ -278,7 +289,7 @@
                   <button
                     class="autocomplete-item"
                     class:selected={i === selectedIndex}
-                    on:mousedown|preventDefault={() => selectTicker(item.symbol)}
+                    on:mousedown|preventDefault={() => selectTicker(item)}
                   >
                     <span class="ac-symbol">{item.symbol}</span>
                     <span class="ac-name">{item.name}</span>
@@ -288,6 +299,15 @@
               </div>
             {/if}
           </div>
+        </label>
+        <label class="form-label">
+          Display Name
+          <input
+            type="text"
+            class="input"
+            placeholder="e.g. 삼성전자, NVIDIA ..."
+            bind:value={formDisplayName}
+          />
         </label>
         <label class="form-label">
           Interval (days)

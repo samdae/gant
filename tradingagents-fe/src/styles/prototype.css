@@ -85,7 +85,8 @@
 
 html {
   font-size: 16px;
-  scrollbar-gutter: stable;
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 body {
@@ -785,6 +786,24 @@ button {
   color: var(--text);
 }
 
+.ticker-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  font-family: var(--font-body);
+  letter-spacing: 0.02em;
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .return-badge {
   font-size: 0.8125rem;
   font-weight: 700;
@@ -1035,8 +1054,16 @@ button {
 .schedule-top {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
+}
+
+.schedule-top-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .interval-label {
@@ -1835,22 +1862,10 @@ button {
   color: var(--loss);
 }
 
-/* ===== SCROLLBAR ===== */
+/* ===== SCROLLBAR (hidden for mobile) ===== */
 ::-webkit-scrollbar {
-  width: 5px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.12);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.2);
+  width: 0;
+  display: none;
 }
 
 /* ===== SELECT FIX ===== */

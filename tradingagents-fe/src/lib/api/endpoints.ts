@@ -3,6 +3,7 @@ import { deleteJson, getJson, postJson } from "./client";
 export type ScheduleRequest = {
   ticker: string;
   interval_days?: number;
+  display_name?: string;
 };
 
 export const fetchMetrics = () => getJson("/metrics");

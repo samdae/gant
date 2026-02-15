@@ -9,6 +9,7 @@
     fetchScheduleSummary,
   } from "../lib/api/endpoints";
   import { formatMoney, formatPercent, formatAgo, formatErrorMessage } from "../lib/utils/format";
+  import { tickerNames } from "../stores/tickerNames";
 
   type Metrics = {
     active_positions: number;
@@ -259,7 +260,7 @@
               {:else}
                 {#each positions as pos}
                   <tr on:click={() => goTrade(pos.ticker)}>
-                    <td><span class="ticker-badge">{pos.ticker}</span></td>
+                    <td><span class="ticker-badge">{pos.ticker}</span>{#if $tickerNames[pos.ticker]} <span class="ticker-tag">{$tickerNames[pos.ticker]}</span>{/if}</td>
                     <td>{pos.shares}</td>
                     <td>{pos.current_price ? `$${pos.current_price.toFixed(2)}` : "-"}</td>
                     <td class={pos.pnl >= 0 ? "text-gain" : "text-loss"}>{formatMoney(pos.pnl)}</td>
@@ -330,6 +331,7 @@
                         <span class="ticker-badge" style="font-size:0.6875rem;padding:1px 5px">
                           {item.ticker}
                         </span>
+                        {#if $tickerNames[item.ticker]}<span class="ticker-tag">{$tickerNames[item.ticker]}</span>{/if}
                         &nbsp;{formatActivity(item)}
                       </div>
                       <div class="activity-time">
