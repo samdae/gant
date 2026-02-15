@@ -648,6 +648,41 @@ async def get_report_tickers():
     return summaries
 
 
+
+@router.get("/search/tickers", response_model=List[dict], tags=["Search"])
+async def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
+    """Search Yahoo Finance for ticker symbols (PUBLIC)."""
+    import urllib.request
+    import urllib.parse
+    import json
+
+    url = (
+        "https://query2.finance.yahoo.com/v1/finance/search?"
+        + urllib.parse.urlencode({"q": q, "quotesCount": 8, "newsCount": 0})
+    )
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+    except Exception:
+        return []
+
+    results = []
+    for quote in data.get("quotes", []):
+        symbol = quote.get("symbol", "")
+        name = quote.get("shortname") or quote.get("longname") or ""
+        exchange = quote.get("exchange", "")
+        qtype = quote.get("quoteType", "")
+        if symbol and qtype in ("EQUITY", "ETF", "CRYPTOCURRENCY", "MUTUALFUND", "INDEX"):
+            results.append({
+                "symbol": symbol,
+                "name": name,
+                "exchange": exchange,
+                "type": qtype,
+            })
+    return results
+
+
 # FR-025: Schedules/Cycles endpoints
 @router.get("/schedules/{ticker}/cycles", response_model=List[dict], tags=["Schedules"])
 async def get_ticker_cycles(

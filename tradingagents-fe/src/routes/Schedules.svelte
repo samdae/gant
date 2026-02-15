@@ -6,6 +6,7 @@
     fetchQueue,
     fetchScheduleCycles,
     fetchSchedules,
+    searchTickers,
   } from "../lib/api/endpoints";
   import { formatDateTime, formatAgo, formatErrorMessage } from "../lib/utils/format";
 
@@ -27,6 +28,13 @@
     pending: string[];
   };
 
+  type TickerResult = {
+    symbol: string;
+    name: string;
+    exchange: string;
+    type: string;
+  };
+
   let schedules: Schedule[] = [];
   let cycles: Record<string, Cycle | null> = {};
   let queue: QueueStatus = { running: null, pending: [] };
@@ -40,6 +48,12 @@
   let formInterval = 1;
   let formError = "";
   let submitting = false;
+
+  // Autocomplete state
+  let suggestions: TickerResult[] = [];
+  let showSuggestions = false;
+  let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+  let selectedIndex = -1;
 
   const goSchedule = (ticker: string) => {
     window.location.hash = `#/schedules/${ticker.toLowerCase()}`;
@@ -73,6 +87,9 @@
     formTicker = "";
     formInterval = 1;
     formError = "";
+    suggestions = [];
+    showSuggestions = false;
+    selectedIndex = -1;
     showAdd = true;
   };
 
@@ -81,10 +98,60 @@
     showDelete = true;
   };
 
+  const onTickerInput = () => {
+    const q = formTicker.trim();
+    if (searchTimeout) clearTimeout(searchTimeout);
+    selectedIndex = -1;
+    if (q.length < 1) {
+      suggestions = [];
+      showSuggestions = false;
+      return;
+    }
+    searchTimeout = setTimeout(async () => {
+      try {
+        suggestions = (await searchTickers(q)) as TickerResult[];
+        showSuggestions = suggestions.length > 0;
+      } catch {
+        suggestions = [];
+        showSuggestions = false;
+      }
+    }, 250);
+  };
+
+  const selectTicker = (symbol: string) => {
+    formTicker = symbol;
+    suggestions = [];
+    showSuggestions = false;
+    selectedIndex = -1;
+  };
+
+  const onTickerKeydown = (e: KeyboardEvent) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      selectedIndex = Math.max(selectedIndex - 1, 0);
+    } else if (e.key === "Enter" && selectedIndex >= 0) {
+      e.preventDefault();
+      selectTicker(suggestions[selectedIndex].symbol);
+    } else if (e.key === "Escape") {
+      showSuggestions = false;
+    }
+  };
+
+  const onTickerBlur = () => {
+    // Delay to allow click on suggestion
+    setTimeout(() => {
+      showSuggestions = false;
+    }, 200);
+  };
+
   const validateForm = () => {
     const ticker = formTicker.trim().toUpperCase();
-    if (!/^[A-Z]{1,10}$/.test(ticker)) {
-      formError = "Ticker must be 1-10 uppercase letters.";
+    if (!/^[A-Z0-9.\-]{1,15}$/.test(ticker)) {
+      formError = "Invalid ticker symbol.";
       return null;
     }
     if (!Number.isInteger(formInterval) || formInterval < 1 || formInterval > 365) {
@@ -193,7 +260,34 @@
       <div class="modal-body">
         <label class="form-label">
           Ticker
-          <input type="text" class="input" placeholder="e.g. AAPL" bind:value={formTicker} />
+          <div class="autocomplete-wrap">
+            <input
+              type="text"
+              class="input"
+              placeholder="Search ticker, e.g. AAPL, Tesla..."
+              bind:value={formTicker}
+              on:input={onTickerInput}
+              on:keydown={onTickerKeydown}
+              on:blur={onTickerBlur}
+              on:focus={() => { if (suggestions.length > 0) showSuggestions = true; }}
+              autocomplete="off"
+            />
+            {#if showSuggestions}
+              <div class="autocomplete-dropdown">
+                {#each suggestions as item, i}
+                  <button
+                    class="autocomplete-item"
+                    class:selected={i === selectedIndex}
+                    on:mousedown|preventDefault={() => selectTicker(item.symbol)}
+                  >
+                    <span class="ac-symbol">{item.symbol}</span>
+                    <span class="ac-name">{item.name}</span>
+                    <span class="ac-exchange">{item.exchange}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
         </label>
         <label class="form-label">
           Interval (days)

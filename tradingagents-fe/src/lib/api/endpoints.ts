@@ -41,3 +41,6 @@ export const fetchReportTickers = () =>
 
 export const fetchPositionDetail = (id: number) =>
   getJson(`/positions/${id}`);
+
+export const searchTickers = (q: string) =>
+  getJson(`/search/tickers?q=${encodeURIComponent(q)}`);
