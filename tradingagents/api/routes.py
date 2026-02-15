@@ -7,7 +7,7 @@ FR-026: Public READ + Authenticated WRITE
 import os
 import logging
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
@@ -79,6 +79,16 @@ class ActivityEvent(BaseModel):
     price: Optional[float] = None
     report_id: Optional[int] = None
     trade_id: Optional[int] = None
+
+
+class ScheduleSummary(BaseModel):
+    total: int
+    done: int
+    failed: int
+    skipped: int
+    running: int
+    pending: int
+    as_of: datetime
 
 
 def _fetch_latest_prices(tickers: List[str]) -> Dict[str, Optional[float]]:
@@ -640,6 +650,27 @@ async def get_ticker_cycles(
     return cycles
 
 
+@router.get(
+    "/schedules/{ticker}/cycles/{schedule_id}/events",
+    response_model=List[dict],
+    tags=["Schedules"],
+)
+async def get_cycle_events(
+    ticker: str,
+    schedule_id: int,
+    limit: int = Query(200, ge=1, le=500),
+):
+    """Get schedule events for a specific cycle (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.storage import ScheduleEventRepository
+
+    repo = ScheduleEventRepository(scheduler.db)
+    return repo.list_by_schedule_id(schedule_id, limit=limit, ticker=ticker)
+
+
 # FR-025: Reflections endpoint
 @router.get("/reflections", response_model=List[dict], tags=["Reflections"])
 async def get_reflections(
@@ -809,6 +840,37 @@ async def get_queue_status():
         pending=pending,
         total=len(pending) + (1 if running else 0)
     )
+
+
+@router.get("/schedules/summary", response_model=ScheduleSummary, tags=["Schedules"])
+async def get_schedule_summary():
+    """Get today's schedule summary counts (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    conn = scheduler.db.get_connection()
+    now = datetime.now(timezone.utc)
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    rows = conn.execute(
+        """
+        SELECT status, COUNT(*) AS count
+        FROM schedule_jobs
+        WHERE created_at >= %s
+        GROUP BY status
+        """,
+        (start_of_day,),
+    ).fetchall()
+
+    counts = {"done": 0, "failed": 0, "skipped": 0, "running": 0, "pending": 0}
+    for row in rows:
+        status = (row["status"] or "").lower()
+        if status in counts:
+            counts[status] = int(row["count"]) if row["count"] is not None else 0
+
+    total = sum(counts.values())
+    return ScheduleSummary(total=total, as_of=now, **counts)
 
 
 # Health check endpoint

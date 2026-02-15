@@ -28,12 +28,29 @@ const formatAgo = (iso?: string | null) => {
   const diff = Date.now() - date.getTime();
   if (Number.isNaN(diff)) return iso;
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "방금 전";
-  if (minutes < 60) return `${minutes}분 전`;
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
+  if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
-  return `${days}일 전`;
+  return `${days}d ago`;
 };
 
-export { formatMoney, formatPercent, formatDateTime, formatAgo };
+const formatErrorMessage = (error: unknown, fallback = "Request failed.") => {
+  if (error instanceof Error) {
+    const message = error.message || fallback;
+    if (/failed to fetch/i.test(message)) {
+      return "Network error. Please try again.";
+    }
+    if (/(unauthorized|forbidden|401|403)/i.test(message)) {
+      return "Authorization required. Please sign in again.";
+    }
+    if (/(not found|404)/i.test(message)) {
+      return "Requested data was not found.";
+    }
+    return message;
+  }
+  return fallback;
+};
+
+export { formatMoney, formatPercent, formatDateTime, formatAgo, formatErrorMessage };

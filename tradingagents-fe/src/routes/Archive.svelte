@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { params } from "svelte-spa-router";
   import { fetchReportsByTicker } from "../lib/api/endpoints";
-  import { formatDateTime } from "../lib/utils/format";
+  import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
 
   type Report = {
     id: number;
@@ -18,9 +18,9 @@
 
   const mapDecision = (value?: string | null) => {
     if (!value) return "-";
-    if (value.toUpperCase().includes("BUY")) return "매수";
-    if (value.toUpperCase().includes("SELL")) return "매도";
-    if (value.toUpperCase().includes("HOLD")) return "관망";
+    if (value.toUpperCase().includes("BUY")) return "Buy";
+    if (value.toUpperCase().includes("SELL")) return "Sell";
+    if (value.toUpperCase().includes("HOLD")) return "Hold";
     return value;
   };
 
@@ -30,7 +30,7 @@
     try {
       reports = (await fetchReportsByTicker(t)) as Report[];
     } catch (err) {
-      error = err instanceof Error ? err.message : "불러오지 못했습니다.";
+      error = formatErrorMessage(err, "Failed to load archive.");
     } finally {
       loading = false;
     }
@@ -53,22 +53,22 @@
   <div class="page-container">
     <div class="page-header">
       <button class="back-btn" on:click={() => history.back()}>&larr;</button>
-      <h2>{ticker} 아카이브</h2>
+      <h2>{ticker} Archive</h2>
     </div>
 
     {#if loading}
-      <div class="card" style="padding:16px">불러오는 중...</div>
+      <div class="card" style="padding:16px">Loading...</div>
     {:else if error}
-      <div class="card" style="padding:16px">{error}</div>
+      <div class="card error-text" style="padding:16px">{error}</div>
     {:else if reports.length === 0}
-      <div class="card" style="padding:16px">리포트가 없습니다.</div>
+      <div class="card" style="padding:16px">No reports yet.</div>
     {:else}
       <div class="archive-list">
         {#each reports as report}
           <div class="card archive-card">
             <div class="archive-top">
               <div style="display:flex;align-items:center;gap:8px">
-                <span class="cycle-badge">리포트 #{report.id}</span>
+                <span class="cycle-badge">Report #{report.id}</span>
                 <span class="badge badge-gain">{mapDecision(report.final_trade_decision)}</span>
               </div>
               <span style="font-size:0.8125rem;color:var(--text-dim)">{formatDateTime(report.created_at)}</span>

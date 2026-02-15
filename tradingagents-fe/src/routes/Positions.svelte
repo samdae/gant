@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fetchPositionsMarket, fetchMetrics } from "../lib/api/endpoints";
-  import { formatMoney, formatPercent } from "../lib/utils/format";
+  import { formatMoney, formatPercent, formatErrorMessage } from "../lib/utils/format";
 
   type PositionMarket = {
     position_id: number;
@@ -33,7 +33,7 @@
       positions = (positionsRes as PositionMarket[]) || [];
       totalPnl = (metricsRes as { total_unrealized_pnl?: number })?.total_unrealized_pnl ?? 0;
     } catch (err) {
-      error = err instanceof Error ? err.message : "데이터를 불러오지 못했습니다.";
+      error = formatErrorMessage(err, "Failed to load positions.");
     } finally {
       loading = false;
     }
@@ -47,9 +47,9 @@
 <section class="page" id="page-positions">
   <div class="page-container">
     <div class="page-header">
-      <h2>포지션</h2>
+      <h2>Position</h2>
       <span class={`pnl-banner ${totalPnl >= 0 ? "pnl-pos" : "pnl-neg"}`}>
-        손익 {formatMoney(totalPnl)}
+        PnL {formatMoney(totalPnl)}
       </span>
     </div>
 
@@ -57,26 +57,26 @@
       <table class="data-table">
         <thead>
           <tr>
-            <th>티커</th>
-            <th>수량</th>
-            <th>평단가</th>
-            <th>현재가</th>
-            <th>손익</th>
-            <th>수익률</th>
+            <th>Ticker</th>
+            <th>Shares</th>
+            <th>Avg Cost</th>
+            <th>Price</th>
+            <th>PnL</th>
+            <th>Return</th>
           </tr>
         </thead>
         <tbody>
           {#if loading}
             <tr>
-              <td colspan="6">불러오는 중...</td>
+              <td colspan="6">Loading...</td>
             </tr>
-          {:else if error}
-            <tr>
-              <td colspan="6">{error}</td>
-            </tr>
+            {:else if error}
+              <tr>
+                <td colspan="6" class="error-text">{error}</td>
+              </tr>
           {:else if positions.length === 0}
             <tr>
-              <td colspan="6">활성 포지션이 없습니다.</td>
+              <td colspan="6">No active positions.</td>
             </tr>
           {:else}
             {#each positions as pos}
@@ -97,15 +97,15 @@
     <div class="pos-card-list">
       {#if loading}
         <div class="card pos-card">
-          <div class="pos-card-details">불러오는 중...</div>
+          <div class="pos-card-details">Loading...</div>
         </div>
-      {:else if error}
-        <div class="card pos-card">
-          <div class="pos-card-details">{error}</div>
-        </div>
+        {:else if error}
+          <div class="card pos-card">
+            <div class="pos-card-details error-text">{error}</div>
+          </div>
       {:else if positions.length === 0}
         <div class="card pos-card">
-          <div class="pos-card-details">활성 포지션이 없습니다.</div>
+          <div class="pos-card-details">No active positions.</div>
         </div>
       {:else}
         {#each positions as pos}
@@ -117,8 +117,8 @@
               </span>
             </div>
             <div class="pos-card-details">
-              <span>{pos.avg_cost ? `$${pos.avg_cost.toFixed(2)}` : "-"}에 {pos.shares}주</span>
-              <span>현재가: {pos.current_price ? `$${pos.current_price.toFixed(2)}` : "-"} · 손익: <span class={pos.pnl >= 0 ? "text-gain" : "text-loss"}>{formatMoney(pos.pnl)}</span></span>
+              <span>{pos.shares} shares @ {pos.avg_cost ? `$${pos.avg_cost.toFixed(2)}` : "-"}</span>
+              <span>Price: {pos.current_price ? `$${pos.current_price.toFixed(2)}` : "-"} · PnL: <span class={pos.pnl >= 0 ? "text-gain" : "text-loss"}>{formatMoney(pos.pnl)}</span></span>
             </div>
           </div>
         {/each}

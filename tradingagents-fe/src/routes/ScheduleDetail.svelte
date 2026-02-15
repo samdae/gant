@@ -1,14 +1,17 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
-  import { fetchQueue, fetchLiveEvents } from "../lib/api/endpoints";
-  import { connectLiveStream } from "../lib/ws/liveStream";
+  import { params } from "svelte-spa-router";
+  import { fetchScheduleCycles, fetchScheduleCycleEvents } from "../lib/api/endpoints";
+  import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
 
-  type QueueStatus = {
-    running: string | null;
-    pending: string[];
+  type ScheduleCycle = {
+    id: number;
+    ticker: string;
+    interval_days: number;
+    scheduled_cycle: number;
+    created_at: string;
   };
 
-  type WsMessage = {
+  type ScheduleEvent = {
     agent?: string;
     status?: string;
     message?: string;
@@ -18,11 +21,15 @@
     timestamp?: string;
   };
 
-  let queue: QueueStatus = { running: null, pending: [] };
-  let messages: WsMessage[] = [];
-  let ws: WebSocket | null = null;
-  let connectedTicker: string | null = null;
-  let stepStates: Record<string, WsMessage> = {};
+  let ticker = "";
+  let cycles: ScheduleCycle[] = [];
+  let selectedCycleId = "";
+  let loading = true;
+  let loadingEvents = false;
+  let cycleError = "";
+  let eventsError = "";
+  let events: ScheduleEvent[] = [];
+  let stepStates: Record<string, ScheduleEvent> = {};
 
   const phaseLabels: Record<string, string> = {
     "Data Collection": "Phase 1 - Data Collection",
@@ -67,7 +74,7 @@
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  const getStatus = (msg?: WsMessage) => {
+  const getStatus = (msg?: ScheduleEvent) => {
     if (!msg?.status) return "pending";
     if (msg.status === "completed") return "completed";
     if (msg.status === "running") return "running";
@@ -75,98 +82,120 @@
     return "pending";
   };
 
-  const loadQueue = async () => {
-    try {
-      queue = (await fetchQueue()) as QueueStatus;
-    } catch {
-      queue = { running: null, pending: [] };
-    }
-  };
-
-  const seedEvents = (events: WsMessage[]) => {
-    messages = events.slice(0, 20);
+  const seedEvents = (items: ScheduleEvent[]) => {
+    events = items.slice(0, 20);
     stepStates = {};
-    for (const event of events) {
+    for (const event of items) {
       if (event.agent && event.agent !== "system" && !stepStates[event.agent]) {
         stepStates[event.agent] = event;
       }
     }
   };
 
-  const connect = (ticker: string) => {
-    if (ws) ws.close();
-    if (connectedTicker !== ticker) {
-      messages = [];
-      stepStates = {};
-      connectedTicker = ticker;
-    }
-    fetchLiveEvents(ticker)
-      .then((events: WsMessage[]) => seedEvents(events))
-      .catch(() => {
-        messages = [];
+  const selectedCycle = () =>
+    cycles.find((cycle) => String(cycle.id) === selectedCycleId) || null;
+
+  const loadCycles = async (t: string) => {
+    loading = true;
+    cycleError = "";
+    try {
+      const response = (await fetchScheduleCycles(t, 20)) as ScheduleCycle[];
+      cycles = response || [];
+      if (cycles.length > 0) {
+        selectedCycleId = String(cycles[0].id);
+        await loadEvents();
+      } else {
+        selectedCycleId = "";
+        events = [];
         stepStates = {};
-      });
-    ws = connectLiveStream(ticker, (data) => {
-      const msg = data as WsMessage;
-      messages = [msg, ...messages].slice(0, 20);
-      if (msg.agent && msg.agent !== "system") {
-        stepStates = { ...stepStates, [msg.agent]: msg };
       }
-    });
+    } catch (err) {
+      cycleError = formatErrorMessage(err, "Failed to load cycles.");
+    } finally {
+      loading = false;
+    }
   };
 
-  onMount(async () => {
-    await loadQueue();
-    if (queue.running) {
-      connect(queue.running);
+  const loadEvents = async () => {
+    if (!selectedCycleId || !ticker) {
+      events = [];
+      stepStates = {};
+      return;
     }
-  });
+    loadingEvents = true;
+    eventsError = "";
+    try {
+      const response = (await fetchScheduleCycleEvents(
+        ticker,
+        Number(selectedCycleId),
+        200,
+      )) as ScheduleEvent[];
+      seedEvents(response || []);
+    } catch (err) {
+      eventsError = formatErrorMessage(err, "Failed to load cycle events.");
+      events = [];
+      stepStates = {};
+    } finally {
+      loadingEvents = false;
+    }
+  };
 
-  onDestroy(() => {
-    if (ws) ws.close();
-  });
+  const handleCycleChange = async (event: Event) => {
+    const target = event.currentTarget as HTMLSelectElement;
+    selectedCycleId = target.value;
+    await loadEvents();
+  };
+
+  $: if ($params?.ticker) {
+    ticker = String($params.ticker).toUpperCase();
+  }
+
+  $: if (ticker) {
+    loadCycles(ticker);
+  }
+
 </script>
 
-<section class="page" id="page-live">
+<section class="page" id="page-schedule-detail">
   <div class="page-container">
     <div class="page-header">
-      <h2>Live</h2>
-      <div style="display:flex;align-items:center;gap:10px">
-        <span class="badge badge-info">
-          <span class="spinner" style="width:10px;height:10px;margin-right:4px"></span>
-          {queue.running ? `${queue.running} running` : "Idle"}
-        </span>
-        {#if queue.running}
-          <a class="btn btn-ghost" href={`#/trade/${queue.running.toLowerCase()}`}>Report</a>
-        {/if}
-      </div>
+      <button class="back-btn" on:click={() => history.back()}>&larr;</button>
+      <h2>{ticker} Schedule</h2>
     </div>
 
     <div class="live-layout">
       <div class="card live-queue">
         <div class="card-header">
-          <h3>Queue</h3>
+          <h3>Cycles</h3>
         </div>
         <div class="card-body">
-          {#if queue.running}
-            <div class="queue-item queue-running">
-              <span class="queue-indicator"></span>
-              <span class="queue-ticker">{queue.running}</span>
-              <span class="badge badge-info" style="font-size:0.625rem;padding:2px 6px">Running</span>
-            </div>
-          {/if}
-          {#if queue.pending.length === 0}
-            <div class="queue-item queue-pending">
-              <span class="queue-indicator"></span>
-              <span class="queue-ticker">No pending</span>
-            </div>
+          {#if loading}
+            <div class="empty-state">Loading cycles...</div>
+          {:else if cycleError}
+            <div class="empty-state error-text">{cycleError}</div>
+          {:else if cycles.length === 0}
+            <div class="empty-state">No cycles yet.</div>
           {:else}
-            {#each queue.pending as item}
-              <div class="queue-item queue-pending">
-                <span class="queue-indicator"></span>
-                <span class="queue-ticker">{item}</span>
+            <label class="form-label">
+              Cycle
+              <select class="select" value={selectedCycleId} on:change={handleCycleChange}>
+                {#each cycles as cycle}
+                  <option value={cycle.id}>
+                    Cycle #{cycle.scheduled_cycle} · {formatDateTime(cycle.created_at)}
+                  </option>
+                {/each}
+              </select>
+            </label>
+            {#if selectedCycle()}
+              <div class="stat-row">
+                <span class="stat-label">Interval</span>
+                <span class="stat-value">{selectedCycle()?.interval_days} days</span>
               </div>
-            {/each}
+              <div class="stat-row">
+                <span class="stat-label">Created</span>
+                <span class="stat-value">{formatDateTime(selectedCycle()?.created_at)}</span>
+              </div>
+            {/if}
           {/if}
         </div>
       </div>
@@ -177,14 +206,20 @@
           <div style="display:flex;align-items:center;gap:8px">
             <span class="live-dot"></span>
             <span style="font-size:0.75rem;color:var(--text-dim)">
-              {queue.running ? `${queue.running} · Live` : "Idle"}
+              {selectedCycleId ? `Cycle #${selectedCycle()?.scheduled_cycle || ""}` : "Idle"}
             </span>
           </div>
         </div>
         <div class="card-body">
-          {#if messages.length > 0}
+          {#if loadingEvents}
+            <div class="empty-state" style="margin-bottom:12px">Loading events...</div>
+          {:else if eventsError}
+            <div class="empty-state error-text" style="margin-bottom:12px">{eventsError}</div>
+          {:else if events.length === 0}
+            <div class="empty-state" style="margin-bottom:12px">No events for this cycle.</div>
+          {:else}
             <div style="margin-bottom:12px;font-size:0.8125rem;color:var(--text-secondary)">
-              Latest: {messages[0].agent || ""} · {messages[0].message || ""}
+              Latest: {events[0].agent || ""} · {events[0].message || ""}
             </div>
           {/if}
           {#each phaseGroups as group}

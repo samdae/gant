@@ -22,7 +22,7 @@
 
   const save = () => {
     if (!tokenInput.trim()) {
-      error = "토큰을 입력해 주세요.";
+      error = "Please enter a token.";
       return;
     }
     setToken(tokenInput.trim());
@@ -38,18 +38,18 @@
   <div class="page-container" style="max-width:420px">
     <div class="card" style="padding:22px">
       <div class="page-header" style="margin-bottom:12px">
-        <h2>관리자 인증</h2>
+        <h2>Admin Access</h2>
       </div>
 
-      <label class="form-label" for="tokenInput">관리자 토큰</label>
+      <label class="form-label" for="tokenInput">Admin token</label>
       <input id="tokenInput" type="password" class="input" bind:value={tokenInput} />
       {#if error}
-        <div class="status">{error}</div>
+        <div class="error-text" style="margin-top:10px">{error}</div>
       {/if}
 
       <div class="modal-footer" style="justify-content:flex-end;margin-top:16px">
-        <button class="btn btn-ghost" on:click={cancel}>취소</button>
-        <button class="btn btn-primary" on:click={save}>저장</button>
+        <button class="btn btn-ghost" on:click={cancel}>Cancel</button>
+        <button class="btn btn-primary" on:click={save}>Save</button>
       </div>
     </div>
   </div>

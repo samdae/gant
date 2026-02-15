@@ -140,3 +140,24 @@ class ScheduleEventRepository:
             (schedule_job_id, limit),
         )
         return [dict(r) for r in cursor.fetchall()]
+
+    def list_by_schedule_id(
+        self,
+        schedule_id: int,
+        limit: int = 200,
+        ticker: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        params: List[Any] = [schedule_id]
+        query = """
+            SELECT id, schedule_job_id, schedule_id, ticker, agent, status,
+                   message, step, phase, created_at
+            FROM schedule_job_events
+            WHERE schedule_id = %s
+        """
+        if ticker:
+            query += " AND ticker = %s"
+            params.append(ticker)
+        query += " ORDER BY created_at DESC LIMIT %s"
+        params.append(limit)
+        cursor = self.db.get_connection().execute(query, tuple(params))
+        return [dict(r) for r in cursor.fetchall()]

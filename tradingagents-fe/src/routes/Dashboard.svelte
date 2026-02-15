@@ -6,8 +6,9 @@
     fetchMetrics,
     fetchPositionsMarket,
     fetchQueue,
+    fetchScheduleSummary,
   } from "../lib/api/endpoints";
-  import { formatMoney, formatPercent, formatAgo } from "../lib/utils/format";
+  import { formatMoney, formatPercent, formatAgo, formatErrorMessage } from "../lib/utils/format";
 
   type Metrics = {
     active_positions: number;
@@ -38,6 +39,16 @@
     total: number;
   };
 
+  type ScheduleSummary = {
+    total: number;
+    done: number;
+    failed: number;
+    skipped: number;
+    running: number;
+    pending: number;
+    as_of: string;
+  };
+
   type ActivityEvent = {
     event_type: string;
     ticker: string;
@@ -56,43 +67,49 @@
   let positions: PositionMarket[] = [];
   let queue: QueueStatus = { running: null, pending: [], total: 0 };
   let activity: ActivityEvent[] = [];
+  let scheduleSummary: ScheduleSummary | null = null;
 
   const goTrade = (ticker: string) => {
     window.location.hash = `#/trade/${ticker.toLowerCase()}`;
   };
 
+  const goArchive = () => {
+    window.location.hash = "#/archive";
+  };
+
   const mapDecision = (value?: string) => {
     if (!value) return null;
-    if (value === "BUY") return "매수";
-    if (value === "SELL") return "매도";
-    if (value === "HOLD") return "관망";
+    if (value === "BUY") return "BUY";
+    if (value === "SELL") return "SELL";
+    if (value === "HOLD") return "HOLD";
     return value;
   };
 
   const formatActivity = (item: ActivityEvent) => {
     if (item.event_type === "trade") {
-      const action = item.action === "BUY" ? "매수" : "매도";
+      const action = item.action === "BUY" ? "BUY" : "SELL";
       const shares = item.shares ?? 0;
       const price = item.price ? `$${item.price.toFixed(2)}` : "";
-      return `${action} ${shares}주 @ ${price}`;
+      return `${action} ${shares} @ ${price}`;
     }
     if (item.event_type === "analysis") {
       const decision = mapDecision(item.decision);
-      return decision ? `결정: ${decision}` : "분석 완료";
+      return decision ? `Decision: ${decision}` : "Analysis complete";
     }
-    return "활동";
+    return "Activity";
   };
 
   const loadData = async () => {
     loading = true;
     error = "";
     try {
-      const [metricsRes, positionsRes, queueRes, activityRes, healthRes] = await Promise.all([
+      const [metricsRes, positionsRes, queueRes, activityRes, healthRes, summaryRes] = await Promise.all([
         fetchMetrics(),
         fetchPositionsMarket(),
         fetchQueue(),
         fetchActivity(),
         fetchHealth(),
+        fetchScheduleSummary(),
       ]);
 
       metrics = metricsRes as Metrics;
@@ -100,8 +117,9 @@
       queue = (queueRes as QueueStatus) || { running: null, pending: [], total: 0 };
       activity = (activityRes as ActivityEvent[]) || [];
       health = healthRes as Health;
+      scheduleSummary = summaryRes as ScheduleSummary;
     } catch (err) {
-      error = err instanceof Error ? err.message : "데이터를 불러오지 못했습니다.";
+      error = formatErrorMessage(err, "Failed to load dashboard data.");
     } finally {
       loading = false;
     }
@@ -115,29 +133,66 @@
 <section class="page" id="page-dashboard">
   <div class="page-container">
     <div class="page-header">
-      <h2>대시보드</h2>
+      <h2>Dashboard</h2>
       <span class="badge badge-gain">
         <span
           class="status-dot status-ok"
           style="width:6px;height:6px;margin-right:4px"
         ></span>
-        {error ? "시스템 이슈" : "시스템 정상"}
+        {error ? "System issue" : "System ok"}
       </span>
     </div>
 
-    <div class="card-grid card-grid-3" style="margin-bottom:20px">
+    <button class="card summary-banner" type="button" on:click={goArchive}>
+      <div class="summary-header">
+        <div>
+          <div class="summary-title">Today Runs</div>
+        </div>
+        <div class="summary-total">
+          {scheduleSummary ? scheduleSummary.total : "-"}
+        </div>
+      </div>
+      <div class="summary-metrics">
+        <div class="summary-item">
+          <span class="summary-label">Done</span>
+          <span class="summary-value text-gain">
+            {scheduleSummary ? scheduleSummary.done : "-"}
+          </span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Skipped</span>
+          <span class="summary-value">
+            {scheduleSummary ? scheduleSummary.skipped : "-"}
+          </span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Failed</span>
+          <span class="summary-value text-loss">
+            {scheduleSummary ? scheduleSummary.failed : "-"}
+          </span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Running</span>
+          <span class="summary-value">
+            {scheduleSummary ? scheduleSummary.running : "-"}
+          </span>
+        </div>
+      </div>
+    </button>
+
+    <div class="card-grid card-grid-3" style="margin-bottom:16px">
       <div class="metric-card">
         <div class="metric-icon icon-gain">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M12 2v20M17 7l-5-5-5 5" />
           </svg>
         </div>
-        <div class="metric-label">총 손익</div>
+        <div class="metric-label">Total PnL</div>
         <div class="metric-value text-gain">
           {metrics ? formatMoney(metrics.total_unrealized_pnl) : "-"}
         </div>
         <div class="metric-sub">
-          전체 수익률 {metrics ? formatPercent(metrics.total_unrealized_return_pct) : "-"}
+          Total return {metrics ? formatPercent(metrics.total_unrealized_return_pct) : "-"}
         </div>
       </div>
       <div class="metric-card">
@@ -147,10 +202,10 @@
             <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
           </svg>
         </div>
-        <div class="metric-label">포지션</div>
+        <div class="metric-label">Positions</div>
         <div class="metric-value">{metrics ? metrics.active_positions : "-"}</div>
         <div class="metric-sub">
-          승 {metrics ? metrics.wins : "-"} · 패 {metrics ? metrics.losses : "-"}
+          Wins {metrics ? metrics.wins : "-"} · Losses {metrics ? metrics.losses : "-"}
         </div>
       </div>
       <div class="metric-card">
@@ -160,37 +215,37 @@
             <polyline points="12 6 12 12 16 14" />
           </svg>
         </div>
-        <div class="metric-label">스케줄</div>
+        <div class="metric-label">Queue</div>
         <div class="metric-value">{queue.total}</div>
-        <div class="metric-sub">가동 시간: {health ? Math.floor(health.uptime_seconds / 3600) : 0}시간</div>
+        <div class="metric-sub">Uptime: {health ? Math.floor(health.uptime_seconds / 3600) : 0}h</div>
       </div>
     </div>
 
     <div class="dashboard-grid">
       <div class="card">
         <div class="card-header">
-          <h3>활성 포지션</h3>
-          <a href="#/positions" class="card-link">전체 보기</a>
+            <h3>Active Positions</h3>
+            <a href="#/positions" class="card-link">View all</a>
         </div>
         <div class="card-body" style="padding:0">
           <table class="data-table" style="border:none;box-shadow:none;border-radius:0">
             <thead>
               <tr>
-                <th>티커</th>
-                <th>수량</th>
-                <th>현재가</th>
-                <th>손익</th>
-                <th>수익률</th>
+                <th>Ticker</th>
+                <th>Shares</th>
+                <th>Price</th>
+                <th>PnL</th>
+                <th>Return</th>
               </tr>
             </thead>
             <tbody>
               {#if loading}
                 <tr>
-                  <td colspan="5">불러오는 중...</td>
+                  <td colspan="5">Loading...</td>
                 </tr>
               {:else if positions.length === 0}
                 <tr>
-                  <td colspan="5">활성 포지션이 없습니다.</td>
+                  <td colspan="5" class="empty-state">No active positions.</td>
                 </tr>
               {:else}
                 {#each positions as pos}
@@ -211,29 +266,29 @@
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="card">
           <div class="card-header">
-            <h3>큐</h3>
-            <a href="#/live" class="card-link">라이브 보기</a>
+            <h3>Queue</h3>
+            <a href="#/live" class="card-link">View live</a>
           </div>
           <div class="card-body">
             {#if queue.running}
               <div class="queue-item queue-running">
                 <span class="queue-indicator"></span>
                 <span class="queue-ticker">{queue.running}</span>
-                <span class="badge badge-info">실행 중</span>
+                <span class="badge badge-info">Running</span>
               </div>
             {/if}
             {#if queue.pending.length === 0}
               <div class="queue-item queue-pending">
                 <span class="queue-indicator"></span>
-                <span class="queue-ticker">대기 없음</span>
-                <span class="badge badge-muted">대기</span>
+                <span class="queue-ticker">No pending</span>
+                <span class="badge badge-muted">Idle</span>
               </div>
             {:else}
               {#each queue.pending as item}
                 <div class="queue-item queue-pending">
                   <span class="queue-indicator"></span>
                   <span class="queue-ticker">{item}</span>
-                  <span class="badge badge-muted">대기</span>
+                  <span class="badge badge-muted">Queued</span>
                 </div>
               {/each}
             {/if}
@@ -242,18 +297,18 @@
 
         <div class="card" style="flex:1">
           <div class="card-header">
-            <h3>최근 활동</h3>
-            <span style="font-size:0.75rem;color:var(--text-dim)">최근 24시간</span>
+            <h3>Recent Activity</h3>
+            <span style="font-size:0.75rem;color:var(--text-dim)">Last 24h</span>
           </div>
           <div class="card-body">
             <div class="activity-list">
               {#if loading}
                 <div class="activity-item">
-                  <div class="activity-content">불러오는 중...</div>
+                  <div class="activity-content">Loading...</div>
                 </div>
               {:else if activity.length === 0}
                 <div class="activity-item">
-                  <div class="activity-content">최근 활동이 없습니다.</div>
+                  <div class="activity-content empty-state">No recent activity.</div>
                 </div>
               {:else}
                 {#each activity as item}
@@ -269,7 +324,7 @@
                         &nbsp;{formatActivity(item)}
                       </div>
                       <div class="activity-time">
-                        {formatAgo(item.created_at)}{item.scheduled_cycle ? ` · 사이클 #${item.scheduled_cycle}` : ""}
+                        {formatAgo(item.created_at)}{item.scheduled_cycle ? ` · Cycle #${item.scheduled_cycle}` : ""}
                       </div>
                     </div>
                   </div>

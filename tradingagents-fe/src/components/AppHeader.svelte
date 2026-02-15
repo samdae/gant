@@ -2,17 +2,34 @@
   import { link, location } from "svelte-spa-router";
 
   const navItems = [
-    { label: "대시보드", route: "/" },
-    { label: "포지션", route: "/positions" },
-    { label: "스케줄", route: "/schedules" },
-    { label: "라이브", route: "/live" },
-    { label: "검색", route: "/search" },
+    { label: "SCHEDULE", route: "/schedules" },
+    { label: "LIVE", route: "/live" },
+    { label: "DASHBOARD", route: "/" },
+    { label: "POSITION", route: "/positions" },
+    { label: "SEARCH", route: "/search" },
   ];
 
-  let currentRoute = "";
+  let currentBaseRoute = "/";
 
-  $: currentRoute = $location;
-  const isActive = (route: string) => currentRoute === route;
+  const normalizeRoute = (value: string) => {
+    const cleaned = value.split("?")[0].replace(/^#/, "");
+    if (!cleaned) return "/";
+    return cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+  };
+
+  const getBaseRoute = (value: string) => {
+    const normalized = normalizeRoute(value);
+    const parts = normalized.split("/");
+    return parts.length > 1 && parts[1] ? `/${parts[1]}` : "/";
+  };
+
+  const getCurrentBaseRoute = (value: string) => {
+    const fallback = typeof window !== "undefined" ? window.location.hash : "#/";
+    return getBaseRoute(value || fallback || "#/");
+  };
+
+  $: currentBaseRoute = getCurrentBaseRoute($location);
+  const isActive = (route: string) => currentBaseRoute === route;
 </script>
 
 <header class="app-header">
@@ -22,7 +39,7 @@
     {#each navItems as item}
       <a
         href={`#${item.route}`}
-        class={`nav-link ${isActive(item.route) ? "active" : ""}`}
+        class={`nav-link ${item.route === "/" ? "is-home" : ""} ${isActive(item.route) ? "active" : ""}`}
         data-route={item.route}
         use:link
       >
