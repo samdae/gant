@@ -179,22 +179,19 @@ class SummaryAgent:
         """
         # Handle empty content
         if not raw_content or len(raw_content.strip()) == 0:
-            return f"(No {component_name} data)"
-
-        # If already short, return as-is
-        if len(raw_content) < target_tokens * 2:  # Rough token estimation
-            return raw_content
+            return "(데이터 없음)"
 
         # Build summarization prompt
-        prompt = f"""Summarize the following {component_name} analysis into approximately {target_tokens} tokens.
+        prompt = f"""다음 {component_name} 분석을 한국어로 요약해 주세요.
 
-Focus on: {focus}
+집중할 내용: {focus}
 
-Original Analysis:
+원문:
 {raw_content[:3000]}
 
-Provide a concise summary that captures the key points and actionable insights.
-Target length: {target_tokens} tokens (approximately {target_tokens // 4} words).
+- 핵심 포인트와 실행 가능한 인사이트 중심으로 간결하게 작성
+- 길이: 약 {target_tokens} 토큰
+- 반드시 한국어로 작성
 """
 
         try:

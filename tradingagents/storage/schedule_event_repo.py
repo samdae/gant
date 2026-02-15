@@ -31,27 +31,58 @@ class ScheduleEventRepository:
     ) -> int:
         created_at = datetime.now().isoformat()
         connection = conn or self.db.get_connection()
-        cursor = connection.execute(
-            """
-            INSERT INTO schedule_job_events (
-                schedule_job_id, schedule_id, ticker, agent, status,
-                message, step, phase, created_at
+
+        if schedule_job_id and agent:
+            cursor = connection.execute(
+                """
+                INSERT INTO schedule_job_events (
+                    schedule_job_id, schedule_id, ticker, agent, status,
+                    message, step, phase, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (schedule_job_id, agent)
+                DO UPDATE SET
+                    status = excluded.status,
+                    message = excluded.message,
+                    step = excluded.step,
+                    phase = excluded.phase,
+                    created_at = excluded.created_at
+                RETURNING id
+                """,
+                (
+                    schedule_job_id,
+                    schedule_id,
+                    ticker,
+                    agent,
+                    status,
+                    message,
+                    step,
+                    phase,
+                    created_at,
+                ),
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-            """,
-            (
-                schedule_job_id,
-                schedule_id,
-                ticker,
-                agent,
-                status,
-                message,
-                step,
-                phase,
-                created_at,
-            ),
-        )
+        else:
+            cursor = connection.execute(
+                """
+                INSERT INTO schedule_job_events (
+                    schedule_job_id, schedule_id, ticker, agent, status,
+                    message, step, phase, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    schedule_job_id,
+                    schedule_id,
+                    ticker,
+                    agent,
+                    status,
+                    message,
+                    step,
+                    phase,
+                    created_at,
+                ),
+            )
         if commit:
             connection.commit()
 
@@ -79,3 +110,33 @@ class ScheduleEventRepository:
             (ticker, limit),
         )
         return [dict(row) for row in cursor.fetchall()]
+
+    def list_latest_by_ticker(self, ticker: str, limit: int = 100) -> List[Dict[str, Any]]:
+        conn = self.db.get_connection()
+        row = conn.execute(
+            """
+            SELECT schedule_job_id
+            FROM schedule_job_events
+            WHERE ticker = %s AND schedule_job_id IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (ticker,),
+        ).fetchone()
+
+        if not row:
+            return []
+
+        schedule_job_id = row["schedule_job_id"]
+        cursor = conn.execute(
+            """
+            SELECT id, schedule_job_id, schedule_id, ticker, agent, status,
+                   message, step, phase, created_at
+            FROM schedule_job_events
+            WHERE schedule_job_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (schedule_job_id, limit),
+        )
+        return [dict(r) for r in cursor.fetchall()]

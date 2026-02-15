@@ -75,7 +75,7 @@ class ScheduleConfigRepository:
     def get_all(self) -> List[Dict[str, Any]]:
         cursor = self.db.get_connection().execute(
             """
-            SELECT id, ticker, interval_days, created_at
+            SELECT id, ticker, interval_days, last_data_date, created_at
             FROM schedule_configs
             ORDER BY created_at ASC
             """
@@ -85,7 +85,7 @@ class ScheduleConfigRepository:
     def get_by_ticker(self, ticker: str) -> Optional[Dict[str, Any]]:
         cursor = self.db.get_connection().execute(
             """
-            SELECT id, ticker, interval_days, created_at
+            SELECT id, ticker, interval_days, last_data_date, created_at
             FROM schedule_configs
             WHERE ticker = %s
             LIMIT 1
@@ -105,3 +105,22 @@ class ScheduleConfigRepository:
             connection.commit()
 
         logger.info(f"Deleted schedule_config for {ticker}")
+
+    def update_last_data_date(
+        self,
+        ticker: str,
+        last_data_date: str,
+        commit: bool = True,
+        conn=None,
+    ) -> None:
+        connection = conn or self.db.get_connection()
+        connection.execute(
+            """
+            UPDATE schedule_configs
+            SET last_data_date = %s
+            WHERE ticker = %s
+            """,
+            (last_data_date, ticker),
+        )
+        if commit:
+            connection.commit()

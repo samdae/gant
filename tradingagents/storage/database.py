@@ -94,7 +94,7 @@ class Database:
         CREATE TABLE IF NOT EXISTS schedules (
             id              BIGSERIAL PRIMARY KEY,
             ticker          TEXT    NOT NULL,
-            interval_days   INTEGER NOT NULL DEFAULT 4,
+            interval_days   INTEGER NOT NULL DEFAULT 1,
             scheduled_cycle INTEGER NOT NULL,
             created_at      TIMESTAMPTZ NOT NULL
         );
@@ -103,7 +103,8 @@ class Database:
         CREATE TABLE IF NOT EXISTS schedule_configs (
             id            BIGSERIAL PRIMARY KEY,
             ticker        TEXT    NOT NULL UNIQUE,
-            interval_days INTEGER NOT NULL DEFAULT 4,
+            interval_days INTEGER NOT NULL DEFAULT 1,
+            last_data_date DATE,
             created_at    TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_schedule_configs_ticker ON schedule_configs(ticker);
@@ -211,10 +212,12 @@ class Database:
         if ddl_conn_created:
             ddl_conn.close()
 
-        self._ensure_column("schedules", "interval_days", "INTEGER NOT NULL DEFAULT 4")
+        self._ensure_column("schedules", "interval_days", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("schedule_configs", "last_data_date", "DATE")
         self._ensure_column("reflections", "market", "TEXT")
         self._ensure_column("reflections", "sector", "TEXT")
         self._ensure_column("reflections", "industry", "TEXT")
+        self._ensure_schedule_event_unique_index()
 
         logger.info("Schema initialization complete")
 
@@ -251,6 +254,37 @@ class Database:
             self.conn.commit()
         except Exception as exc:
             logger.warning(f"Failed to ensure column {table}.{column}: {exc}")
+
+    def _ensure_schedule_event_unique_index(self) -> None:
+        dedupe_sql = """
+            WITH ranked AS (
+                SELECT id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY schedule_job_id, agent
+                           ORDER BY created_at DESC, id DESC
+                       ) AS rn
+                FROM schedule_job_events
+                WHERE schedule_job_id IS NOT NULL AND agent IS NOT NULL
+            )
+            DELETE FROM schedule_job_events
+            WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
+        """
+
+        try:
+            self.conn.execute(dedupe_sql)
+            self.conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_job_events_unique
+                    ON schedule_job_events(schedule_job_id, agent)
+                """
+            )
+            self.conn.commit()
+        except Exception as exc:
+            logger.warning(f"Failed to ensure schedule_event unique index: {exc}")
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
 
     def execute_in_transaction(
         self, operations: Callable[[psycopg.Connection], None]

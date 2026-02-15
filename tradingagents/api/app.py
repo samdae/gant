@@ -100,9 +100,6 @@ def broadcast_status(
     Can be called from any thread (including analysis worker thread).
     Uses run_coroutine_threadsafe to push to async queues.
     """
-    if ticker not in ws_subscribers or not ws_subscribers[ticker]:
-        return
-
     step_info = _AGENT_STEPS.get(agent)
     msg = {
         "agent": agent,
@@ -139,6 +136,9 @@ def broadcast_status(
         )
     except Exception as e:
         logger.warning(f"Failed to store schedule event: {e}")
+
+    if ticker not in ws_subscribers or not ws_subscribers[ticker]:
+        return
 
     logger.info(
         "Status update: ticker=%s agent=%s status=%s message=%s",
@@ -306,7 +306,7 @@ async def lifespan(app: FastAPI):
     schedule_config_repo = ScheduleConfigRepository(scheduler.db)
     for schedule_item in DEFAULT_CONFIG.get("schedules", []):
         ticker = schedule_item["ticker"]
-        interval_days = schedule_item.get("interval_days", 4)
+        interval_days = schedule_item.get("interval_days", 1)
 
         schedule_config_repo.upsert(ticker, interval_days)
         logger.info(f"Auto-loaded schedule: {ticker} (every {interval_days} days)")

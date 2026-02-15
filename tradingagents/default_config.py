@@ -30,6 +30,12 @@ DEFAULT_CONFIG = {
         os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
         "dataflows/data_cache",
     ),
+    # Data cache window (yfinance/stockstats)
+    "stock_download_days": int(os.getenv("TRADINGAGENTS_STOCK_DOWNLOAD_DAYS", "330")),
+    "stock_download_buffer_days": int(
+        os.getenv("TRADINGAGENTS_STOCK_DOWNLOAD_BUFFER_DAYS", "300")
+    ),
+    "stock_cache_stale_days": int(os.getenv("TRADINGAGENTS_STOCK_CACHE_STALE_DAYS", "3")),
     # LLM settings — uses Google OAuth, no API keys
     # Providers: "gemini-cli" (default, uses ~/.gemini creds) or "antigravity"
     # Override via LLM_PROVIDER env var

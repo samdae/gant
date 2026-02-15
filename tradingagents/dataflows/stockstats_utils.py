@@ -22,8 +22,11 @@ class StockstatsUtils:
         today_date = pd.Timestamp.today()
         curr_date_dt = pd.to_datetime(curr_date)
 
+        download_days = int(config.get("stock_download_days", 330))
+        stale_days = int(config.get("stock_cache_stale_days", 3))
+
         end_date = today_date
-        start_date = today_date - pd.DateOffset(years=15)
+        start_date = today_date - pd.DateOffset(days=download_days)
         start_date_str = start_date.strftime("%Y-%m-%d")
         end_date_str = end_date.strftime("%Y-%m-%d")
 
@@ -32,13 +35,21 @@ class StockstatsUtils:
 
         data_file = os.path.join(
             config["data_cache_dir"],
-            f"{symbol}-YFin-data-{start_date_str}-{end_date_str}.csv",
+            f"{symbol}-YFin-data-{download_days}d.csv",
         )
 
+        data = None
         if os.path.exists(data_file):
             data = pd.read_csv(data_file)
-            data["Date"] = pd.to_datetime(data["Date"])
-        else:
+            data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+            data = data.dropna(subset=["Date"])
+            last_date = data["Date"].max()
+            if last_date is not None and last_date >= (today_date - pd.DateOffset(days=stale_days)):
+                pass
+            else:
+                data = None
+
+        if data is None:
             data = yf.download(
                 symbol,
                 start=start_date_str,
@@ -48,6 +59,8 @@ class StockstatsUtils:
                 auto_adjust=True,
             )
             data = data.reset_index()
+            data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+            data = data.dropna(subset=["Date"])
             data.to_csv(data_file, index=False)
 
         df = wrap(data)

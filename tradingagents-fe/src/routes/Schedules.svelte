@@ -37,7 +37,7 @@
   let showDelete = false;
   let deleteTarget: string | null = null;
   let formTicker = "";
-  let formInterval = 4;
+  let formInterval = 1;
   let formError = "";
   let submitting = false;
 
@@ -67,7 +67,7 @@
 
   const openAdd = () => {
     formTicker = "";
-    formInterval = 4;
+    formInterval = 1;
     formError = "";
     showAdd = true;
   };

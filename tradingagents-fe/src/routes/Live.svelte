@@ -87,7 +87,7 @@
     messages = events.slice(0, 20);
     stepStates = {};
     for (const event of events) {
-      if (event.agent && event.agent !== "system") {
+      if (event.agent && event.agent !== "system" && !stepStates[event.agent]) {
         stepStates[event.agent] = event;
       }
     }

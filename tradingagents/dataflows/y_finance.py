@@ -4,6 +4,7 @@ from dateutil.relativedelta import relativedelta
 import yfinance as yf
 import os
 from .stockstats_utils import StockstatsUtils
+from .config import get_config
 
 def get_YFin_data_online(
     symbol: Annotated[str, "ticker symbol of the company"],
@@ -139,7 +140,16 @@ def get_stock_stats_indicators_window(
 
     # Optimized: Get stock data once and calculate indicators for all dates
     try:
-        indicator_data = _get_stock_stats_bulk(symbol, indicator, curr_date)
+        config = get_config()
+        download_buffer = int(config.get("stock_download_buffer_days", 300))
+        download_days = max(look_back_days + download_buffer, 1)
+
+        indicator_data = _get_stock_stats_bulk(
+            symbol,
+            indicator,
+            curr_date,
+            download_days,
+        )
         
         # Generate the date range we need
         current_dt = curr_date_dt
@@ -187,7 +197,8 @@ def get_stock_stats_indicators_window(
 def _get_stock_stats_bulk(
     symbol: Annotated[str, "ticker symbol of the company"],
     indicator: Annotated[str, "technical indicator to calculate"],
-    curr_date: Annotated[str, "current date for reference"]
+    curr_date: Annotated[str, "current date for reference"],
+    download_days: int,
 ) -> dict:
     """
     Optimized bulk calculation of stock stats indicators.
@@ -201,6 +212,7 @@ def _get_stock_stats_bulk(
     
     config = get_config()
     online = config["data_vendors"]["technical_indicators"] != "local"
+    stale_days = int(config.get("stock_cache_stale_days", 3))
     
     if not online:
         # Local data path
@@ -220,7 +232,7 @@ def _get_stock_stats_bulk(
         curr_date_dt = pd.to_datetime(curr_date)
         
         end_date = today_date
-        start_date = today_date - pd.DateOffset(years=15)
+        start_date = today_date - pd.DateOffset(days=download_days)
         start_date_str = start_date.strftime("%Y-%m-%d")
         end_date_str = end_date.strftime("%Y-%m-%d")
         
@@ -228,13 +240,21 @@ def _get_stock_stats_bulk(
         
         data_file = os.path.join(
             config["data_cache_dir"],
-            f"{symbol}-YFin-data-{start_date_str}-{end_date_str}.csv",
+            f"{symbol}-YFin-data-{download_days}d.csv",
         )
-        
+
+        data = None
         if os.path.exists(data_file):
             data = pd.read_csv(data_file)
-            data["Date"] = pd.to_datetime(data["Date"])
-        else:
+            data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+            data = data.dropna(subset=["Date"])
+            last_date = data["Date"].max()
+            if last_date is not None and last_date >= (today_date - pd.DateOffset(days=stale_days)):
+                pass
+            else:
+                data = None
+
+        if data is None:
             data = yf.download(
                 symbol,
                 start=start_date_str,
@@ -244,6 +264,8 @@ def _get_stock_stats_bulk(
                 auto_adjust=True,
             )
             data = data.reset_index()
+            data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+            data = data.dropna(subset=["Date"])
             data.to_csv(data_file, index=False)
         
         df = wrap(data)

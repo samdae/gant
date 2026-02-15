@@ -21,7 +21,7 @@ class ScheduleRepository:
         self.db = db
         self.conn = db.get_connection()
 
-    def create(self, ticker: str, cycle: int, interval_days: int = 4, commit: bool = True, conn=None) -> int:
+    def create(self, ticker: str, cycle: int, interval_days: int = 1, commit: bool = True, conn=None) -> int:
         """Create a new schedule entry.
 
         Args:

@@ -23,7 +23,7 @@ router = APIRouter()
 # Request/Response models
 class ScheduleRequest(BaseModel):
     ticker: str
-    interval_days: int = 4
+    interval_days: int = 1
 
 
 class ScheduleResponse(BaseModel):
@@ -70,7 +70,7 @@ class MetricsResponse(BaseModel):
 class ActivityEvent(BaseModel):
     event_type: str
     ticker: str
-    created_at: str
+    created_at: datetime
     schedule_id: Optional[int] = None
     scheduled_cycle: Optional[int] = None
     action: Optional[str] = None
@@ -707,7 +707,10 @@ async def search_memories(
     # Use HybridMemory for search
     try:
         results = graph.memory.get_memories(query, n_matches=limit)
-    return results
+        return results
+    except Exception as e:
+        logger.error(f"Search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 
 @router.get("/live/{ticker}/events", response_model=List[dict], tags=["Live"])
@@ -723,10 +726,7 @@ async def get_live_events(
     from tradingagents.storage import ScheduleEventRepository
 
     repo = ScheduleEventRepository(scheduler.db)
-    return repo.list_by_ticker(ticker, limit=limit)
-    except Exception as e:
-        logger.error(f"Search failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+    return repo.list_latest_by_ticker(ticker, limit=limit)
 
 
 # FR-025: Retry failed schedule

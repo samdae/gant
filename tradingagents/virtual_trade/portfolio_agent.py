@@ -252,66 +252,63 @@ class PortfolioAgent:
 - Avoid anchoring: Current price ≠ "correct" price
 """
 
-        prompt = f"""You are a Portfolio Manager for a virtual trading system. Your role is to review the current portfolio state, recent analysis history, past trading experiences, and the latest AI pipeline recommendation to make a final trading decision.
+        prompt = f"""당신은 가상 트레이딩 시스템의 포트폴리오 매니저입니다. 현재 포지션 상태, 최근 분석 히스토리, 과거 경험, 최신 파이프라인 추천을 종합해 최종 의사결정을 내려주세요.
 
-**Current Portfolio State:**
-- Ticker: {ticker}
-- Position: {position_summary}
-- Total Shares Held: {total_shares}
-- Current Stock Price: ${current_price:.2f}
-- Current Position Value: ${current_position_value:.2f}
-- Unrealized Return: {unrealized_return_pct:.2f}%
-- Portfolio Status: {trade_state['status']}
+**현재 포트폴리오 상태:**
+- 티커: {ticker}
+- 포지션: {position_summary}
+- 보유 주식 수: {total_shares}
+- 현재가: ${current_price:.2f}
+- 포지션 평가금액: ${current_position_value:.2f}
+- 미실현 수익률: {unrealized_return_pct:.2f}%
+- 포트폴리오 상태: {trade_state['status']}
 
-**Recent Analysis History:**{history_text}
+**최근 분석 히스토리:**{history_text}
 
 {rag_context}
 
-**Latest G-ANT Pipeline Recommendation (60% weight):**
-- Decision: {pipeline_decision}
-- Market Analysis: {market_excerpt}
-- Fundamentals: {fundamentals_excerpt}
-- Final Decision: {final_decision_excerpt}
+**최신 G-ANT 파이프라인 추천 (가중치 60%):**
+- 결정: {pipeline_decision}
+- 시장 분석: {market_excerpt}
+- 펀더멘털: {fundamentals_excerpt}
+- 최종 결정 요약: {final_decision_excerpt}
 
 {weighting_guidance}
 
-**Your Task:**
-1. Review the current position and recent performance
-2. Consider past experiences (if any) and extract relevant lessons
-3. Evaluate the latest pipeline recommendation with 60:40 weighting
-4. Apply debiasing guidelines to avoid common cognitive errors
-5. Make a portfolio-level decision: BUY, SELL, HOLD, or MODIFY
+**당신의 작업:**
+1. 현재 포지션과 최근 성과를 검토
+2. 과거 경험이 있으면 핵심 교훈 추출
+3. 최신 파이프라인 추천을 60:40 비중으로 평가
+4. 디바이어싱 가이드를 적용
+5. 포트폴리오 레벨에서 BUY/SELL/HOLD/MODIFY 결정
 
-**Decision Guidelines:**
-- BUY: If pipeline recommends BUY
-  * Decide position sizing based on conviction and risk
-  * Consider: 25% (low conviction), 50% (medium), 75% (high conviction)
-- SELL: If pipeline recommends SELL or if risk management criteria met
-  * **Choose FULL or PARTIAL liquidation:**
-    - Full liquidation: SHARES = {total_shares} (close entire position)
-    - Partial liquidation: SHARES = <number> (e.g., 50% for profit-taking, 25% for risk reduction)
-  * Consider market conditions and profit levels
-  * If unsure, default to FULL liquidation
-- HOLD: If maintaining current position is prudent
-  * No new trades, continue monitoring
-- MODIFY: If strategy parameters need adjustment
-  * Update stop-loss, target, or next action
+**결정 가이드라인:**
+- BUY: 파이프라인이 BUY 추천일 때
+  * 확신도/리스크에 따라 포지션 규모 결정
+  * 참고: 25%(낮음), 50%(중간), 75%(높음)
+- SELL: 파이프라인이 SELL이거나 리스크 관리 필요할 때
+  * **전량/부분 청산 선택:**
+    - 전량 청산: SHARES = {total_shares}
+    - 부분 청산: SHARES = <수량>
+  * 불확실하면 전량 청산 기본
+- HOLD: 현 상태 유지가 합리적일 때
+- MODIFY: 스탑로스/목표가/다음 행동 조정
 
-**Output Format (STRICT):**
+**출력 형식 (엄격히 준수):**
 ACTION: [BUY|SELL|HOLD|MODIFY]
-SHARES: [number of shares - REQUIRED for BUY and SELL, 0 for HOLD/MODIFY]
-RATIONALE: [2-3 sentences explaining your decision, reference both analysis and experience]
+SHARES: [BUY/SELL 필수, HOLD/MODIFY는 0]
+RATIONALE: [2~3문장, 분석과 경험 모두 언급]
 STRATEGY_UPDATE:
-  stop_loss: [price or null]
-  target: [price or null]
+  stop_loss: [가격 또는 null]
+  target: [가격 또는 null]
   next_action: [BUY|SELL|HOLD]
 
-**IMPORTANT for SELL:**
-- You MUST specify SHARES (number of shares to sell)
-- SHARES = 0 or SHARES >= {total_shares} will be interpreted as FULL liquidation
-- For partial sell: SHARES = <specific number less than {total_shares}>
+**SELL 중요:**
+- 반드시 SHARES 지정
+- SHARES = 0 또는 SHARES >= {total_shares} → 전량 청산으로 해석
+- 부분 청산: SHARES = {total_shares}보다 작은 구체적 수량
 
-Think carefully, apply the 60:40 weighting, and provide a decisive recommendation."""
+반드시 한국어로 작성하세요."""
 
         return prompt
 

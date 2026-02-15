@@ -187,7 +187,7 @@ class TickerScheduler:
         if schedule_id is None:
             latest_cycle = schedule_repo.get_latest_cycle(ticker)
             current_cycle = latest_cycle + 1
-            interval_days = self._ticker_intervals.get(ticker, 4)
+            interval_days = self._ticker_intervals.get(ticker, 1)
             schedule_id = schedule_repo.create(
                 ticker,
                 current_cycle,
@@ -224,7 +224,7 @@ class TickerScheduler:
     def add_ticker(
         self,
         ticker: str,
-        interval_days: int = 4,
+        interval_days: int = 1,
     ):
         """Add a ticker to the schedule.
 
@@ -408,7 +408,7 @@ class TickerScheduler:
             if schedule_id is None:
                 latest_cycle = schedule_repo.get_latest_cycle(ticker)
                 current_cycle = latest_cycle + 1
-                interval_days = self._ticker_intervals.get(ticker, 4)
+                interval_days = self._ticker_intervals.get(ticker, 1)
                 schedule_id = schedule_repo.create(
                     ticker,
                     current_cycle,
@@ -432,11 +432,61 @@ class TickerScheduler:
                 self._log_schedule_job,
             )
             try:
+                from tradingagents.storage import ScheduleConfigRepository
+
+                schedule_config_repo = ScheduleConfigRepository(self.db)
+                latest_market_date = self._get_latest_market_date(ticker)
+                if latest_market_date is None:
+                    schedule_job_repo.update_status(
+                        schedule_job_id,
+                        "skipped",
+                        error_type="no_data",
+                        error_message="No market data available",
+                        error_detail=None,
+                    )
+                    if self.graph.status_callback:
+                        self.graph.status_callback(
+                            "system",
+                            "skipped",
+                            "No market data available",
+                        )
+                    logger.info(f"{ticker}: Skipped (no market data)")
+                    return
+
+                cfg = schedule_config_repo.get_by_ticker(ticker) or {}
+                last_data_date = cfg.get("last_data_date")
+                if hasattr(last_data_date, "isoformat"):
+                    last_data_date = last_data_date.isoformat()
+
+                if last_data_date == latest_market_date:
+                    schedule_job_repo.update_status(
+                        schedule_job_id,
+                        "skipped",
+                        error_type="no_update",
+                        error_message=f"No new market data since {latest_market_date}",
+                        error_detail=None,
+                    )
+                    if self.graph.status_callback:
+                        self.graph.status_callback(
+                            "system",
+                            "skipped",
+                            f"No new market data since {latest_market_date}",
+                        )
+                    logger.info(
+                        f"{ticker}: Skipped (no new data since {latest_market_date})"
+                    )
+                    return
+
                 # Run analysis cycle (P3-E: no retry)
                 self._run_analysis_cycle_impl(
                     ticker,
                     schedule_id,
                     schedule_job_id,
+                )
+
+                schedule_config_repo.update_last_data_date(
+                    ticker,
+                    latest_market_date,
                 )
             finally:
                 reset_schedule_context(context_tokens)
@@ -491,13 +541,7 @@ class TickerScheduler:
 
         # 1. Get or create active position
         active_position = position_repo.get_active(ticker)
-        if not active_position:
-            # Create new position if none exists
-            position_id = position_repo.create(ticker)
-            active_position = position_repo.get_by_id(position_id)
-            logger.info(f"{ticker}: Created new position {position_id}")
-        else:
-            position_id = active_position["id"]
+        position_id = active_position["id"] if active_position else None
 
         # 3. Get current price (with retries)
         current_price = self._get_current_price(ticker, schedule_id)
@@ -600,19 +644,24 @@ class TickerScheduler:
                 logger.info(f"{ticker}: BUY planned - {shares} shares")
 
             elif action == "SELL" and shares > 0:
-                total_shares = active_position["shares"]
-
-                if shares >= total_shares:
-                    sell_all = True
-                    trade_shares = total_shares
+                if not active_position:
+                    logger.info(
+                        f"{ticker}: SELL requested but no position; skipping trade"
+                    )
                 else:
-                    trade_shares = shares
+                    total_shares = active_position["shares"]
 
-                trade_executed = True
-                trade_action = "SELL"
-                logger.info(
-                    f"{ticker}: SELL planned - {trade_shares} shares"
-                )
+                    if shares >= total_shares:
+                        sell_all = True
+                        trade_shares = total_shares
+                    else:
+                        trade_shares = shares
+
+                    trade_executed = True
+                    trade_action = "SELL"
+                    logger.info(
+                        f"{ticker}: SELL planned - {trade_shares} shares"
+                    )
 
             is_closed = trade_action == "SELL" and sell_all
             trade_result = None
@@ -621,7 +670,7 @@ class TickerScheduler:
             logger.info(f"{ticker}: Starting DB transaction...")
 
             def transaction_operations(conn):
-                nonlocal trade_result
+                nonlocal trade_result, position_id
                 # 9. Update schedule status
                 schedule_job_repo.update_status(
                     schedule_job_id,
@@ -632,6 +681,19 @@ class TickerScheduler:
                     commit=False,
                     conn=conn,
                 )
+
+                if trade_executed and trade_action == "BUY":
+                    state = self.trade_manager.open_position(
+                        ticker,
+                        trade_shares,
+                        current_price,
+                        today,
+                        commit=False,
+                        conn=conn,
+                    )
+                    position = state.get("position") if state else None
+                    if position:
+                        position_id = position.get("id")
 
                 # 10. Insert report
                 report_id = report_repo.create(
@@ -644,16 +706,7 @@ class TickerScheduler:
 
                 # 11. Execute trade + insert trade record
                 if trade_executed and trade_action:
-                    if trade_action == "BUY":
-                        self.trade_manager.open_position(
-                            ticker,
-                            trade_shares,
-                            current_price,
-                            today,
-                            commit=False,
-                            conn=conn,
-                        )
-                    elif trade_action == "SELL":
+                    if trade_action == "SELL":
                         if sell_all:
                             trade_result = self.trade_manager.close_all_positions(
                                 ticker,
@@ -672,15 +725,20 @@ class TickerScheduler:
                                 conn=conn,
                             )
 
-                    trade_repo.create(
-                        position_id=position_id,
-                        report_id=report_id,
-                        action=trade_action,
-                        shares=trade_shares,
-                        price=trade_price,
-                        commit=False,
-                        conn=conn,
-                    )
+                    if position_id:
+                        trade_repo.create(
+                            position_id=position_id,
+                            report_id=report_id,
+                            action=trade_action,
+                            shares=trade_shares,
+                            price=trade_price,
+                            commit=False,
+                            conn=conn,
+                        )
+                    else:
+                        logger.warning(
+                            f"{ticker}: Trade record skipped (no position id)"
+                        )
 
             # Execute transaction
             self.db.execute_in_transaction(transaction_operations)
@@ -902,6 +960,23 @@ class TickerScheduler:
             f"Failed to fetch current price for {ticker}",
             details=errors,
         )
+
+    def _get_latest_market_date(self, ticker: str) -> Optional[str]:
+        try:
+            import yfinance as yf
+
+            ticker_obj = yf.Ticker(ticker)
+            history = ticker_obj.history(period="7d")
+            if history.empty:
+                return None
+
+            latest = history.index.max()
+            if getattr(latest, "tzinfo", None) is not None:
+                latest = latest.tz_localize(None)
+            return latest.date().isoformat()
+        except Exception as e:
+            logger.warning(f"{ticker}: Failed to fetch latest market date: {e}")
+            return None
 
 
 if __name__ == "__main__":
