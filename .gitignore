@@ -14,3 +14,4 @@ tradingagents/memory/chroma/
 .cache/
 tradingagents.egg-info/
 .idea
+tradingagents-fe/dist/

@@ -181,7 +181,7 @@
               Cycle
               <select class="select" value={selectedCycleId} on:change={handleCycleChange}>
                 {#each cycles as cycle}
-                  <option value={cycle.id}>
+                  <option value={String(cycle.id)}>
                     Cycle #{cycle.scheduled_cycle} · {formatDateTime(cycle.created_at)}
                   </option>
                 {/each}

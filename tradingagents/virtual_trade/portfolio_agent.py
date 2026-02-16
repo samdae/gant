@@ -288,25 +288,40 @@ class PortfolioAgent:
   * 참고: 25%(낮음), 50%(중간), 75%(높음)
 - SELL: 파이프라인이 SELL이거나 리스크 관리 필요할 때
   * **전량/부분 청산 선택:**
-    - 전량 청산: SHARES = {total_shares}
-    - 부분 청산: SHARES = <수량>
+    - 전량 청산: shares = {total_shares}
+    - 부분 청산: shares = 구체적 수량
   * 불확실하면 전량 청산 기본
 - HOLD: 현 상태 유지가 합리적일 때
 - MODIFY: 스탑로스/목표가/다음 행동 조정
 
-**출력 형식 (엄격히 준수):**
-ACTION: [BUY|SELL|HOLD|MODIFY]
-SHARES: [BUY/SELL 필수, HOLD/MODIFY는 0]
-RATIONALE: [2~3문장, 분석과 경험 모두 언급]
-STRATEGY_UPDATE:
-  stop_loss: [가격 또는 null]
-  target: [가격 또는 null]
-  next_action: [BUY|SELL|HOLD]
-
 **SELL 중요:**
-- 반드시 SHARES 지정
-- SHARES = 0 또는 SHARES >= {total_shares} → 전량 청산으로 해석
-- 부분 청산: SHARES = {total_shares}보다 작은 구체적 수량
+- 반드시 shares 지정
+- shares = 0 또는 shares >= {total_shares} → 전량 청산으로 해석
+- 부분 청산: shares = {total_shares}보다 작은 구체적 수량
+
+**응답은 반드시 아래 JSON 형식만 출력하세요. JSON 외에 다른 텍스트를 포함하지 마세요:**
+```json
+{{{{
+  "action": "BUY 또는 SELL 또는 HOLD 또는 MODIFY",
+  "shares": 정수,
+  "rationale": "2~3문장, 분석과 경험 모두 언급 (한국어)",
+  "strategy_update": {{{{
+    "stop_loss": 가격_또는_null,
+    "target": 가격_또는_null,
+    "next_action": "BUY 또는 SELL 또는 HOLD"
+  }}}}
+}}}}
+```
+
+예시:
+```json
+{{{{
+  "action": "BUY",
+  "shares": 50,
+  "rationale": "파이프라인이 강력한 매수 신호를 보내고 있으며, 펀더멘털 지표가 양호합니다.",
+  "strategy_update": {{{{"stop_loss": 145.0, "target": 180.0, "next_action": "HOLD"}}}}
+}}}}
+```
 
 반드시 한국어로 작성하세요."""
 
@@ -318,82 +333,91 @@ STRATEGY_UPDATE:
         trade_state: Dict[str, Any],
         current_price: float
     ) -> Dict[str, Any]:
-        """Parse LLM decision output (FR-020: SELL shares=0 → 전량 매도 fallback).
+        """Parse LLM JSON decision output.
+
+        Expects JSON with: action, shares, rationale.
+        Falls back to keyword detection if JSON parsing fails.
 
         Args:
-            decision_text: Raw LLM output
-            trade_state: Current trade state (for fallback)
-            current_price: Current price (for fallback)
+            decision_text: Raw LLM output (should be JSON)
+            trade_state: Current trade state
+            current_price: Current price
 
         Returns:
             Parsed decision dict
         """
-        lines = decision_text.strip().split('\n')
+        import json
+        import re
 
-        # Default values
-        action = None
-        shares = None
-        rationale = decision_text[:200]  # Fallback
-        strategy_update = {
-            "stop_loss": None,
-            "target": None,
-            "next_action": "HOLD"
-        }
+        text = decision_text.strip()
 
-        # Parse line by line
-        for line in lines:
-            line = line.strip()
+        # Try to extract JSON from the response
+        parsed = None
 
-            if line.startswith("ACTION:"):
-                action_str = line.split(":", 1)[1].strip().upper()
-                if action_str in ["BUY", "SELL", "HOLD", "MODIFY"]:
-                    action = action_str
+        # 1. Try direct json.loads
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            pass
 
-            elif line.startswith("SHARES:"):
+        # 2. Try extracting JSON from markdown code block
+        if not parsed:
+            json_match = re.search(r'```(?:json)?\s*(.+?)\s*```', text, re.DOTALL)
+            if json_match:
                 try:
-                    shares = int(line.split(":", 1)[1].strip())
-                except (ValueError, IndexError):
-                    shares = 0
-
-            elif line.startswith("RATIONALE:"):
-                rationale = line.split(":", 1)[1].strip()
-
-            elif line.startswith("stop_loss:"):
-                try:
-                    value = line.split(":", 1)[1].strip()
-                    if value.lower() not in ["null", "none"]:
-                        strategy_update["stop_loss"] = float(value)
-                except (ValueError, IndexError):
+                    parsed = json.loads(json_match.group(1))
+                except json.JSONDecodeError:
                     pass
 
-            elif line.startswith("target:"):
+        # 3. Try finding { ... } in the text
+        if not parsed:
+            brace_match = re.search(r'\{.+\}', text, re.DOTALL)
+            if brace_match:
                 try:
-                    value = line.split(":", 1)[1].strip()
-                    if value.lower() not in ["null", "none"]:
-                        strategy_update["target"] = float(value)
-                except (ValueError, IndexError):
+                    parsed = json.loads(brace_match.group(0))
+                except json.JSONDecodeError:
                     pass
 
-            elif line.startswith("next_action:"):
-                next_action = line.split(":", 1)[1].strip().upper()
-                if next_action in ["BUY", "SELL", "HOLD"]:
-                    strategy_update["next_action"] = next_action
-
-        if action not in ["BUY", "SELL", "HOLD", "MODIFY"]:
+        if not parsed or not isinstance(parsed, dict):
             raise DecisionParseError(
-                "Missing or invalid ACTION in portfolio decision",
+                "Failed to parse JSON from portfolio decision",
                 raw_text=decision_text,
             )
 
-        if action in ["BUY", "SELL"]:
-            if shares is None or shares <= 0:
-                raise DecisionParseError(
-                    f"Invalid SHARES for {action} decision",
-                    raw_text=decision_text,
-                )
-        else:
-            # HOLD/MODIFY do not require shares
-            shares = shares or 0
+        # Validate required fields
+        action = str(parsed.get("action", "")).upper().strip()
+        if action not in ["BUY", "SELL", "HOLD"]:
+            raise DecisionParseError(
+                f"Invalid action '{action}' in portfolio decision",
+                raw_text=decision_text,
+            )
+
+        # Parse shares (handle string/int/float)
+        raw_shares = parsed.get("shares", 0)
+        try:
+            shares = int(float(str(raw_shares).replace("%", "").strip()))
+        except (ValueError, TypeError):
+            shares = 0
+
+        # BUY/SELL must have shares > 0
+        if action in ["BUY", "SELL"] and shares <= 0:
+            # Auto-calculate as fallback
+            position = trade_state.get("position")
+            if action == "BUY" and current_price > 0:
+                shares = int((DEFAULT_INITIAL_CAPITAL * 0.5) / current_price)
+                shares = max(shares, 1)
+            elif action == "SELL" and position:
+                shares = position["shares"]
+            else:
+                shares = 0
+
+        rationale = str(parsed.get("rationale", decision_text[:200]))
+
+        strategy_update = {
+            "stop_loss": None,
+            "target": None,
+            "next_action": action,
+        }
 
         return {
             "action": action,

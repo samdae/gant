@@ -206,6 +206,17 @@
         </div>
       </div>
       <div class="metric-card">
+        <div class="metric-icon icon-info">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        </div>
+        <div class="metric-label">Queue</div>
+        <div class="metric-value">{queue.total}</div>
+        <div class="metric-sub">Uptime: {health ? `${Math.floor(health.uptime_seconds / 3600)}h ${Math.floor((health.uptime_seconds % 3600) / 60)}m` : "0h 0m"}</div>
+      </div>
+      <div class="metric-card">
         <div class="metric-icon icon-primary">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <rect x="2" y="7" width="20" height="14" rx="2" />
@@ -217,17 +228,6 @@
         <div class="metric-sub">
           Wins {metrics ? metrics.wins : "-"} · Losses {metrics ? metrics.losses : "-"}
         </div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-icon icon-info">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-        </div>
-        <div class="metric-label">Queue</div>
-        <div class="metric-value">{queue.total}</div>
-        <div class="metric-sub">Uptime: {health ? Math.floor(health.uptime_seconds / 3600) : 0}h</div>
       </div>
     </div>
 
@@ -287,7 +287,7 @@
                 <span class="badge badge-info">Running</span>
               </div>
             {/if}
-            {#if queue.pending.length === 0}
+            {#if queue.pending.length === 0 && !queue.running}
               <div class="queue-item queue-pending">
                 <span class="queue-indicator"></span>
                 <span class="queue-ticker">No pending</span>
@@ -331,7 +331,6 @@
                         <span class="ticker-badge" style="font-size:0.6875rem;padding:1px 5px">
                           {item.ticker}
                         </span>
-                        {#if $tickerNames[item.ticker]}<span class="ticker-tag">{$tickerNames[item.ticker]}</span>{/if}
                         &nbsp;{formatActivity(item)}
                       </div>
                       <div class="activity-time">

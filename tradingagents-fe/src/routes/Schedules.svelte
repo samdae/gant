@@ -227,7 +227,38 @@
       <div class="schedule-list">
         {#each schedules as schedule}
           {@const status = statusBadge(schedule.ticker)}
-          <div class="card schedule-card" on:click={() => goSchedule(schedule.ticker)}>
+          <div
+            class="card schedule-card"
+            on:click={() => goSchedule(schedule.ticker)}
+            on:touchstart|passive={(e) => {
+              const t = e.currentTarget;
+              t.dataset.sx = String(e.touches[0].clientX);
+              t.dataset.sy = String(e.touches[0].clientY);
+              t.style.transition = 'none';
+            }}
+            on:touchmove|passive={(e) => {
+              const t = e.currentTarget;
+              const sx = Number(t.dataset.sx);
+              const sy = Number(t.dataset.sy);
+              const dx = e.touches[0].clientX - sx;
+              const dy = e.touches[0].clientY - sy;
+              if (Math.abs(dx) > Math.abs(dy) && dx < 0) {
+                t.style.transform = `translateX(${Math.max(dx, -120)}px)`;
+                t.style.opacity = String(Math.max(1 + dx / 300, 0.5));
+              }
+            }}
+            on:touchend={(e) => {
+              const t = e.currentTarget;
+              const sx = Number(t.dataset.sx);
+              const dx = e.changedTouches[0].clientX - sx;
+              t.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
+              t.style.transform = '';
+              t.style.opacity = '';
+              if (dx < -80) {
+                openDelete(schedule.ticker);
+              }
+            }}
+          >
             <div class="schedule-top">
               <div class="schedule-top-left">
                 <span class="ticker-badge">{schedule.ticker}</span>
@@ -249,11 +280,6 @@
                 <span>Last run: -</span>
               {/if}
             </div>
-            <button
-              class="btn-icon btn-danger schedule-delete"
-              title="Delete"
-              on:click|stopPropagation={() => openDelete(schedule.ticker)}
-            >&times;</button>
           </div>
         {/each}
       </div>

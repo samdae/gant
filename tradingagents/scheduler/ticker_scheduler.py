@@ -185,14 +185,23 @@ class TickerScheduler:
         schedule_job_repo = ScheduleJobRepository(self.db)
 
         if schedule_id is None:
-            latest_cycle = schedule_repo.get_latest_cycle(ticker)
-            current_cycle = latest_cycle + 1
-            interval_days = self._ticker_intervals.get(ticker, 1)
-            schedule_id = schedule_repo.create(
-                ticker,
-                current_cycle,
-                interval_days=interval_days,
-            )
+            # Check for existing incomplete schedule (not done) → reuse it
+            latest_job = schedule_job_repo.get_latest_by_ticker(ticker)
+            if latest_job and latest_job.get("status") not in ("done", None):
+                schedule_id = latest_job["schedule_id"]
+                logger.info(
+                    f"Reusing existing schedule {schedule_id} for {ticker} "
+                    f"(latest job status={latest_job.get('status')})"
+                )
+            else:
+                latest_cycle = schedule_repo.get_latest_cycle(ticker)
+                current_cycle = latest_cycle + 1
+                interval_days = self._ticker_intervals.get(ticker, 1)
+                schedule_id = schedule_repo.create(
+                    ticker,
+                    current_cycle,
+                    interval_days=interval_days,
+                )
 
         job_id = schedule_job_repo.create(
             schedule_id,
@@ -346,11 +355,17 @@ class TickerScheduler:
         """Self-healing: Scan config to restore schedules.
 
         FR-030: Simplified - only scans config, no file system scan needed.
+        Also recovers failed schedule_jobs by re-queuing them.
 
         Scans:
         1. config["schedules"] (List[{ticker, interval_days, initial_capital}])
+        2. Failed schedule_jobs → re-queue under same schedule_id
         """
         logger.info("Running self-heal scan...")
+
+        from tradingagents.storage import ScheduleJobRepository
+
+        schedule_job_repo = ScheduleJobRepository(self.db)
 
         # Scan config schedules
         config_schedules = self.config.get("schedules", [])
@@ -358,8 +373,25 @@ class TickerScheduler:
             ticker = schedule.get("ticker")
             interval_days = schedule.get("interval_days", 4)
 
-            if ticker:
-                self.add_ticker(ticker, interval_days)
+            if not ticker:
+                continue
+
+            # Check for failed jobs FIRST → re-queue under same schedule_id
+            # This must happen BEFORE add_ticker so the ticker is in the queue
+            # when APScheduler triggers, preventing duplicate schedule creation.
+            latest_job = schedule_job_repo.get_latest_by_ticker(ticker)
+            if latest_job and latest_job.get("status") == "failed":
+                schedule_id = latest_job["schedule_id"]
+                logger.info(
+                    f"Self-heal: re-queuing failed schedule {schedule_id} "
+                    f"for {ticker} (job {latest_job['id']})"
+                )
+                self.enqueue_schedule(ticker, schedule_id=schedule_id)
+
+            # Register APScheduler job (idempotent)
+            # If ticker was already re-queued above, APScheduler's immediate
+            # trigger will be blocked by _is_ticker_queued check.
+            self.add_ticker(ticker, interval_days)
 
         logger.info("Self-heal scan complete")
 

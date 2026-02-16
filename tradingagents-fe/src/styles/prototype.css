@@ -1938,6 +1938,41 @@ button {
 }
 
 /* ===== REPORTS PAGE ===== */
+.report-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 4px 8px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.03em;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.legend-buy {
+  background: rgba(22, 163, 74, 0.55);
+}
+
+.legend-sell {
+  background: rgba(220, 38, 38, 0.55);
+}
+
+.legend-hold {
+  background: rgba(234, 179, 8, 0.35);
+}
+
 .report-ticker-list {
   display: flex;
   flex-direction: column;
@@ -1953,6 +1988,19 @@ button {
   color: var(--text);
   transition: var(--transition);
   gap: 12px;
+  border-left: 5px solid transparent;
+}
+
+.report-ticker-card.action-bar-buy {
+  border-left-color: rgba(22, 163, 74, 0.55);
+}
+
+.report-ticker-card.action-bar-sell {
+  border-left-color: rgba(220, 38, 38, 0.55);
+}
+
+.report-ticker-card.action-bar-hold {
+  border-left-color: rgba(234, 179, 8, 0.35);
 }
 
 .report-ticker-card:hover {
@@ -1960,11 +2008,23 @@ button {
   background: var(--primary-bg);
 }
 
+.report-ticker-card.action-bar-buy:hover {
+  border-left-color: rgba(22, 163, 74, 0.55);
+}
+
+.report-ticker-card.action-bar-sell:hover {
+  border-left-color: rgba(220, 38, 38, 0.55);
+}
+
+.report-ticker-card.action-bar-hold:hover {
+  border-left-color: rgba(234, 179, 8, 0.35);
+}
+
 .report-ticker-left {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 .report-ticker-meta {
@@ -1987,29 +2047,6 @@ button {
   margin-left: 4px;
 }
 
-.action-tag {
-  font-size: 0.6875rem;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.04em;
-}
-
-.action-buy {
-  background: rgba(22, 163, 74, 0.15);
-  color: #16a34a;
-}
-
-.action-sell {
-  background: rgba(220, 38, 38, 0.15);
-  color: #dc2626;
-}
-
-.action-hold {
-  background: rgba(234, 179, 8, 0.15);
-  color: #ca8a04;
-}
-
 /* ===== REPORT DETAIL ===== */
 .report-meta {
   display: flex;
@@ -2025,32 +2062,34 @@ button {
 }
 
 .report-group {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  margin-bottom: 12px;
+  border: none;
+  border-radius: var(--radius);
+  margin-bottom: 16px;
   overflow: hidden;
   background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
 }
 
 .report-group-label {
-  padding: 10px 14px;
+  padding: 12px 16px;
   font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--primary);
-  background: var(--bg-subtle);
-  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(255, 140, 50, 0.06), rgba(255, 140, 50, 0.02));
+  border-bottom: none;
 }
 
 .report-accordion {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
-  padding: 12px 14px;
+  width: calc(100% - 20px);
+  margin: 0 10px;
+  padding: 12px 10px;
   border: none;
-  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--text);
   font-size: 0.8125rem;
@@ -2063,11 +2102,15 @@ button {
 
 .report-accordion:last-child,
 .report-accordion.open {
-  border-bottom-color: var(--border);
+  border-bottom-color: transparent;
 }
 
 .report-accordion:hover {
-  background: var(--bg-subtle);
+  background: var(--surface-hover);
+}
+
+.report-accordion:active {
+  background: var(--primary-light);
 }
 
 .report-accordion.decision {
@@ -2075,7 +2118,7 @@ button {
 }
 
 .report-accordion.child {
-  padding-left: 28px;
+  padding-left: 20px;
   font-size: 0.75rem;
   color: var(--text-secondary);
 }
@@ -2089,15 +2132,23 @@ button {
   color: var(--text-dim);
   flex-shrink: 0;
   margin-left: 8px;
+  transition: transform 0.2s ease;
+}
+
+.report-accordion.open .accordion-chevron {
+  transform: rotate(90deg);
 }
 
 .report-children {
-  border-top: 1px solid var(--border);
+  border-top: none;
+  padding-top: 2px;
 }
 
 .report-content {
+  margin: 0 10px 8px;
   padding: 14px;
-  border-bottom: 1px solid var(--border);
+  border: none;
+  border-radius: var(--radius-sm);
   font-size: 0.8125rem;
   line-height: 1.65;
   color: var(--text-secondary);
@@ -2106,7 +2157,7 @@ button {
 }
 
 .report-content.child-content {
-  padding-left: 28px;
+  margin-left: 20px;
 }
 
 /* ===== MARKDOWN BODY ===== */

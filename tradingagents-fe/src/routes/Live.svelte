@@ -132,15 +132,6 @@
   <div class="page-container">
     <div class="page-header">
       <h2>Live</h2>
-      <div style="display:flex;align-items:center;gap:10px">
-        <span class="badge badge-info">
-          <span class="spinner" style="width:10px;height:10px;margin-right:4px"></span>
-          {queue.running ? `${$tickerNames[queue.running] || queue.running} running` : "Idle"}
-        </span>
-        {#if queue.running}
-          <a class="btn btn-ghost" href={`#/trade/${queue.running.toLowerCase()}`}>Report</a>
-        {/if}
-      </div>
     </div>
 
     <div class="live-layout">
@@ -152,11 +143,14 @@
           {#if queue.running}
             <div class="queue-item queue-running">
               <span class="queue-indicator"></span>
-              <span class="queue-ticker">{queue.running}{#if $tickerNames[queue.running]} <span class="ticker-tag">{$tickerNames[queue.running]}</span>{/if}</span>
-              <span class="badge badge-info" style="font-size:0.625rem;padding:2px 6px">Running</span>
+              <span class="queue-ticker">{queue.running}</span>
+              <span class="badge badge-info" style="font-size:0.625rem;padding:2px 6px">
+                <span class="spinner" style="width:8px;height:8px;margin-right:3px"></span>
+                Running
+              </span>
             </div>
           {/if}
-          {#if queue.pending.length === 0}
+          {#if queue.pending.length === 0 && !queue.running}
             <div class="queue-item queue-pending">
               <span class="queue-indicator"></span>
               <span class="queue-ticker">No pending</span>
@@ -165,7 +159,7 @@
             {#each queue.pending as item}
               <div class="queue-item queue-pending">
                 <span class="queue-indicator"></span>
-                <span class="queue-ticker">{item}{#if $tickerNames[item]} <span class="ticker-tag">{$tickerNames[item]}</span>{/if}</span>
+                <span class="queue-ticker">{item}</span>
               </div>
             {/each}
           {/if}
