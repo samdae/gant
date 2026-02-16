@@ -38,6 +38,8 @@ def get_database_url() -> str:
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
+    packages_dir = repo_root / "packages"
+    sys.path.insert(0, str(packages_dir))
     load_dotenv(repo_root / ".env")
 
     db_url = get_database_url()

@@ -167,6 +167,14 @@ LLM에게 15개 지표 목록이 주어지고, **"상호 보완적인 최대 8�
 
 ---
 
+## Repo Layout
+
+- `apps/web`: 프론트엔드
+- `apps/api`: API 엔트리/배포 설정
+- `packages/tradingagents`: 코어 라이브러리(에이전트 포함)
+- `scripts`: 실행/운영 스크립트
+- `infra`: Docker/compose 설정
+
 ## 설치 및 실행
 
 ### Prerequisites
@@ -182,11 +190,11 @@ LLM에게 15개 지표 목록이 주어지고, **"상호 보완적인 최대 8�
 
 ```bash
 git clone https://github.com/samdae/g-ant-trader.git
-cd g-ant-trader
+cd g-ant-trader/monorepo
 pip install -r requirements.txt
 ```
 
-### Run
+### Run (local analysis)
 
 ```bash
 python main.py
@@ -194,14 +202,23 @@ python main.py
 
 `main.py`에서 종목, 날짜, 모델 등을 직접 설정합니다. 기본 설정은 `default_config.py`에서 읽고, `.env`로 override할 수 있습니다.
 
-CLI wizard를 사용하려면 `python -m cli.main` 또는 `tradingagents` 명령을 실행하세요. wizard는 6단계로 분석을 설정합니다:
+### Run (API)
 
-1. **종목 선택** — 티커 심볼 입력 (예: AAPL, TSLA)
-2. **분석 날짜** — 분석 기준일 선택
-3. **애널리스트 팀** — market, social, news, fundamentals 중 선택
-4. **리서치 깊이** — 토론 라운드 수 결정
-5. **LLM Provider** — gemini-cli 또는 antigravity 선택
-6. **모델 선택** — shallow/deep thinking 모델 지정
+```bash
+scripts/run_api.sh
+```
+
+### Run (Web)
+
+```bash
+scripts/run-fe.sh
+```
+
+### Run (DB, optional)
+
+```bash
+scripts/run-db.sh
+```
 
 ### 환경변수 설정
 
@@ -320,8 +337,7 @@ LLM에게 다음 순서로 반성을 지시합니다:
 
 | 파일 | 역할 |
 |------|------|
-| `tradingagents/graph/reflection.py` | `Reflector` 클래스 — 반성 프롬프트 + LLM 호출 |
-| `tradingagents/graph/trading_graph.py` | `reflect_and_remember()` — 5개 에이전트 반성 오케스트레이션 |
-| `tradingagents/memory/hybrid_memory.py` | `HybridMemory` — JSONL 저장 + ChromaDB 인덱싱 + RAG 검색 |
-| `tradingagents/scheduler/ticker_scheduler.py` | 전량 청산 시 reflect 트리거 (L396~422) |
-
+| `packages/tradingagents/graph/reflection.py` | `Reflector` 클래스 — 반성 프롬프트 + LLM 호출 |
+| `packages/tradingagents/graph/trading_graph.py` | `reflect_and_remember()` — 5개 에이전트 반성 오케스트레이션 |
+| `packages/tradingagents/memory/hybrid_memory.py` | `HybridMemory` — JSONL 저장 + ChromaDB 인덱싱 + RAG 검색 |
+| `packages/tradingagents/scheduler/ticker_scheduler.py` | 전량 청산 시 reflect 트리거 (L396~422) |

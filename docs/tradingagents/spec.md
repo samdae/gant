@@ -381,5 +381,5 @@ memory/
 | Item           | Content                                      |
 | -------------- | -------------------------------------------- |
 | Generated      | 2026-02-11                                   |
-| Analysis scope | `tradingagents/` (47 Python files, cli 제외) |
+| Analysis scope | `packages/tradingagents/` (47 Python files, cli 제외) |
 | Skill version  | reverse 2.0.0                                |

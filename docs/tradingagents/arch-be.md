@@ -5,6 +5,7 @@
 > Service: tradingagents
 > Type: Backend
 > Requirements document: docs/tradingagents/spec.md
+> Repo layout: monorepo (`packages/tradingagents`)
 
 ## 0. Summary
 
@@ -70,8 +71,8 @@
 
 ```yaml
 tech_stack:
-  project_structure: "Monolith"
-  be_path: "./"
+  project_structure: "Monorepo"
+  be_path: "packages/tradingagents"
   run_command: "uv run python main.py"
   language: "Python 3.10+"
   framework: "LangGraph (langgraph>=0.4.8)"

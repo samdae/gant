@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
 
-DB_PATH="${1:-/home/azdev/.openclaw/workspace/TradingAgents/tradingagents/memory/trading.db}"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+DB_PATH="${1:-$ROOT_DIR/packages/tradingagents/memory/trading.db}"
 SNAPSHOT_PATH="${2:-/tmp/trading_snapshot.db}"
 MAX_RETRY="${MAX_RETRY:-5}"
 SLEEP_SEC="${SLEEP_SEC:-1}"

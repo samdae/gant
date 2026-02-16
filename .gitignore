@@ -7,11 +7,12 @@ __pycache__/
 .venv/
 .DS_Store
 node_modules
-dataflows/data_cache/
-tradingagents/dataflows/data_cache/
-tradingagents/memory/chroma/
+packages/tradingagents/dataflows/data_cache/
+packages/tradingagents/memory/chroma/
+packages/tradingagents/memory/data/
+packages/tradingagents/memory/*.db
 .python-version
 .cache/
 tradingagents.egg-info/
 .idea
-tradingagents-fe/dist/
+apps/web/dist/

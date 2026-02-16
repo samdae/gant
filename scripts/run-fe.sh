@@ -2,10 +2,11 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-FE_DIR="$SCRIPT_DIR/tradingagents-fe"
+ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+FE_DIR="$ROOT_DIR/apps/web"
 
 if [ ! -d "$FE_DIR" ]; then
-  echo "tradingagents-fe 디렉터리를 찾을 수 없습니다." >&2
+  echo "apps/web 디렉터리를 찾을 수 없습니다." >&2
   exit 1
 fi
 

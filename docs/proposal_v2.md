@@ -37,8 +37,8 @@ PA가 유일한 포지션 인식 에이전트로서 최종 판단을 내린다.
 **기존:**
 
 ```
-tradingagents/memory/data/        ← JSONL + ChromaDB
-virtual_trade/tickers/AAPL/       ← trade.json, reports.json
+packages/tradingagents/memory/data/        ← JSONL + ChromaDB
+packages/tradingagents/virtual_trade/tickers/AAPL/       ← trade.json, reports.json
 ```
 
 **확정:**

@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
 
-DB_PATH="${1:-/home/azdev/.openclaw/workspace/TradingAgents/tradingagents/memory/trading.db}"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+DB_PATH="${1:-$ROOT_DIR/packages/tradingagents/memory/trading.db}"
 
 if ! command -v sqlite3 >/dev/null 2>&1; then
   echo "sqlite3 not found in PATH" >&2
