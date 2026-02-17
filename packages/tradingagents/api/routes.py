@@ -20,6 +20,25 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+_GRAPH_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+def _graph_cache_get(key: str) -> Optional[Dict[str, Any]]:
+    entry = _GRAPH_CACHE.get(key)
+    if not entry:
+        return None
+    if entry["expires_at"] <= datetime.now(timezone.utc):
+        _GRAPH_CACHE.pop(key, None)
+        return None
+    return entry["data"]
+
+
+def _graph_cache_set(key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
+    _GRAPH_CACHE[key] = {
+        "expires_at": datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
+        "data": data,
+    }
+
 
 # Request/Response models
 class ScheduleRequest(BaseModel):
@@ -594,6 +613,98 @@ async def get_position_detail(position_id: int):
     }
 
 
+@router.get("/position/{position_id}/graph", response_model=dict, tags=["Positions"])
+async def get_position_graph(
+    position_id: int,
+    days: int = Query(7, ge=1, le=60),
+):
+    """Get OHLC daily graph data for a position ticker (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.storage import PositionRepository
+
+    position_repo = PositionRepository(scheduler.db)
+    position = position_repo.get_by_id(position_id)
+    if not position:
+        raise HTTPException(status_code=404, detail=f"Position {position_id} not found")
+
+    ticker = position["ticker"]
+    opened_at = position.get("opened_at")
+    now = datetime.now(timezone.utc)
+
+    start_dt = now - timedelta(days=days)
+    if opened_at:
+        try:
+            parsed = datetime.fromisoformat(str(opened_at))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            start_dt = parsed - timedelta(days=days)
+        except Exception:
+            pass
+
+    start_date = start_dt.date().isoformat()
+    end_date = (now + timedelta(days=1)).date().isoformat()
+    cache_key = f"{ticker}:{start_date}:{end_date}"
+
+    cached = _graph_cache_get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        import yfinance as yf
+
+        data: Any = yf.download(
+            tickers=ticker,
+            start=start_date,
+            end=end_date,
+            interval="1d",
+            auto_adjust=False,
+            progress=False,
+        )
+    except Exception as exc:
+        logger.warning(f"Graph fetch failed for {ticker}: {exc}")
+        return {"ticker": ticker, "start": start_date, "end": now.date().isoformat(), "points": []}
+
+    if data is None or data.empty:
+        return {"ticker": ticker, "start": start_date, "end": now.date().isoformat(), "points": []}
+
+    points: List[Dict[str, Any]] = []
+    data = data.reset_index()
+    for _, row in data.iterrows():
+        date_value = row.get("Date")
+        if hasattr(date_value, "to_pydatetime"):
+            date_value = date_value.to_pydatetime()
+        if isinstance(date_value, datetime):
+            date_str = date_value.date().isoformat()
+        else:
+            date_str = str(date_value)
+
+        points.append(
+            {
+                "date": date_str,
+                "open": float(row.get("Open")) if row.get("Open") is not None else None,
+                "high": float(row.get("High")) if row.get("High") is not None else None,
+                "low": float(row.get("Low")) if row.get("Low") is not None else None,
+                "close": float(row.get("Close")) if row.get("Close") is not None else None,
+                "volume": float(row.get("Volume")) if row.get("Volume") is not None else None,
+            }
+        )
+
+    payload = {
+        "ticker": ticker,
+        "start": start_date,
+        "end": now.date().isoformat(),
+        "points": points,
+    }
+
+    is_today = bool(points) and now.date().isoformat() == points[-1]["date"]
+    ttl_seconds = 86400 if is_today else 86400 * 7
+    _graph_cache_set(cache_key, payload, ttl_seconds)
+    return payload
+
+
 @router.get("/reports", response_model=List[dict], tags=["Reports"])
 async def get_reports(
     ticker: Optional[str] = Query(None, description="Filter by ticker"),
@@ -653,7 +764,8 @@ async def get_report_tickers():
         """
         SELECT s.ticker,
                COUNT(*) AS report_count,
-               MAX(r.created_at) AS latest_at
+               MAX(r.created_at) AS latest_at,
+               MAX(s.scheduled_cycle) AS latest_cycle
         FROM reports r
         JOIN schedules s ON r.schedule_id = s.id
         GROUP BY s.ticker

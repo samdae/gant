@@ -5,6 +5,7 @@
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
   import { marked } from "marked";
   import DOMPurify from "dompurify";
+  import SelectMenu from "../components/SelectMenu.svelte";
 
   type Report = {
     id: number;
@@ -100,6 +101,7 @@
   let report: Report | null = null;
   let reports: Report[] = [];
   let selectedReportId = "";
+  let reportOptions: Array<{ value: string; label: string }> = [];
   let decisionKey = "";
   let decisionLabel = "";
   let openSections: Record<string, boolean> = {};
@@ -180,9 +182,8 @@
     }
   };
 
-  const handleReportChange = (event: Event) => {
-    const target = event.currentTarget as HTMLSelectElement;
-    selectReport(target.value);
+  const handleReportChange = (value: string) => {
+    selectReport(value);
   };
 
   $: if ($params?.ticker) {
@@ -195,6 +196,11 @@
 
   $: decisionKey = getDecision(report);
   $: decisionLabel = getDecisionLabel(decisionKey);
+
+  $: reportOptions = reports.map((item) => ({
+    value: String(item.id),
+    label: item.scheduled_cycle ? `${item.scheduled_cycle} 회차 · ${formatDateTime(item.created_at)}` : `AI분석 #${item.id} · ${formatDateTime(item.created_at)}`,
+  }));
 
   onMount(() => {
     if (ticker) loadReport(ticker);
@@ -218,13 +224,12 @@
       {#if reports.length > 0}
         <label class="form-label">
           회차
-          <select class="select" value={selectedReportId} on:change={handleReportChange}>
-            {#each reports as item}
-              <option value={String(item.id)}>
-                {item.scheduled_cycle ? `${item.scheduled_cycle} 회차` : `AI분석 #${item.id}`} · {formatDateTime(item.created_at)}
-              </option>
-            {/each}
-          </select>
+          <SelectMenu
+            value={selectedReportId}
+            options={reportOptions}
+            placeholder="회차 선택"
+            on:change={(event) => handleReportChange(event.detail)}
+          />
         </label>
       {/if}
       <div class="report-meta">

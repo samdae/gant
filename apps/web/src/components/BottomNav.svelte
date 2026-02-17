@@ -5,27 +5,27 @@
     {
       label: "예약",
       route: "/schedules",
-      icon: "M6 4v3M18 4v3M4 9h16M6 9h12v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9z",
+      icon: "M7 3v2M17 3v2M4 8h16M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M7 12h4M13 12h4M7 16h4M13 16h4",
     },
     {
       label: "실시간",
       route: "/live",
-      icon: "M3 14l4-4 4 4 6-6 4 4",
+      icon: "M3 12h4l2-4 4 8 2-4h6",
     },
     {
       label: "홈",
       route: "/",
-      icon: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+      icon: "M4 10l8-6 8 6v8a2 2 0 0 1-2 2h-4v-6H10v6H6a2 2 0 0 1-2-2z",
     },
     {
       label: "투자",
       route: "/positions",
-      icon: "M4 8h16l2 3v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7l2-3zm4-3h8a2 2 0 0 1 2 2v1H6V7a2 2 0 0 1 2-2z",
+      icon: "M4 18V6m0 12h16M8 14V9m4 5v-7m4 7V8",
     },
     {
       label: "AI분석",
       route: "/reports",
-      icon: "M7 4h7l4 4v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm6 1v4h4",
+      icon: "M12 3v4m0 10v4m-9-9h4m10 0h4M7 7l2.5 2.5M14.5 14.5 17 17M7 17l2.5-2.5M14.5 9.5 17 7",
     },
   ];
 

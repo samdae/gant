@@ -238,12 +238,6 @@
         </div>
         <div class="card-body" style="padding:0">
           <table class="data-table" style="border:none;box-shadow:none;border-radius:0">
-            <thead>
-              <tr>
-                <th>티커</th>
-                <th>총 금액</th>
-              </tr>
-            </thead>
             <tbody>
               {#if loading}
                 <tr>

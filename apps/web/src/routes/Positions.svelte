@@ -58,7 +58,7 @@
     </div>
 
     <div class="table-wrap">
-      <table class="data-table">
+      <table class="data-table list-table">
         <thead>
           <tr>
             <th>티커</th>
@@ -111,23 +111,23 @@
       </table>
     </div>
 
-    <div class="pos-card-list">
+    <div class="pos-card-list list-grid">
       {#if loading}
-        <div class="card pos-card">
+        <div class="pos-card list-row">
           <div class="pos-card-details">불러오는 중...</div>
         </div>
         {:else if error}
-          <div class="card pos-card">
+          <div class="pos-card list-row">
             <div class="pos-card-details error-text">{error}</div>
           </div>
       {:else if positions.length === 0}
-        <div class="card pos-card">
+        <div class="pos-card list-row">
           <div class="pos-card-details">투자가 없습니다.</div>
         </div>
       {:else}
         {#each positions as pos}
           {@const totalAmount = getTotalAmount(pos)}
-          <div class="card pos-card" on:click={() => goTrade(pos.ticker)}>
+          <div class="pos-card list-row" on:click={() => goTrade(pos.ticker)}>
             <div class="pos-card-top">
               <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                 <span class="ticker-badge">{pos.ticker}</span>

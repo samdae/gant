@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fetchReportTickers } from "../lib/api/endpoints";
-  import { formatDateTime, formatAgo, formatErrorMessage } from "../lib/utils/format";
+  import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
 
   type TickerSummary = {
     ticker: string;
     report_count: number;
     latest_at: string;
+    latest_cycle?: number;
     last_decision: string;
     decision_position?: string;
   };
@@ -95,10 +96,10 @@
         <span class="legend-item"><span class="legend-swatch legend-sell"></span>매도</span>
         <span class="legend-item"><span class="legend-swatch legend-hold"></span>관망</span>
       </div>
-      <div class="report-ticker-list">
+      <div class="report-ticker-list list-grid">
         {#each tickers as item}
-          {@const action = item.decision_position ? normalizeDecision(item.decision_position) : extractAction(item.last_decision)}
-          <a href={`#/reports/${item.ticker.toLowerCase()}`} class="card report-ticker-card {action ? 'action-bar-' + action.toLowerCase() : ''}">
+          {@const action = item.decision_position ? normalizeDecision(item.decision_position) : ""}
+          <a href={`#/reports/${item.ticker.toLowerCase()}`} class="report-ticker-card list-row {action ? 'action-bar-' + action.toLowerCase() : ''}">
             <div class="report-ticker-left">
               <span class="ticker-badge">{item.ticker}</span>
               {#if $tickerNames[item.ticker]}
@@ -106,7 +107,7 @@
               {/if}
             </div>
             <div class="report-ticker-meta">
-              <span class="meta-date">{formatAgo(item.latest_at)}</span>
+              <span class="meta-date">{item.latest_cycle ? `${item.latest_cycle}회` : "-"}</span>
               <svg class="report-ticker-chevron" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                 <path d="M9 18l6-6-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
               </svg>

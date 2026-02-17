@@ -235,11 +235,11 @@
     {:else if schedules.length === 0}
       <div class="card" style="padding:16px">예약이 없습니다.</div>
     {:else}
-      <div class="schedule-list">
+      <div class="schedule-list list-grid">
         {#each schedules as schedule}
           {@const status = statusBadge(schedule.ticker)}
           <div
-            class="card schedule-card"
+            class={`schedule-card list-row ${status.label === "실행중" ? "schedule-running" : status.label === "대기중" ? "schedule-queued" : "schedule-active"}`}
             on:click={() => goSchedule(schedule.ticker)}
             on:touchstart|passive={(e) => {
               const t = e.currentTarget;
@@ -280,15 +280,10 @@
               <span class={status.className}>{status.label}</span>
             </div>
             <div class="schedule-details">
-              <span>{formatInterval(schedule.interval_days)}</span>
-              <span>다음 실행: {formatDateTime(schedule.next_run_time)}</span>
               {#if cycles[schedule.ticker]}
-                <span>
-                  최근 실행: {formatAgo(cycles[schedule.ticker]?.created_at)} ·
-                  {cycles[schedule.ticker]?.scheduled_cycle} 회차
-                </span>
+                <span>{formatInterval(schedule.interval_days)} · {cycles[schedule.ticker]?.scheduled_cycle}회차</span>
               {:else}
-                <span>최근 실행: -</span>
+                <span>{formatInterval(schedule.interval_days)}</span>
               {/if}
             </div>
           </div>

@@ -43,5 +43,8 @@ export const fetchReportTickers = () =>
 export const fetchPositionDetail = (id: number) =>
   getJson(`/positions/${id}`);
 
+export const fetchPositionGraph = (id: number, days = 7) =>
+  getJson(`/position/${id}/graph?days=${days}`);
+
 export const searchTickers = (q: string) =>
   getJson(`/search/tickers?q=${encodeURIComponent(q)}`);

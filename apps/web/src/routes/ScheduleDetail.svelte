@@ -2,6 +2,7 @@
   import { params } from "svelte-spa-router";
   import { fetchScheduleCycles, fetchScheduleCycleEvents } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
+  import SelectMenu from "../components/SelectMenu.svelte";
   import { tickerNames } from "../stores/tickerNames";
 
   type ScheduleCycle = {
@@ -31,6 +32,7 @@
   let eventsError = "";
   let events: ScheduleEvent[] = [];
   let stepStates: Record<string, ScheduleEvent> = {};
+  let cycleOptions: Array<{ value: string; label: string }> = [];
 
   const phaseLabels: Record<string, string> = {
     "Data Collection": "분석",
@@ -101,6 +103,11 @@
   const selectedCycle = () =>
     cycles.find((cycle) => String(cycle.id) === selectedCycleId) || null;
 
+  $: cycleOptions = cycles.map((cycle) => ({
+    value: String(cycle.id),
+    label: `${cycle.scheduled_cycle} 회차 · ${formatDateTime(cycle.created_at)}`,
+  }));
+
   const loadCycles = async (t: string) => {
     loading = true;
     cycleError = "";
@@ -146,9 +153,8 @@
     }
   };
 
-  const handleCycleChange = async (event: Event) => {
-    const target = event.currentTarget as HTMLSelectElement;
-    selectedCycleId = target.value;
+  const handleCycleChange = async (value: string) => {
+    selectedCycleId = value;
     await loadEvents();
   };
 
@@ -184,13 +190,12 @@
           {:else}
             <label class="form-label">
               회차
-              <select class="select" value={selectedCycleId} on:change={handleCycleChange}>
-                {#each cycles as cycle}
-                  <option value={String(cycle.id)}>
-                    {cycle.scheduled_cycle} 회차 · {formatDateTime(cycle.created_at)}
-                  </option>
-                {/each}
-              </select>
+              <SelectMenu
+                value={selectedCycleId}
+                options={cycleOptions}
+                placeholder="회차 선택"
+                on:change={(event) => handleCycleChange(event.detail)}
+              />
             </label>
             {#if selectedCycle()}
               <div class="stat-row">
