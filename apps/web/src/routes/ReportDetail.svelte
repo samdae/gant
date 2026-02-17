@@ -11,6 +11,7 @@
     created_at: string;
     ticker?: string;
     scheduled_cycle?: number;
+    decision_position?: string;
     market_report?: string;
     fundamentals_report?: string;
     bull_history?: string;
@@ -40,55 +41,55 @@
 
   const reportGroups: ReportGroup[] = [
     {
-      name: "Analysis",
+      name: "분석",
       items: [
-        { key: "market_report", label: "Market Analyst" },
-        { key: "fundamentals_report", label: "Fundamentals Analyst" },
+        { key: "market_report", label: "시장 분석" },
+        { key: "fundamentals_report", label: "펀더멘털 분석" },
       ],
     },
     {
-      name: "Investment Debate",
+      name: "투자 토론",
       items: [
-        { key: "investment_debate_judge_decision", label: "Judge Decision", isDecision: true },
+        { key: "investment_debate_judge_decision", label: "심판 결론", isDecision: true },
       ],
       children: [
-        { key: "bull_history", label: "Bull Analyst" },
-        { key: "bear_history", label: "Bear Analyst" },
+        { key: "bull_history", label: "강세 분석" },
+        { key: "bear_history", label: "약세 분석" },
       ],
     },
     {
-      name: "Investment Plan",
+      name: "투자 계획",
       items: [
-        { key: "investment_plan", label: "Investment Plan" },
+        { key: "investment_plan", label: "투자 계획" },
       ],
     },
     {
-      name: "Trade Decision",
+      name: "매매 결정",
       items: [
-        { key: "trader_investment_decision", label: "Trader Decision" },
+        { key: "trader_investment_decision", label: "트레이더 결정" },
       ],
     },
     {
-      name: "Risk Assessment",
+      name: "리스크 토론",
       items: [
-        { key: "trader_investment_judge_decision", label: "Risk Judge Decision", isDecision: true },
+        { key: "trader_investment_judge_decision", label: "리스크 결론", isDecision: true },
       ],
       children: [
-        { key: "aggressive_history", label: "Aggressive Analyst" },
-        { key: "conservative_history", label: "Conservative Analyst" },
-        { key: "neutral_history", label: "Neutral Analyst" },
+        { key: "aggressive_history", label: "공격적 분석" },
+        { key: "conservative_history", label: "보수적 분석" },
+        { key: "neutral_history", label: "중립적 분석" },
       ],
     },
     {
-      name: "Final Decision",
+      name: "최종 결정",
       items: [
-        { key: "final_trade_decision", label: "Final Trade Decision" },
+        { key: "final_trade_decision", label: "최종 매매 결정" },
       ],
     },
     {
-      name: "Trader Decision",
+      name: "트레이더 의견",
       items: [
-        { key: "pa_opinion", label: "Trader Opinion" },
+        { key: "pa_opinion", label: "트레이더 의견" },
       ],
     },
   ];
@@ -97,6 +98,10 @@
   let loading = true;
   let error = "";
   let report: Report | null = null;
+  let reports: Report[] = [];
+  let selectedReportId = "";
+  let decisionKey = "";
+  let decisionLabel = "";
   let openSections: Record<string, boolean> = {};
 
   const toggle = (key: string) => {
@@ -109,22 +114,75 @@
   };
 
   const renderMd = (text?: string | null): string => {
-    if (!text) return "<em>No data</em>";
+    if (!text) return "<em>데이터 없음</em>";
     const raw = marked.parse(text, { async: false }) as string;
     return DOMPurify.sanitize(raw);
+  };
+
+  const normalizeDecision = (value: string): string => {
+    const upper = value.trim().toUpperCase();
+    if (upper === "BUY" || upper === "SELL" || upper === "HOLD") return upper;
+    if (value.includes("매수")) return "BUY";
+    if (value.includes("매도")) return "SELL";
+    if (value.includes("관망") || value.includes("보유")) return "HOLD";
+    return "";
+  };
+
+  const extractDecision = (text?: string | null): string => {
+    if (!text) return "";
+    const cleaned = text.replace(/\*\*/g, "");
+    const lines = cleaned
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const decisionLine = lines.find((line) => /결정|decision/i.test(line));
+    if (decisionLine) {
+    const match = decisionLine.match(/(?:결정|decision)[:：]\s*(BUY|SELL|HOLD|매수|매도|관망|보유)/i);
+      if (match?.[1]) return normalizeDecision(match[1]);
+    }
+    return "";
+  };
+
+  const getDecision = (r: Report | null): string => {
+    if (!r) return "";
+    if (r.decision_position) return normalizeDecision(r.decision_position);
+    return extractDecision(r.final_trade_decision);
+  };
+
+  const getDecisionLabel = (value: string) => {
+    if (value === "BUY") return "매수";
+    if (value === "SELL") return "매도";
+    if (value === "HOLD") return "관망";
+    return "";
+  };
+
+  const selectReport = (id: string) => {
+    selectedReportId = id;
+    report = reports.find((item) => String(item.id) === id) || null;
+    openSections = {};
   };
 
   const loadReport = async (t: string) => {
     loading = true;
     error = "";
     try {
-      const reports = (await fetchReportsByTicker(t, 1)) as Report[];
-      report = reports && reports.length > 0 ? reports[0] : null;
+      reports = (await fetchReportsByTicker(t, 20)) as Report[];
+      if (reports && reports.length > 0) {
+        selectReport(String(reports[0].id));
+      } else {
+        report = null;
+        selectedReportId = "";
+      }
     } catch (err) {
-      error = formatErrorMessage(err, "Failed to load report.");
+      error = formatErrorMessage(err, "AI분석을 불러오지 못했습니다.");
     } finally {
       loading = false;
     }
+  };
+
+  const handleReportChange = (event: Event) => {
+    const target = event.currentTarget as HTMLSelectElement;
+    selectReport(target.value);
   };
 
   $: if ($params?.ticker) {
@@ -135,6 +193,9 @@
     loadReport(ticker);
   }
 
+  $: decisionKey = getDecision(report);
+  $: decisionLabel = getDecisionLabel(decisionKey);
+
   onMount(() => {
     if (ticker) loadReport(ticker);
   });
@@ -144,21 +205,37 @@
   <div class="page-container">
     <div class="page-header">
       <button class="back-btn" on:click={() => history.back()}>&larr;</button>
-      <h2>{ticker} Report</h2>
+      <h2>{ticker} AI분석</h2>
     </div>
 
     {#if loading}
-      <div class="card" style="padding:16px">Loading...</div>
+      <div class="card" style="padding:16px">불러오는 중...</div>
     {:else if error}
       <div class="card error-text" style="padding:16px">{error}</div>
     {:else if !report}
-      <div class="card" style="padding:16px">No report found for {ticker}.</div>
+      <div class="card" style="padding:16px">{ticker} AI분석이 없습니다.</div>
     {:else}
+      {#if reports.length > 0}
+        <label class="form-label">
+          회차
+          <select class="select" value={selectedReportId} on:change={handleReportChange}>
+            {#each reports as item}
+              <option value={String(item.id)}>
+                {item.scheduled_cycle ? `${item.scheduled_cycle} 회차` : `AI분석 #${item.id}`} · {formatDateTime(item.created_at)}
+              </option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <div class="report-meta">
-        <span class="cycle-badge">Report #{report.id}</span>
+        {#if decisionKey}
+          <span class={`decision-badge decision-${decisionKey.toLowerCase()}`}>{decisionLabel}</span>
+        {:else}
+          <span class="decision-badge decision-unknown">—</span>
+        {/if}
         <span class="report-date">{formatDateTime(report.created_at)}</span>
         {#if report.scheduled_cycle}
-          <span class="report-date">Cycle #{report.scheduled_cycle}</span>
+          <span class="report-date">{report.scheduled_cycle} 회차</span>
         {/if}
       </div>
 

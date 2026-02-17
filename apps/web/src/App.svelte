@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import Router from "svelte-spa-router";
+  import Router, { location } from "svelte-spa-router";
   import BottomNav from "./components/BottomNav.svelte";
   import Dashboard from "./routes/Dashboard.svelte";
   import Positions from "./routes/Positions.svelte";
@@ -33,6 +33,14 @@
     }
     loadTickerNames();
   });
+
+  let lastLocation = "";
+  $: if ($location && $location !== lastLocation) {
+    lastLocation = $location;
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+  }
 
 </script>
 

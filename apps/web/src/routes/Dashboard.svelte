@@ -8,7 +8,7 @@
     fetchQueue,
     fetchScheduleSummary,
   } from "../lib/api/endpoints";
-  import { formatMoney, formatPercent, formatAgo, formatErrorMessage } from "../lib/utils/format";
+  import { formatMoney, formatMoneyPlain, formatPercent, formatAgo, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
 
   type Metrics = {
@@ -69,6 +69,7 @@
   let queue: QueueStatus = { running: null, pending: [], total: 0 };
   let activity: ActivityEvent[] = [];
   let scheduleSummary: ScheduleSummary | null = null;
+  let todayRunsTotal: number | null = null;
 
   const goTrade = (ticker: string) => {
     window.location.hash = `#/trade/${ticker.toLowerCase()}`;
@@ -80,25 +81,30 @@
 
   const mapDecision = (value?: string) => {
     if (!value) return null;
-    if (value === "BUY") return "BUY";
-    if (value === "SELL") return "SELL";
-    if (value === "HOLD") return "HOLD";
+    if (value === "BUY") return "매수";
+    if (value === "SELL") return "매도";
+    if (value === "HOLD") return "관망";
     return value;
   };
 
   const formatActivity = (item: ActivityEvent) => {
     if (item.event_type === "trade") {
-      const action = item.action === "BUY" ? "BUY" : "SELL";
+      const action = item.action === "BUY" ? "매수" : "매도";
       const shares = item.shares ?? 0;
       const price = item.price ? `$${item.price.toFixed(2)}` : "";
       return `${action} ${shares} @ ${price}`;
     }
     if (item.event_type === "analysis") {
       const decision = mapDecision(item.decision);
-      return decision ? `Decision: ${decision}` : "Analysis complete";
+      return decision ? `결정: ${decision}` : "분석 완료";
     }
-    return "Activity";
+    return "활동";
   };
+
+  const getTotalAmount = (pos: PositionMarket) =>
+    pos.avg_cost !== null && pos.avg_cost !== undefined
+      ? pos.avg_cost * pos.shares
+      : null;
 
   const loadData = async () => {
     loading = true;
@@ -120,7 +126,7 @@
       health = healthRes as Health;
       scheduleSummary = summaryRes as ScheduleSummary;
     } catch (err) {
-      error = formatErrorMessage(err, "Failed to load dashboard data.");
+      error = formatErrorMessage(err, "대시보드 데이터를 불러오지 못했습니다.");
     } finally {
       loading = false;
     }
@@ -129,26 +135,30 @@
   onMount(() => {
     loadData();
   });
+
+  $: todayRunsTotal = scheduleSummary
+    ? scheduleSummary.done + scheduleSummary.failed + scheduleSummary.skipped + scheduleSummary.running
+    : null;
 </script>
 
 <section class="page" id="page-dashboard">
   <div class="page-container">
     <div class="page-header">
-      <h2>Dashboard</h2>
+      <h2>홈</h2>
       {#if error}
         <span class="badge badge-loss">
-          <span class="status-dot status-err" style="width:6px;height:6px;margin-right:4px"></span>
-          Offline
+          <span class="status-dot status-error" style="width:6px;height:6px;margin-right:4px"></span>
+          오프라인
         </span>
       {:else if queue.running}
         <span class="badge badge-info">
-          <span class="status-dot status-ok" style="width:6px;height:6px;margin-right:4px"></span>
-          Running · {queue.running}
+          <span class="status-dot status-info" style="width:6px;height:6px;margin-right:4px"></span>
+          실행중 · {queue.running}
         </span>
       {:else}
-        <span class="badge badge-gain">
-          <span class="status-dot status-ok" style="width:6px;height:6px;margin-right:4px"></span>
-          Online · Idle
+        <span class="badge badge-info">
+          <span class="status-dot status-info" style="width:6px;height:6px;margin-right:4px"></span>
+          온라인 · 대기
         </span>
       {/if}
     </div>
@@ -156,33 +166,33 @@
     <button class="card summary-banner" type="button" on:click={goArchive}>
       <div class="summary-header">
         <div>
-          <div class="summary-title">Today Runs</div>
+          <div class="summary-title">오늘 실행</div>
         </div>
         <div class="summary-total">
-          {scheduleSummary ? scheduleSummary.total : "-"}
+          {todayRunsTotal ?? "-"}
         </div>
       </div>
       <div class="summary-metrics">
         <div class="summary-item">
-          <span class="summary-label">Done</span>
+          <span class="summary-label">완료</span>
           <span class="summary-value text-gain">
             {scheduleSummary ? scheduleSummary.done : "-"}
           </span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Skipped</span>
+          <span class="summary-label">건너뜀</span>
           <span class="summary-value">
             {scheduleSummary ? scheduleSummary.skipped : "-"}
           </span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Failed</span>
+          <span class="summary-label">실패</span>
           <span class="summary-value text-loss">
             {scheduleSummary ? scheduleSummary.failed : "-"}
           </span>
         </div>
         <div class="summary-item">
-          <span class="summary-label">Running</span>
+          <span class="summary-label">실행중</span>
           <span class="summary-value">
             {scheduleSummary ? scheduleSummary.running : "-"}
           </span>
@@ -190,43 +200,32 @@
       </div>
     </button>
 
-    <div class="card-grid card-grid-3" style="margin-bottom:16px">
-      <div class="metric-card">
+    <div class="card metric-strip" style="margin-bottom:16px">
+      <div class="metric-segment">
         <div class="metric-icon icon-gain">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M12 2v20M17 7l-5-5-5 5" />
+            <path d="M4 16l4-4 4 4 6-6" />
           </svg>
         </div>
-        <div class="metric-label">Total PnL</div>
+        <div class="metric-label">총손익</div>
         <div class="metric-value text-gain">
           {metrics ? formatMoney(metrics.total_unrealized_pnl) : "-"}
         </div>
         <div class="metric-sub">
-          Total return {metrics ? formatPercent(metrics.total_unrealized_return_pct) : "-"}
+          수익률 {metrics ? formatPercent(metrics.total_unrealized_return_pct) : "-"}
         </div>
       </div>
-      <div class="metric-card">
-        <div class="metric-icon icon-info">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-        </div>
-        <div class="metric-label">Queue</div>
-        <div class="metric-value">{queue.total}</div>
-        <div class="metric-sub">Uptime: {health ? `${Math.floor(health.uptime_seconds / 3600)}h ${Math.floor((health.uptime_seconds % 3600) / 60)}m` : "0h 0m"}</div>
-      </div>
-      <div class="metric-card">
+      <div class="metric-segment">
         <div class="metric-icon icon-primary">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <rect x="2" y="7" width="20" height="14" rx="2" />
-            <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
+            <path d="M4 7h16v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" />
+            <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
           </svg>
         </div>
-        <div class="metric-label">Positions</div>
+        <div class="metric-label">투자</div>
         <div class="metric-value">{metrics ? metrics.active_positions : "-"}</div>
         <div class="metric-sub">
-          Wins {metrics ? metrics.wins : "-"} · Losses {metrics ? metrics.losses : "-"}
+          승 {metrics ? metrics.wins : "-"} · 패 {metrics ? metrics.losses : "-"}
         </div>
       </div>
     </div>
@@ -234,37 +233,41 @@
     <div class="dashboard-grid">
       <div class="card">
         <div class="card-header">
-            <h3>Active Positions</h3>
-            <a href="#/positions" class="card-link">View all</a>
+            <h3>내 투자</h3>
+            <a href="#/positions" class="card-link">전체 보기</a>
         </div>
         <div class="card-body" style="padding:0">
           <table class="data-table" style="border:none;box-shadow:none;border-radius:0">
             <thead>
               <tr>
-                <th>Ticker</th>
-                <th>Shares</th>
-                <th>Price</th>
-                <th>PnL</th>
-                <th>Return</th>
+                <th>티커</th>
+                <th>총 금액</th>
               </tr>
             </thead>
             <tbody>
               {#if loading}
                 <tr>
-                  <td colspan="5">Loading...</td>
+                  <td colspan="2">불러오는 중...</td>
                 </tr>
               {:else if positions.length === 0}
                 <tr>
-                  <td colspan="5" class="empty-state">No active positions.</td>
+                  <td colspan="2" class="empty-state">내 투자가 없습니다.</td>
                 </tr>
               {:else}
                 {#each positions as pos}
+                  {@const totalAmount = getTotalAmount(pos)}
                   <tr on:click={() => goTrade(pos.ticker)}>
                     <td><span class="ticker-badge">{pos.ticker}</span>{#if $tickerNames[pos.ticker]} <span class="ticker-tag">{$tickerNames[pos.ticker]}</span>{/if}</td>
-                    <td>{pos.shares}</td>
-                    <td>{pos.current_price ? `$${pos.current_price.toFixed(2)}` : "-"}</td>
-                    <td class={pos.pnl >= 0 ? "text-gain" : "text-loss"}>{formatMoney(pos.pnl)}</td>
-                    <td class={pos.return_pct >= 0 ? "text-gain" : "text-loss"}>{formatPercent(pos.return_pct)}</td>
+                    <td>
+                      {#if totalAmount !== null}
+                        <span>{formatMoneyPlain(totalAmount)}</span>
+                        <span class={pos.pnl >= 0 ? "text-gain" : "text-loss"} style="margin-left:2px">
+                          ({formatMoney(pos.pnl)})
+                        </span>
+                      {:else}
+                        -
+                      {/if}
+                    </td>
                   </tr>
                 {/each}
               {/if}
@@ -276,29 +279,29 @@
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="card">
           <div class="card-header">
-            <h3>Queue</h3>
-            <a href="#/live" class="card-link">View live</a>
+            <h3>대기열</h3>
+            <a href="#/live" class="card-link">실시간 보기</a>
           </div>
           <div class="card-body">
             {#if queue.running}
               <div class="queue-item queue-running">
                 <span class="queue-indicator"></span>
                 <span class="queue-ticker">{queue.running}</span>
-                <span class="badge badge-info">Running</span>
+                <span class="badge badge-info">실행중</span>
               </div>
             {/if}
             {#if queue.pending.length === 0 && !queue.running}
               <div class="queue-item queue-pending">
                 <span class="queue-indicator"></span>
-                <span class="queue-ticker">No pending</span>
-                <span class="badge badge-muted">Idle</span>
+                <span class="queue-ticker">대기 없음</span>
+                <span class="badge badge-muted">대기</span>
               </div>
             {:else}
               {#each queue.pending as item}
                 <div class="queue-item queue-pending">
                   <span class="queue-indicator"></span>
                   <span class="queue-ticker">{item}</span>
-                  <span class="badge badge-muted">Queued</span>
+                  <span class="badge badge-muted">대기중</span>
                 </div>
               {/each}
             {/if}
@@ -307,18 +310,18 @@
 
         <div class="card" style="flex:1">
           <div class="card-header">
-            <h3>Recent Activity</h3>
-            <span style="font-size:0.75rem;color:var(--text-dim)">Last 24h</span>
+            <h3>최근 활동</h3>
+            <span style="font-size:0.75rem;color:var(--text-dim)">최근 24시간</span>
           </div>
           <div class="card-body">
             <div class="activity-list">
               {#if loading}
                 <div class="activity-item">
-                  <div class="activity-content">Loading...</div>
+                  <div class="activity-content">불러오는 중...</div>
                 </div>
               {:else if activity.length === 0}
                 <div class="activity-item">
-                  <div class="activity-content empty-state">No recent activity.</div>
+                  <div class="activity-content empty-state">최근 활동이 없습니다.</div>
                 </div>
               {:else}
                 {#each activity as item}
@@ -334,7 +337,7 @@
                         &nbsp;{formatActivity(item)}
                       </div>
                       <div class="activity-time">
-                        {formatAgo(item.created_at)}{item.scheduled_cycle ? ` · Cycle #${item.scheduled_cycle}` : ""}
+                        {formatAgo(item.created_at)}{item.scheduled_cycle ? ` · ${item.scheduled_cycle} 회차` : ""}
                       </div>
                     </div>
                   </div>

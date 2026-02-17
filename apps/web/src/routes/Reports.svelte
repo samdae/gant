@@ -22,7 +22,7 @@
     try {
       tickers = (await fetchReportTickers()) as TickerSummary[];
     } catch (err) {
-      error = formatErrorMessage(err, "Failed to load report tickers.");
+      error = formatErrorMessage(err, "AI분석을 불러오지 못했습니다.");
     } finally {
       loading = false;
     }
@@ -33,7 +33,7 @@
     if (upper === "BUY" || upper === "SELL" || upper === "HOLD") return upper;
     if (value.includes("매수")) return "BUY";
     if (value.includes("매도")) return "SELL";
-    if (value.includes("보유")) return "HOLD";
+    if (value.includes("관망") || value.includes("보유")) return "HOLD";
     return "";
   };
 
@@ -45,7 +45,7 @@
     const decisionLine = lines.find((line) => /결정|decision/i.test(line));
 
     if (decisionLine) {
-      const match = decisionLine.match(/(?:결정|decision)[:：]\s*(BUY|SELL|HOLD|매수|매도|보유)/i);
+      const match = decisionLine.match(/(?:결정|decision)[:：]\s*(BUY|SELL|HOLD|매수|매도|관망|보유)/i);
       if (match?.[1]) {
         const normalized = normalizeDecision(match[1]);
         if (normalized) return normalized;
@@ -60,7 +60,7 @@
       }
     }
 
-    if (cleaned.includes("보유")) return "HOLD";
+    if (cleaned.includes("관망") || cleaned.includes("보유")) return "HOLD";
     if (cleaned.includes("매도")) return "SELL";
     if (cleaned.includes("매수")) return "BUY";
 
@@ -80,20 +80,20 @@
 <section class="page" id="page-reports">
   <div class="page-container">
     <div class="page-header">
-      <h2>Reports</h2>
+      <h2>AI분석</h2>
     </div>
 
     {#if loading}
-      <div class="card" style="padding:16px">Loading...</div>
+      <div class="card" style="padding:16px">불러오는 중...</div>
     {:else if error}
       <div class="card error-text" style="padding:16px">{error}</div>
     {:else if tickers.length === 0}
-      <div class="card" style="padding:16px">No reports yet.</div>
+      <div class="card" style="padding:16px">AI분석이 없습니다.</div>
     {:else}
       <div class="report-legend">
-        <span class="legend-item"><span class="legend-swatch legend-buy"></span>BUY</span>
-        <span class="legend-item"><span class="legend-swatch legend-sell"></span>SELL</span>
-        <span class="legend-item"><span class="legend-swatch legend-hold"></span>HOLD</span>
+        <span class="legend-item"><span class="legend-swatch legend-buy"></span>매수</span>
+        <span class="legend-item"><span class="legend-swatch legend-sell"></span>매도</span>
+        <span class="legend-item"><span class="legend-swatch legend-hold"></span>관망</span>
       </div>
       <div class="report-ticker-list">
         {#each tickers as item}
@@ -106,8 +106,6 @@
               {/if}
             </div>
             <div class="report-ticker-meta">
-              <span class="meta-count">{item.report_count} report{item.report_count > 1 ? 's' : ''}</span>
-              <span class="meta-dot">·</span>
               <span class="meta-date">{formatAgo(item.latest_at)}</span>
               <svg class="report-ticker-chevron" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                 <path d="M9 18l6-6-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />

@@ -634,6 +634,9 @@ async def get_reports(
 
     cursor_obj = scheduler.db.get_connection().execute(query, tuple(params))
     reports = [dict(row) for row in cursor_obj.fetchall()]
+    for item in reports:
+        if not item.get("decision_position"):
+            item["decision_position"] = _extract_decision(item.get("final_trade_decision"))
     return reports
 
 

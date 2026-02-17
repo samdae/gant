@@ -2,11 +2,11 @@
   import { link, location } from "svelte-spa-router";
 
   const navItems = [
-    { label: "SCHEDULE", route: "/schedules" },
-    { label: "LIVE", route: "/live" },
-    { label: "DASHBOARD", route: "/" },
-    { label: "POSITION", route: "/positions" },
-    { label: "SEARCH", route: "/search" },
+    { label: "예약", route: "/schedules" },
+    { label: "실시간", route: "/live" },
+    { label: "홈", route: "/" },
+    { label: "투자", route: "/positions" },
+    { label: "검색", route: "/search" },
   ];
 
   let currentBaseRoute = "/";

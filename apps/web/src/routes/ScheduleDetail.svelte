@@ -33,28 +33,33 @@
   let stepStates: Record<string, ScheduleEvent> = {};
 
   const phaseLabels: Record<string, string> = {
-    "Data Collection": "Phase 1 - Data Collection",
-    "Investment Debate": "Phase 2 - Investment Debate",
-    "Trade Decision": "Phase 3 - Trade Decision",
-    "Risk Assessment": "Phase 4 - Risk Assessment",
-    Execution: "Phase 5 - Execution",
+    "Data Collection": "분석",
+    "Investment Debate": "투자 토론",
+    "Trade Decision": "매매 결정",
+    "Risk Assessment": "리스크 토론",
+    Execution: "실행",
   };
 
   const agentSteps = [
-    { step: 1, agent: "Market Analyst", label: "Market Analyst", phase: "Data Collection" },
-    { step: 2, agent: "Social Analyst", label: "Social Analyst", phase: "Data Collection" },
-    { step: 3, agent: "News Analyst", label: "News Analyst", phase: "Data Collection" },
-    { step: 4, agent: "Fundamentals Analyst", label: "Fundamentals Analyst", phase: "Data Collection" },
-    { step: 5, agent: "Bull Researcher", label: "Bull Researcher", phase: "Investment Debate" },
-    { step: 6, agent: "Bear Researcher", label: "Bear Researcher", phase: "Investment Debate" },
-    { step: 7, agent: "Research Manager", label: "Research Manager", phase: "Investment Debate" },
-    { step: 8, agent: "Trader", label: "Trader", phase: "Trade Decision" },
-    { step: 9, agent: "Aggressive Analyst", label: "Aggressive Analyst", phase: "Risk Assessment" },
-    { step: 10, agent: "Neutral Analyst", label: "Neutral Analyst", phase: "Risk Assessment" },
-    { step: 11, agent: "Conservative Analyst", label: "Conservative Analyst", phase: "Risk Assessment" },
-    { step: 12, agent: "Risk Judge", label: "Risk Judge", phase: "Risk Assessment" },
-    { step: 13, agent: "Portfolio Agent", label: "Portfolio Agent", phase: "Execution" },
+    { step: 1, agent: "Market Analyst", label: "시장 분석 에이전트", phase: "Data Collection" },
+    { step: 2, agent: "Social Analyst", label: "소셜분석 에이전트", phase: "Data Collection" },
+    { step: 3, agent: "News Analyst", label: "뉴스 분석 에이전트", phase: "Data Collection" },
+    { step: 4, agent: "Fundamentals Analyst", label: "펀더멘털 분석 에이전트", phase: "Data Collection" },
+    { step: 5, agent: "Bull Researcher", label: "강세 분석 에이전트", phase: "Investment Debate" },
+    { step: 6, agent: "Bear Researcher", label: "약세 분석 에이전트", phase: "Investment Debate" },
+    { step: 7, agent: "Research Manager", label: "심판 결론 에이전트", phase: "Investment Debate" },
+    { step: 8, agent: "Trader", label: "트레이더 결정 에이전트", phase: "Trade Decision" },
+    { step: 9, agent: "Aggressive Analyst", label: "공격적 분석 에이전트", phase: "Risk Assessment" },
+    { step: 10, agent: "Neutral Analyst", label: "중립적 분석 에이전트", phase: "Risk Assessment" },
+    { step: 11, agent: "Conservative Analyst", label: "보수적 분석 에이전트", phase: "Risk Assessment" },
+    { step: 12, agent: "Risk Judge", label: "리스크 결론 에이전트", phase: "Risk Assessment" },
+    { step: 13, agent: "Portfolio Agent", label: "포트폴리오 에이전트", phase: "Execution" },
   ];
+
+  const formatInterval = (days?: number | null) => {
+    if (!days) return "-";
+    return days === 1 ? "매일" : `${days}일마다`;
+  };
 
   const phaseGroups = [
     "Data Collection",
@@ -111,7 +116,7 @@
         stepStates = {};
       }
     } catch (err) {
-      cycleError = formatErrorMessage(err, "Failed to load cycles.");
+      cycleError = formatErrorMessage(err, "회차를 불러오지 못했습니다.");
     } finally {
       loading = false;
     }
@@ -133,7 +138,7 @@
       )) as ScheduleEvent[];
       seedEvents(response || []);
     } catch (err) {
-      eventsError = formatErrorMessage(err, "Failed to load cycle events.");
+      eventsError = formatErrorMessage(err, "회차 이벤트를 불러오지 못했습니다.");
       events = [];
       stepStates = {};
     } finally {
@@ -161,39 +166,39 @@
   <div class="page-container">
     <div class="page-header">
       <button class="back-btn" on:click={() => history.back()}>&larr;</button>
-      <h2>{ticker} Schedule</h2>
+      <h2>{ticker}</h2>
     </div>
 
     <div class="live-layout">
       <div class="card live-queue">
         <div class="card-header">
-          <h3>Cycles</h3>
+          <h3>회차</h3>
         </div>
         <div class="card-body">
           {#if loading}
-            <div class="empty-state">Loading cycles...</div>
+            <div class="empty-state">회차 불러오는 중...</div>
           {:else if cycleError}
             <div class="empty-state error-text">{cycleError}</div>
           {:else if cycles.length === 0}
-            <div class="empty-state">No cycles yet.</div>
+            <div class="empty-state">회차가 없습니다.</div>
           {:else}
             <label class="form-label">
-              Cycle
+              회차
               <select class="select" value={selectedCycleId} on:change={handleCycleChange}>
                 {#each cycles as cycle}
                   <option value={String(cycle.id)}>
-                    Cycle #{cycle.scheduled_cycle} · {formatDateTime(cycle.created_at)}
+                    {cycle.scheduled_cycle} 회차 · {formatDateTime(cycle.created_at)}
                   </option>
                 {/each}
               </select>
             </label>
             {#if selectedCycle()}
               <div class="stat-row">
-                <span class="stat-label">Interval</span>
-                <span class="stat-value">{selectedCycle()?.interval_days} days</span>
+                <span class="stat-label">주기</span>
+                <span class="stat-value">{formatInterval(selectedCycle()?.interval_days)}</span>
               </div>
               <div class="stat-row">
-                <span class="stat-label">Created</span>
+                <span class="stat-label">생성일</span>
                 <span class="stat-value">{formatDateTime(selectedCycle()?.created_at)}</span>
               </div>
             {/if}
@@ -203,24 +208,24 @@
 
       <div class="card live-feed">
         <div class="card-header">
-          <h3>Agent Pipeline</h3>
+          <h3>에이전트 파이프라인</h3>
           <div style="display:flex;align-items:center;gap:8px">
             <span class="live-dot"></span>
             <span style="font-size:0.75rem;color:var(--text-dim)">
-              {selectedCycleId ? `Cycle #${selectedCycle()?.scheduled_cycle || ""}` : "Idle"}
+              {selectedCycleId ? `${selectedCycle()?.scheduled_cycle || ""} 회차` : "대기"}
             </span>
           </div>
         </div>
         <div class="card-body">
           {#if loadingEvents}
-            <div class="empty-state" style="margin-bottom:12px">Loading events...</div>
+            <div class="empty-state" style="margin-bottom:12px">이벤트 불러오는 중...</div>
           {:else if eventsError}
             <div class="empty-state error-text" style="margin-bottom:12px">{eventsError}</div>
           {:else if events.length === 0}
-            <div class="empty-state" style="margin-bottom:12px">No events for this cycle.</div>
+            <div class="empty-state" style="margin-bottom:12px">이 회차의 이벤트가 없습니다.</div>
           {:else}
             <div style="margin-bottom:12px;font-size:0.8125rem;color:var(--text-secondary)">
-              Latest: {events[0].agent || ""} · {events[0].message || ""}
+              최근: {events[0].agent || ""} · {events[0].message || ""}
             </div>
           {/if}
           {#each phaseGroups as group}
@@ -243,7 +248,7 @@
                       {/if}
                     </div>
                     <div class="step-message">
-                      {state?.message ? state.message : "Waiting"}
+                      {state?.message ? state.message : "대기"}
                     </div>
                   </div>
                 {/each}

@@ -90,26 +90,28 @@ class ReportRepository:
         return report_id
 
     def get_by_position(self, position_id: int) -> List[Dict[str, Any]]:
-        """Get all reports for a position (ordered by creation time).
+        """Get all reports for a position (ordered by latest first).
 
         Args:
             position_id: Position ID
 
         Returns:
-            List of report dicts (ordered oldest to newest)
+            List of report dicts (ordered newest to oldest)
         """
         cursor = self.db.get_connection().execute(
             """
-            SELECT id, schedule_id, position_id,
-                   market_report, fundamentals_report,
-                   bull_history, bear_history, investment_debate_judge_decision,
-                   aggressive_history, conservative_history, neutral_history,
-                   trader_investment_judge_decision, trader_investment_decision,
-                   investment_plan, final_trade_decision, decision_position, pa_opinion,
-                   created_at
-            FROM reports
-            WHERE position_id = %s
-            ORDER BY created_at ASC
+            SELECT r.id, r.schedule_id, r.position_id,
+                   r.market_report, r.fundamentals_report,
+                   r.bull_history, r.bear_history, r.investment_debate_judge_decision,
+                   r.aggressive_history, r.conservative_history, r.neutral_history,
+                   r.trader_investment_judge_decision, r.trader_investment_decision,
+                   r.investment_plan, r.final_trade_decision, r.decision_position, r.pa_opinion,
+                   r.created_at,
+                   s.scheduled_cycle
+            FROM reports r
+            JOIN schedules s ON r.schedule_id = s.id
+            WHERE r.position_id = %s
+            ORDER BY s.scheduled_cycle DESC, r.created_at DESC
             """,
             (position_id,)
         )

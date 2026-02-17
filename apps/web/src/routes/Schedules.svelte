@@ -88,7 +88,7 @@
       }
       cycles = cycleMap;
     } catch (err) {
-      error = formatErrorMessage(err, "Failed to load schedules.");
+      error = formatErrorMessage(err, "예약을 불러오지 못했습니다.");
     } finally {
       loading = false;
     }
@@ -164,11 +164,11 @@
   const validateForm = () => {
     const ticker = formTicker.trim().toUpperCase();
     if (!/^[A-Z0-9.\-]{1,15}$/.test(ticker)) {
-      formError = "Invalid ticker symbol.";
+      formError = "유효하지 않은 티커입니다.";
       return null;
     }
     if (!Number.isInteger(formInterval) || formInterval < 1 || formInterval > 365) {
-      formError = "Interval must be an integer between 1 and 365.";
+      formError = "주기는 1~365 사이의 정수여야 합니다.";
       return null;
     }
     const dn = formDisplayName.trim() || undefined;
@@ -187,7 +187,7 @@
       await loadSchedules();
       loadTickerNames();
     } catch (err) {
-      formError = formatErrorMessage(err, "Failed to create schedule.");
+      formError = formatErrorMessage(err, "예약을 생성하지 못했습니다.");
     } finally {
       submitting = false;
     }
@@ -202,17 +202,19 @@
       deleteTarget = null;
       await loadSchedules();
     } catch (err) {
-      error = formatErrorMessage(err, "Failed to delete schedule.");
+      error = formatErrorMessage(err, "예약을 삭제하지 못했습니다.");
     } finally {
       submitting = false;
     }
   };
 
   const statusBadge = (ticker: string) => {
-    if (queue.running === ticker) return { label: "Running", className: "badge badge-info" };
-    if (queue.pending.includes(ticker)) return { label: "Queued", className: "badge badge-warn" };
-    return { label: "Active", className: "badge badge-gain" };
+    if (queue.running === ticker) return { label: "실행중", className: "badge badge-gain" };
+    if (queue.pending.includes(ticker)) return { label: "대기중", className: "badge badge-loss" };
+    return { label: "활성", className: "badge badge-muted" };
   };
+
+  const formatInterval = (days: number) => (days === 1 ? "매일" : `${days}일마다`);
 
   onMount(() => {
     loadSchedules();
@@ -222,16 +224,16 @@
 <section class="page" id="page-schedules">
   <div class="page-container">
     <div class="page-header">
-      <h2>Schedule</h2>
-      <button class="btn btn-primary" id="addScheduleBtn" on:click={openAdd}>+ Add</button>
+      <h2>예약</h2>
+      <button class="btn btn-primary" id="addScheduleBtn" on:click={openAdd}>+ 추가</button>
     </div>
 
     {#if loading}
-      <div class="card" style="padding:16px">Loading...</div>
+      <div class="card" style="padding:16px">불러오는 중...</div>
     {:else if error}
       <div class="card error-text" style="padding:16px">{error}</div>
     {:else if schedules.length === 0}
-      <div class="card" style="padding:16px">No schedules found.</div>
+      <div class="card" style="padding:16px">예약이 없습니다.</div>
     {:else}
       <div class="schedule-list">
         {#each schedules as schedule}
@@ -278,15 +280,15 @@
               <span class={status.className}>{status.label}</span>
             </div>
             <div class="schedule-details">
-              <span>Every {schedule.interval_days} day(s)</span>
-              <span>Next run: {formatDateTime(schedule.next_run_time)}</span>
+              <span>{formatInterval(schedule.interval_days)}</span>
+              <span>다음 실행: {formatDateTime(schedule.next_run_time)}</span>
               {#if cycles[schedule.ticker]}
                 <span>
-                  Last run: {formatAgo(cycles[schedule.ticker]?.created_at)} · Cycle
-                  #{cycles[schedule.ticker]?.scheduled_cycle}
+                  최근 실행: {formatAgo(cycles[schedule.ticker]?.created_at)} ·
+                  {cycles[schedule.ticker]?.scheduled_cycle} 회차
                 </span>
               {:else}
-                <span>Last run: -</span>
+                <span>최근 실행: -</span>
               {/if}
             </div>
           </div>
@@ -300,17 +302,17 @@
   <div class="modal-overlay" id="addModal">
     <div class="modal">
     <div class="modal-header">
-      <h3>Add Schedule</h3>
+      <h3>예약 추가</h3>
         <button class="modal-close" on:click={() => (showAdd = false)}>&times;</button>
       </div>
       <div class="modal-body">
         <label class="form-label">
-          Ticker
+          티커
           <div class="autocomplete-wrap">
             <input
               type="text"
               class="input"
-              placeholder="Search ticker, e.g. AAPL, Tesla..."
+            placeholder="티커 검색 (예: AAPL, TSLA)"
               bind:value={formTicker}
               on:input={onTickerInput}
               on:keydown={onTickerKeydown}
@@ -336,16 +338,16 @@
           </div>
         </label>
         <label class="form-label">
-          Display Name
+          표시 이름
           <input
             type="text"
             class="input"
-            placeholder="e.g. 삼성전자, NVIDIA ..."
+            placeholder="예: 삼성전자, NVIDIA"
             bind:value={formDisplayName}
           />
         </label>
         <label class="form-label">
-          Interval (days)
+          주기 (일)
           <input type="number" class="input" min="1" max="365" bind:value={formInterval} />
         </label>
         {#if formError}
@@ -353,8 +355,8 @@
         {/if}
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" on:click={() => (showAdd = false)} disabled={submitting}>Cancel</button>
-        <button class="btn btn-primary" on:click={submitAdd} disabled={submitting}>Create</button>
+        <button class="btn btn-ghost" on:click={() => (showAdd = false)} disabled={submitting}>취소</button>
+        <button class="btn btn-primary" on:click={submitAdd} disabled={submitting}>생성</button>
       </div>
     </div>
   </div>
@@ -364,16 +366,16 @@
   <div class="modal-overlay" id="deleteModal">
     <div class="modal modal-sm">
     <div class="modal-header">
-      <h3>Delete Schedule</h3>
+      <h3>예약 삭제</h3>
         <button class="modal-close" on:click={() => (showDelete = false)}>&times;</button>
       </div>
     <div class="modal-body">
-      <p>Delete schedule for <strong>{deleteTarget}</strong>?</p>
-      <p>If queued, it will be removed as well.</p>
+      <p><strong>{deleteTarget}</strong> 예약을 삭제할까요?</p>
+      <p>대기중이면 함께 제거됩니다.</p>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" on:click={() => (showDelete = false)} disabled={submitting}>Cancel</button>
-      <button class="btn btn-danger" on:click={submitDelete} disabled={submitting}>Delete</button>
+      <button class="btn btn-ghost" on:click={() => (showDelete = false)} disabled={submitting}>취소</button>
+      <button class="btn btn-danger" on:click={submitDelete} disabled={submitting}>삭제</button>
     </div>
     </div>
   </div>

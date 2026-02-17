@@ -26,27 +26,27 @@
   let stepStates: Record<string, WsMessage> = {};
 
   const phaseLabels: Record<string, string> = {
-    "Data Collection": "Phase 1 - Data Collection",
-    "Investment Debate": "Phase 2 - Investment Debate",
-    "Trade Decision": "Phase 3 - Trade Decision",
-    "Risk Assessment": "Phase 4 - Risk Assessment",
-    Execution: "Phase 5 - Execution",
+    "Data Collection": "분석",
+    "Investment Debate": "투자 토론",
+    "Trade Decision": "매매 결정",
+    "Risk Assessment": "리스크 토론",
+    Execution: "실행",
   };
 
   const agentSteps = [
-    { step: 1, agent: "Market Analyst", label: "Market Analyst", phase: "Data Collection" },
-    { step: 2, agent: "Social Analyst", label: "Social Analyst", phase: "Data Collection" },
-    { step: 3, agent: "News Analyst", label: "News Analyst", phase: "Data Collection" },
-    { step: 4, agent: "Fundamentals Analyst", label: "Fundamentals Analyst", phase: "Data Collection" },
-    { step: 5, agent: "Bull Researcher", label: "Bull Researcher", phase: "Investment Debate" },
-    { step: 6, agent: "Bear Researcher", label: "Bear Researcher", phase: "Investment Debate" },
-    { step: 7, agent: "Research Manager", label: "Research Manager", phase: "Investment Debate" },
-    { step: 8, agent: "Trader", label: "Trader", phase: "Trade Decision" },
-    { step: 9, agent: "Aggressive Analyst", label: "Aggressive Analyst", phase: "Risk Assessment" },
-    { step: 10, agent: "Neutral Analyst", label: "Neutral Analyst", phase: "Risk Assessment" },
-    { step: 11, agent: "Conservative Analyst", label: "Conservative Analyst", phase: "Risk Assessment" },
-    { step: 12, agent: "Risk Judge", label: "Risk Judge", phase: "Risk Assessment" },
-    { step: 13, agent: "Portfolio Agent", label: "Portfolio Agent", phase: "Execution" },
+    { step: 1, agent: "Market Analyst", label: "시장 분석 에이전트", phase: "Data Collection" },
+    { step: 2, agent: "Social Analyst", label: "소셜분석 에이전트", phase: "Data Collection" },
+    { step: 3, agent: "News Analyst", label: "뉴스 분석 에이전트", phase: "Data Collection" },
+    { step: 4, agent: "Fundamentals Analyst", label: "펀더멘털 분석 에이전트", phase: "Data Collection" },
+    { step: 5, agent: "Bull Researcher", label: "강세 분석 에이전트", phase: "Investment Debate" },
+    { step: 6, agent: "Bear Researcher", label: "약세 분석 에이전트", phase: "Investment Debate" },
+    { step: 7, agent: "Research Manager", label: "심판 결론 에이전트", phase: "Investment Debate" },
+    { step: 8, agent: "Trader", label: "트레이더 결정 에이전트", phase: "Trade Decision" },
+    { step: 9, agent: "Aggressive Analyst", label: "공격적 분석 에이전트", phase: "Risk Assessment" },
+    { step: 10, agent: "Neutral Analyst", label: "중립적 분석 에이전트", phase: "Risk Assessment" },
+    { step: 11, agent: "Conservative Analyst", label: "보수적 분석 에이전트", phase: "Risk Assessment" },
+    { step: 12, agent: "Risk Judge", label: "리스크 결론 에이전트", phase: "Risk Assessment" },
+    { step: 13, agent: "Portfolio Agent", label: "포트폴리오 에이전트", phase: "Execution" },
   ];
 
   const phaseGroups = [
@@ -131,13 +131,13 @@
 <section class="page" id="page-live">
   <div class="page-container">
     <div class="page-header">
-      <h2>Live</h2>
+      <h2>실시간</h2>
     </div>
 
     <div class="live-layout">
       <div class="card live-queue">
         <div class="card-header">
-          <h3>Queue</h3>
+          <h3>대기열</h3>
         </div>
         <div class="card-body">
           {#if queue.running}
@@ -146,14 +146,14 @@
               <span class="queue-ticker">{queue.running}</span>
               <span class="badge badge-info" style="font-size:0.625rem;padding:2px 6px">
                 <span class="spinner" style="width:8px;height:8px;margin-right:3px"></span>
-                Running
+                실행중
               </span>
             </div>
           {/if}
           {#if queue.pending.length === 0 && !queue.running}
             <div class="queue-item queue-pending">
               <span class="queue-indicator"></span>
-              <span class="queue-ticker">No pending</span>
+              <span class="queue-ticker">대기 없음</span>
             </div>
           {:else}
             {#each queue.pending as item}
@@ -168,18 +168,18 @@
 
       <div class="card live-feed">
         <div class="card-header">
-          <h3>Agent Pipeline</h3>
+          <h3>에이전트 파이프라인</h3>
           <div style="display:flex;align-items:center;gap:8px">
             <span class="live-dot"></span>
             <span style="font-size:0.75rem;color:var(--text-dim)">
-              {queue.running ? `${queue.running} · Live` : "Idle"}
+              {queue.running ? `${queue.running} · 실시간` : "대기"}
             </span>
           </div>
         </div>
         <div class="card-body">
           {#if messages.length > 0}
             <div style="margin-bottom:12px;font-size:0.8125rem;color:var(--text-secondary)">
-              Latest: {messages[0].agent || ""} · {messages[0].message || ""}
+              최근: {messages[0].agent || ""} · {messages[0].message || ""}
             </div>
           {/if}
           {#each phaseGroups as group}
@@ -202,7 +202,7 @@
                       {/if}
                     </div>
                     <div class="step-message">
-                      {state?.message ? state.message : "Waiting"}
+                      {state?.message ? state.message : "대기"}
                     </div>
                   </div>
                 {/each}

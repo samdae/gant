@@ -8,6 +8,15 @@ const formatMoney = (value: number | null | undefined, currency = "$") => {
   })}`;
 };
 
+const formatMoneyPlain = (value: number | null | undefined, currency = "$") => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  const abs = Math.abs(value);
+  return `${currency}${abs.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
 const formatPercent = (value: number | null | undefined) => {
   if (value === null || value === undefined || Number.isNaN(value)) return "-";
   const sign = value >= 0 ? "+" : "-";
@@ -28,12 +37,12 @@ const formatAgo = (iso?: string | null) => {
   const diff = Date.now() - date.getTime();
   if (Number.isNaN(diff)) return iso;
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return "방금 전";
+  if (minutes < 60) return `${minutes}분 전`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours}시간 전`;
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${days}일 전`;
 };
 
 const formatErrorMessage = (error: unknown, fallback = "Request failed.") => {
@@ -53,4 +62,4 @@ const formatErrorMessage = (error: unknown, fallback = "Request failed.") => {
   return fallback;
 };
 
-export { formatMoney, formatPercent, formatDateTime, formatAgo, formatErrorMessage };
+export { formatMoney, formatMoneyPlain, formatPercent, formatDateTime, formatAgo, formatErrorMessage };

@@ -3,29 +3,29 @@
 
   const navItems = [
     {
-      label: "SCHEDULE",
+      label: "예약",
       route: "/schedules",
-      icon: "M7 3v3M17 3v3M4 8h16M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8",
+      icon: "M6 4v3M18 4v3M4 9h16M6 9h12v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9z",
     },
     {
-      label: "LIVE",
+      label: "실시간",
       route: "/live",
-      icon: "M4 12h3l2-4 4 8 2-4h5",
+      icon: "M3 14l4-4 4 4 6-6 4 4",
     },
     {
-      label: "DASHBOARD",
+      label: "홈",
       route: "/",
-      icon: "M3 11.5 12 4l9 7.5v7A1.5 1.5 0 0 1 19.5 20H14v-6h-4v6H4.5A1.5 1.5 0 0 1 3 18.5z",
+      icon: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
     },
     {
-      label: "POSITION",
+      label: "투자",
       route: "/positions",
-      icon: "M6 7h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm4-3h4a2 2 0 0 1 2 2v1H8V6a2 2 0 0 1 2-2z",
+      icon: "M4 8h16l2 3v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7l2-3zm4-3h8a2 2 0 0 1 2 2v1H6V7a2 2 0 0 1 2-2z",
     },
     {
-      label: "REPORT",
+      label: "AI분석",
       route: "/reports",
-      icon: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9h2m-2 4h2m4-4h2m-2 4h2",
+      icon: "M7 4h7l4 4v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm6 1v4h4",
     },
   ];
 
@@ -49,14 +49,14 @@
   };
 
   $: currentBaseRoute = getCurrentBaseRoute($location);
-  const isActive = (route: string) => currentBaseRoute === route;
 </script>
 
 <nav class="bottom-nav" id="bottomNav">
   {#each navItems as item}
     <a
       href={`#${item.route}`}
-      class={`bottom-nav-item ${item.route === "/" ? "is-home" : ""} ${isActive(item.route) ? "active" : ""}`}
+      class={`bottom-nav-item ${item.route === "/" ? "is-home" : ""}`}
+      class:active={currentBaseRoute === item.route}
       data-route={item.route}
       use:link
     >
