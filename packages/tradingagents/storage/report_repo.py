@@ -29,17 +29,17 @@ class ReportRepository:
         commit: bool = True,
         conn=None,
     ) -> int:
-        """Create a new report with 13 summary columns.
+        """Create a new report with summary columns.
 
         Args:
             schedule_id: Schedule ID (required)
             position_id: Position ID (optional, can be None for no-position cases)
             summaries: Dict with 13 column names as keys, summary texts as values
                       Expected keys: market_report, fundamentals_report, bull_history,
-                                   bear_history, investment_debate_judge_decision,
-                                   aggressive_history, conservative_history, neutral_history,
-                                   trader_investment_judge_decision, trader_investment_decision,
-                                   investment_plan, final_trade_decision, pa_opinion
+                                    bear_history, investment_debate_judge_decision,
+                                    aggressive_history, conservative_history, neutral_history,
+                                    trader_investment_judge_decision, trader_investment_decision,
+                                    investment_plan, final_trade_decision, decision_position, pa_opinion
 
         Returns:
             Report ID
@@ -56,9 +56,9 @@ class ReportRepository:
                 bull_history, bear_history, investment_debate_judge_decision,
                 aggressive_history, conservative_history, neutral_history,
                 trader_investment_judge_decision, trader_investment_decision,
-                investment_plan, final_trade_decision, pa_opinion,
+                investment_plan, final_trade_decision, decision_position, pa_opinion,
                 created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -76,6 +76,7 @@ class ReportRepository:
                 summaries.get("trader_investment_decision"),
                 summaries.get("investment_plan"),
                 summaries.get("final_trade_decision"),
+                summaries.get("decision_position"),
                 summaries.get("pa_opinion"),
                 created_at,
             )
@@ -104,7 +105,7 @@ class ReportRepository:
                    bull_history, bear_history, investment_debate_judge_decision,
                    aggressive_history, conservative_history, neutral_history,
                    trader_investment_judge_decision, trader_investment_decision,
-                   investment_plan, final_trade_decision, pa_opinion,
+                   investment_plan, final_trade_decision, decision_position, pa_opinion,
                    created_at
             FROM reports
             WHERE position_id = %s
@@ -131,7 +132,7 @@ class ReportRepository:
                    bull_history, bear_history, investment_debate_judge_decision,
                    aggressive_history, conservative_history, neutral_history,
                    trader_investment_judge_decision, trader_investment_decision,
-                   investment_plan, final_trade_decision, pa_opinion,
+                   investment_plan, final_trade_decision, decision_position, pa_opinion,
                    created_at
             FROM reports
             WHERE schedule_id = %s

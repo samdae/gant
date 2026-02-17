@@ -72,10 +72,19 @@
       schedules = (scheduleRes as Schedule[]) || [];
       queue = (queueRes as QueueStatus) || { running: null, pending: [] };
 
+      const cyclePairs = await Promise.all(
+        schedules.map(async (item) => {
+          try {
+            const res = (await fetchScheduleCycles(item.ticker, 1)) as Cycle[];
+            return [item.ticker, res && res.length > 0 ? res[0] : null] as const;
+          } catch {
+            return [item.ticker, null] as const;
+          }
+        })
+      );
       const cycleMap: Record<string, Cycle | null> = {};
-      for (const item of schedules) {
-        const res = (await fetchScheduleCycles(item.ticker, 1)) as Cycle[];
-        cycleMap[item.ticker] = res && res.length > 0 ? res[0] : null;
+      for (const [ticker, cycle] of cyclePairs) {
+        cycleMap[ticker] = cycle;
       }
       cycles = cycleMap;
     } catch (err) {

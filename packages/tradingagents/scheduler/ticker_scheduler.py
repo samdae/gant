@@ -662,6 +662,7 @@ class TickerScheduler:
             # 7. SummaryAgent (generate 13 summaries)
             logger.info(f"{ticker}: Generating summaries...")
             summaries = self.summary_agent.summarize(final_state, pa_opinion)
+            summaries["decision_position"] = pipeline_decision
 
             # 8. Prepare trade execution (defer DB writes to transaction)
             trade_executed = False

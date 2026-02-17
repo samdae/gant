@@ -9,6 +9,7 @@
     report_count: number;
     latest_at: string;
     last_decision: string;
+    decision_position?: string;
   };
 
   let tickers: TickerSummary[] = [];
@@ -27,12 +28,47 @@
     }
   };
 
+  const normalizeDecision = (value: string): string => {
+    const upper = value.trim().toUpperCase();
+    if (upper === "BUY" || upper === "SELL" || upper === "HOLD") return upper;
+    if (value.includes("매수")) return "BUY";
+    if (value.includes("매도")) return "SELL";
+    if (value.includes("보유")) return "HOLD";
+    return "";
+  };
+
   const extractAction = (text: string): string => {
     if (!text) return "";
-    const lower = text.toLowerCase();
-    if (lower.includes("buy") || lower.includes("long") || text.includes("매수")) return "BUY";
-    if (lower.includes("sell") || lower.includes("short") || text.includes("매도")) return "SELL";
-    if (lower.includes("hold") || text.includes("보유")) return "HOLD";
+
+    const cleaned = text.replace(/\*\*/g, "");
+    const lines = cleaned.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const decisionLine = lines.find((line) => /결정|decision/i.test(line));
+
+    if (decisionLine) {
+      const match = decisionLine.match(/(?:결정|decision)[:：]\s*(BUY|SELL|HOLD|매수|매도|보유)/i);
+      if (match?.[1]) {
+        const normalized = normalizeDecision(match[1]);
+        if (normalized) return normalized;
+      }
+
+      const parts = decisionLine.split(/[:：]/);
+      if (parts.length > 1) {
+        const after = parts.slice(1).join(":").trim();
+        const token = after.split(/\s+/)[0] || "";
+        const normalized = normalizeDecision(token);
+        if (normalized) return normalized;
+      }
+    }
+
+    if (cleaned.includes("보유")) return "HOLD";
+    if (cleaned.includes("매도")) return "SELL";
+    if (cleaned.includes("매수")) return "BUY";
+
+    const lower = cleaned.toLowerCase();
+    if (/(^|\b)hold(\b|$)/.test(lower)) return "HOLD";
+    if (/(^|\b)sell(\b|$)/.test(lower) || /(^|\b)short(\b|$)/.test(lower)) return "SELL";
+    if (/(^|\b)buy(\b|$)/.test(lower) || /(^|\b)long(\b|$)/.test(lower)) return "BUY";
+
     return "";
   };
 
@@ -61,7 +97,7 @@
       </div>
       <div class="report-ticker-list">
         {#each tickers as item}
-          {@const action = extractAction(item.last_decision)}
+          {@const action = item.decision_position ? normalizeDecision(item.decision_position) : extractAction(item.last_decision)}
           <a href={`#/reports/${item.ticker.toLowerCase()}`} class="card report-ticker-card {action ? 'action-bar-' + action.toLowerCase() : ''}">
             <div class="report-ticker-left">
               <span class="ticker-badge">{item.ticker}</span>

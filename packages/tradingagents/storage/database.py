@@ -138,6 +138,7 @@ class Database:
             trader_investment_decision        TEXT,
             investment_plan                   TEXT,
             final_trade_decision              TEXT,
+            decision_position                  TEXT,
             pa_opinion                        TEXT,
             created_at                        TIMESTAMPTZ NOT NULL
         );
@@ -213,6 +214,7 @@ class Database:
             ddl_conn.close()
 
         self._ensure_column("schedules", "interval_days", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("reports", "decision_position", "TEXT")
         self._ensure_column("schedule_configs", "last_data_date", "DATE")
         self._ensure_column("schedule_configs", "display_name", "TEXT")
         self._ensure_column("reflections", "market", "TEXT")

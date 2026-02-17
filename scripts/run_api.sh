@@ -38,4 +38,8 @@ fi
 
 export PYTHONPATH="$ROOT_DIR:$ROOT_DIR/packages${PYTHONPATH:+:$PYTHONPATH}"
 
-exec sh -c "cd \"$ROOT_DIR\" && uv run uvicorn apps.api.app:app --host 0.0.0.0 --port 8000"
+cd "$ROOT_DIR"
+unset VIRTUAL_ENV
+uv sync --python "$VENV_DIR/bin/python"
+
+exec "$VENV_DIR/bin/python" -m uvicorn apps.api.app:app --host 0.0.0.0 --port 8000

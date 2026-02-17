@@ -28,15 +28,31 @@ export default defineConfig({
       workbox: {
         runtimeCaching: [
           {
-            urlPattern: /.*:8000\/.*/,
-            handler: "NetworkFirst",
+            urlPattern: ({ url }) => url.pathname.startsWith("/api/reports"),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "api-reports-cache",
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 10,
+              },
+            },
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
+            handler: "StaleWhileRevalidate",
             options: {
               cacheName: "api-cache",
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24,
+              cacheableResponse: {
+                statuses: [0, 200],
               },
-              networkTimeoutSeconds: 5,
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 5,
+              },
             },
           },
         ],

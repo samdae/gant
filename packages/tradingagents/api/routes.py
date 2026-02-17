@@ -5,6 +5,7 @@ FR-026: Public READ + Authenticated WRITE
 """
 
 import os
+import re
 import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -143,10 +144,38 @@ def _fetch_latest_prices(tickers: List[str]) -> Dict[str, Optional[float]]:
 def _extract_decision(text: Optional[str]) -> Optional[str]:
     if not text:
         return None
-    upper = text.upper()
-    for key in ["BUY", "SELL", "HOLD"]:
-        if key in upper:
-            return key
+    cleaned = text.replace("**", "")
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    for line in lines:
+        if "결정" in line or "decision" in line.lower():
+            match = re.search(r"(?:결정|decision)\s*[:：]\s*(BUY|SELL|HOLD|매수|매도|보유)", line, re.IGNORECASE)
+            if match:
+                token = match.group(1).upper()
+                if token in {"BUY", "SELL", "HOLD"}:
+                    return token
+                if "매수" in match.group(1):
+                    return "BUY"
+                if "매도" in match.group(1):
+                    return "SELL"
+                if "보유" in match.group(1):
+                    return "HOLD"
+
+    scrubbed = re.sub(r"BUY/SELL/HOLD", "", cleaned, flags=re.IGNORECASE)
+    if "보유" in scrubbed:
+        return "HOLD"
+    if "매도" in scrubbed:
+        return "SELL"
+    if "매수" in scrubbed:
+        return "BUY"
+
+    lower = scrubbed.lower()
+    if re.search(r"(^|\b)hold(\b|$)", lower):
+        return "HOLD"
+    if re.search(r"(^|\b)sell(\b|$)", lower) or re.search(r"(^|\b)short(\b|$)", lower):
+        return "SELL"
+    if re.search(r"(^|\b)buy(\b|$)", lower) or re.search(r"(^|\b)long(\b|$)", lower):
+        return "BUY"
+
     return None
 
 
@@ -630,11 +659,11 @@ async def get_report_tickers():
     )
     summaries = [dict(row) for row in cursor_obj.fetchall()]
 
-    # Attach latest decision snippet per ticker
+    # Attach latest decision snippet + normalized action per ticker
     for item in summaries:
         dec_cur = scheduler.db.get_connection().execute(
             """
-            SELECT r.final_trade_decision
+            SELECT r.final_trade_decision, r.decision_position
             FROM reports r
             JOIN schedules s ON r.schedule_id = s.id
             WHERE s.ticker = %s
@@ -645,6 +674,10 @@ async def get_report_tickers():
         dec_row = dec_cur.fetchone()
         raw = (dec_row["final_trade_decision"] or "") if dec_row else ""
         item["last_decision"] = raw[:120].strip() if raw else ""
+        if dec_row and dec_row.get("decision_position"):
+            item["decision_position"] = dec_row["decision_position"]
+        else:
+            item["decision_position"] = _extract_decision(raw)
 
     return summaries
 
