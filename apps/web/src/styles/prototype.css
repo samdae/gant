@@ -573,7 +573,7 @@ button {
   gap: 6px;
 }
 
-.metric-segment + .metric-segment {
+.metric-segment+.metric-segment {
   border-left: 1px solid var(--border);
 }
 
@@ -1258,18 +1258,69 @@ button {
   margin-top: 10px;
 }
 
-.price-chart {
-  width: 100%;
-  height: 190px;
+/* ── scrollable chart container ── */
+.chart-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.chart-yaxis {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  background: var(--bg, #0d0d14);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chart-grid-yaxis {
+  stroke: rgba(255, 255, 255, 0.04);
+  stroke-width: 0.5;
+}
+
+.yaxis-label {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 8.5px;
+  fill: rgba(255, 255, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+}
+
+.yaxis-vol-label {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 7px;
+  fill: rgba(255, 255, 255, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.chart-scroll {
+  margin-left: 44px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.chart-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.chart-main {
   display: block;
+  touch-action: pan-x;
+  cursor: crosshair;
 }
 
 .price-panel {
-  --panel-tint: rgba(106, 164, 255, 0.12);
-  --chart-line: var(--info);
-  --chart-halo: rgba(106, 164, 255, 0.3);
-  --chart-area-top: rgba(76, 125, 255, 0.35);
-  --chart-area-bottom: rgba(76, 125, 255, 0.06);
+  --panel-tint: rgba(255, 93, 93, 0.12);
+  --chart-line: #ff5252;
+  --chart-halo: rgba(255, 82, 82, 0.3);
+  --chart-area-top: rgba(255, 82, 82, 0.35);
+  --chart-area-bottom: rgba(255, 82, 82, 0.06);
+  --candle-up: #ff5252;
+  --candle-down: #448aff;
+  --candle-up-dim: rgba(255, 82, 82, 0.35);
+  --candle-down-dim: rgba(68, 138, 255, 0.35);
   background: transparent;
   border-radius: 0;
   padding: 0 0 12px;
@@ -1281,20 +1332,20 @@ button {
 
 .price-panel.up {
   --panel-tint: rgba(255, 93, 93, 0.18);
-  --chart-line: var(--gain);
+  --chart-line: #ff5252;
   --chart-halo: rgba(255, 93, 93, 0.28);
 }
 
 .price-panel.down {
-  --panel-tint: rgba(76, 125, 255, 0.18);
-  --chart-line: var(--loss);
-  --chart-halo: rgba(76, 125, 255, 0.28);
+  --panel-tint: rgba(255, 93, 93, 0.12);
+  --chart-line: #ff5252;
+  --chart-halo: rgba(255, 82, 82, 0.28);
 }
 
 .price-panel.flat {
-  --panel-tint: rgba(106, 164, 255, 0.12);
-  --chart-line: var(--info);
-  --chart-halo: rgba(106, 164, 255, 0.24);
+  --panel-tint: rgba(255, 93, 93, 0.08);
+  --chart-line: #ff5252;
+  --chart-halo: rgba(255, 82, 82, 0.24);
 }
 
 .price-panel-top {
@@ -1302,6 +1353,12 @@ button {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+}
+
+.price-panel-top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .price-panel-title {
@@ -1341,11 +1398,35 @@ button {
   border-radius: 50%;
   background: var(--chart-line);
   box-shadow: 0 0 8px var(--chart-halo);
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 8px var(--chart-halo);
+  }
+
+  50% {
+    opacity: 0.5;
+    box-shadow: 0 0 14px var(--chart-halo);
+  }
+}
+
+.price-panel-lastdate {
+  font-size: 0.62rem;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .price-panel-summary {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
@@ -1358,6 +1439,39 @@ button {
   font-weight: 700;
   color: var(--text);
   letter-spacing: -0.01em;
+}
+
+/* ── chart mode toggle ── */
+.chart-mode-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.chart-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chart-mode-btn:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.chart-mode-btn.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .price-panel-change {
@@ -1394,12 +1508,6 @@ button {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-@media (max-width: 420px) {
-  .price-panel-footer {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 .price-panel-stat {
   display: flex;
   flex-direction: column;
@@ -1414,36 +1522,41 @@ button {
   color: var(--text);
 }
 
+/* ── chart SVG elements (pixel-based coords) ── */
 .chart-line {
   fill: none;
   stroke: var(--chart-line);
-  stroke-width: 0.6;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
 }
 
 .chart-area {
   fill: url(#chart-area-gradient);
+  opacity: 0.6;
 }
 
 .chart-axis {
   stroke: rgba(255, 255, 255, 0.12);
-  stroke-width: 0.6;
+  stroke-width: 0.5;
 }
 
 .chart-grid {
-  stroke: rgba(255, 255, 255, 0.08);
+  stroke: rgba(255, 255, 255, 0.05);
   stroke-width: 0.5;
-  stroke-dasharray: 3 4;
+  stroke-dasharray: 3 3;
 }
 
-.chart-label {
-  font-size: 3.2px;
-  fill: rgba(255, 255, 255, 0.7);
+.chart-xlabel {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 8px;
+  fill: rgba(255, 255, 255, 0.4);
 }
 
 .chart-entry-line {
-  stroke: rgba(255, 255, 255, 0.65);
-  stroke-width: 0.8;
-  stroke-dasharray: 2 2.5;
+  stroke: rgba(255, 255, 255, 0.25);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 1;
 }
 
 .chart-point {
@@ -1452,6 +1565,137 @@ button {
 
 .chart-point-halo {
   fill: var(--chart-halo);
+}
+
+/* ── candlestick ── */
+.candle-body {
+  stroke: none;
+}
+
+.candle-body.candle-up {
+  fill: var(--candle-up);
+}
+
+.candle-body.candle-down {
+  fill: var(--candle-down);
+}
+
+.candle-wick {
+  stroke-width: 1;
+}
+
+.candle-wick.candle-up {
+  stroke: var(--candle-up);
+}
+
+.candle-wick.candle-down {
+  stroke: var(--candle-down);
+}
+
+/* ── volume bars ── */
+.chart-vol-sep {
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 0.5;
+}
+
+.volume-bar {
+  opacity: 0.6;
+}
+
+.volume-bar.vol-up {
+  fill: var(--candle-up-dim);
+}
+
+.volume-bar.vol-down {
+  fill: var(--candle-down-dim);
+}
+
+/* ── crosshair ── */
+.crosshair-v {
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 0.5;
+  stroke-dasharray: 3 3;
+}
+
+.crosshair-dot {
+  fill: rgba(255, 255, 255, 0.9);
+  stroke: var(--chart-line);
+  stroke-width: 1;
+}
+
+.crosshair-bg {
+  fill: rgba(0, 0, 0, 0.7);
+  stroke: rgba(255, 255, 255, 0.15);
+  stroke-width: 0.5;
+}
+
+.crosshair-price {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 9px;
+  fill: #ffffff;
+  font-weight: 600;
+}
+
+.crosshair-date-bg {
+  fill: rgba(0, 0, 0, 0.6);
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 0.5;
+}
+
+.crosshair-date {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 8px;
+  fill: rgba(255, 255, 255, 0.7);
+}
+
+/* ── trade markers ── */
+.trade-marker {
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
+}
+
+.trade-buy {
+  fill: var(--candle-up, #ff5252);
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 0.5;
+}
+
+.trade-sell {
+  fill: var(--candle-down, #448aff);
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 0.5;
+}
+
+.trade-marker-label {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 7px;
+  font-weight: 600;
+}
+
+.trade-buy-label {
+  fill: var(--candle-up, #ff5252);
+}
+
+.trade-sell-label {
+  fill: var(--candle-down, #448aff);
+}
+
+/* ── avg cost line ── */
+.avg-cost-line {
+  stroke: rgba(255, 82, 82, 0.5);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 1;
+}
+
+/* Y-axis avg cost badge */
+.yaxis-avgcost-bg {
+  fill: rgba(255, 82, 82, 0.85);
+}
+
+.yaxis-avgcost-label {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 8px;
+  fill: #fff;
+  font-weight: 700;
 }
 
 .history-top {
