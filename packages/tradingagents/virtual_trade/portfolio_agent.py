@@ -22,7 +22,7 @@ from tradingagents.errors import DecisionParseError, AgentExecutionError
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INITIAL_CAPITAL = 1000.0
+DEFAULT_INITIAL_CAPITAL = 5000.0
 
 
 class PortfolioAgent:
@@ -33,7 +33,8 @@ class PortfolioAgent:
         llm: BaseChatModel,
         trade_manager: TradeManager,
         db,
-        hybrid_memory=None
+        hybrid_memory=None,
+        initial_capital: float = DEFAULT_INITIAL_CAPITAL,
     ):
         """Initialize the portfolio agent.
 
@@ -50,6 +51,11 @@ class PortfolioAgent:
         self.trade_manager = trade_manager
         self.db = db
         self.hybrid_memory = hybrid_memory
+        self.initial_capital = (
+            float(initial_capital)
+            if initial_capital is not None and float(initial_capital) > 0
+            else DEFAULT_INITIAL_CAPITAL
+        )
 
     def decide(
         self,
@@ -73,7 +79,7 @@ class PortfolioAgent:
         Returns:
             Dict with:
                 - action: BUY | SELL | HOLD | MODIFY
-                - shares: int (for BUY action, LLM decides based on cash + price)
+                - shares: float (for BUY action, LLM decides based on cash + price)
                 - rationale: str
                 - strategy_update: dict (stop_loss, target, next_action)
         """
@@ -216,7 +222,7 @@ class PortfolioAgent:
         # Extract position info
         position = trade_state.get("position")
         total_shares = position["shares"] if position else 0
-        cash_available = 0.0  # FR-030: No cash tracking in DB, use unlimited for now
+        cash_available = self.initial_capital
 
         # Format recent analysis history
         history_text = ""
@@ -262,6 +268,7 @@ class PortfolioAgent:
 - 포지션 평가금액: ${current_position_value:.2f}
 - 미실현 수익률: {unrealized_return_pct:.2f}%
 - 포트폴리오 상태: {trade_state['status']}
+- 매 거래 기본 자금: ${cash_available:.2f}
 
 **최근 분석 히스토리:**{history_text}
 
@@ -286,24 +293,26 @@ class PortfolioAgent:
 - BUY: 파이프라인이 BUY 추천일 때
   * 확신도/리스크에 따라 포지션 규모 결정
   * 참고: 25%(낮음), 50%(중간), 75%(높음)
+  * 매수 비중은 allocation_pct로만 표현 (기본 자금 대비 비중)
 - SELL: 파이프라인이 SELL이거나 리스크 관리 필요할 때
   * **전량/부분 청산 선택:**
-    - 전량 청산: shares = {total_shares}
-    - 부분 청산: shares = 구체적 수량
+    - 전량 청산: allocation_pct = 100
+    - 부분 청산: allocation_pct = 25/50/75 등
   * 불확실하면 전량 청산 기본
 - HOLD: 현 상태 유지가 합리적일 때
 - MODIFY: 스탑로스/목표가/다음 행동 조정
 
 **SELL 중요:**
-- 반드시 shares 지정
-- shares = 0 또는 shares >= {total_shares} → 전량 청산으로 해석
-- 부분 청산: shares = {total_shares}보다 작은 구체적 수량
+- 반드시 allocation_pct 지정
+- allocation_pct = 100 → 전량 청산
+- 부분 청산: 100보다 작은 구체적 비중
 
 **응답은 반드시 아래 JSON 형식만 출력하세요. JSON 외에 다른 텍스트를 포함하지 마세요:**
 ```json
 {{{{
   "action": "BUY 또는 SELL 또는 HOLD 또는 MODIFY",
-  "shares": 정수,
+  "allocation_pct": 0~100 정수,
+  "shares": 숫자 (소수 가능, 모르면 0),
   "rationale": "2~3문장, 분석과 경험 모두 언급 (한국어)",
   "strategy_update": {{{{
     "stop_loss": 가격_또는_null,
@@ -317,7 +326,8 @@ class PortfolioAgent:
 ```json
 {{{{
   "action": "BUY",
-  "shares": 50,
+  "allocation_pct": 25,
+  "shares": 0,
   "rationale": "파이프라인이 강력한 매수 신호를 보내고 있으며, 펀더멘털 지표가 양호합니다.",
   "strategy_update": {{{{"stop_loss": 145.0, "target": 180.0, "next_action": "HOLD"}}}}
 }}}}
@@ -392,24 +402,58 @@ class PortfolioAgent:
                 raw_text=decision_text,
             )
 
-        # Parse shares (handle string/int/float)
+        # Parse allocation_pct (preferred) and shares (fallback)
         raw_shares = parsed.get("shares", 0)
+        allocation_pct = self._parse_allocation_pct(parsed.get("allocation_pct"))
+
+        if allocation_pct is None and isinstance(raw_shares, str) and "%" in raw_shares:
+            allocation_pct = self._parse_allocation_pct(raw_shares)
+
+        shares = 0.0
         try:
-            shares = int(float(str(raw_shares).replace("%", "").strip()))
+            shares = float(str(raw_shares).replace("%", "").strip())
         except (ValueError, TypeError):
-            shares = 0
+            shares = 0.0
+
+        if allocation_pct is not None:
+            shares = self._shares_from_allocation(
+                action,
+                allocation_pct,
+                trade_state,
+                current_price,
+            )
+        elif action == "BUY" and shares > 0 and current_price > 0:
+            max_shares = self.initial_capital / current_price
+            if shares > max_shares and shares <= 100:
+                shares = self._shares_from_allocation(
+                    action,
+                    float(shares),
+                    trade_state,
+                    current_price,
+                )
+            elif shares > max_shares:
+                shares = max_shares
+        elif action == "SELL" and shares > 0:
+            position = trade_state.get("position")
+            total_shares = float(position.get("shares", 0)) if position else 0.0
+            if total_shares > 0 and shares > total_shares and shares <= 100:
+                shares = self._shares_from_allocation(
+                    action,
+                    float(shares),
+                    trade_state,
+                    current_price,
+                )
 
         # BUY/SELL must have shares > 0
         if action in ["BUY", "SELL"] and shares <= 0:
             # Auto-calculate as fallback
             position = trade_state.get("position")
             if action == "BUY" and current_price > 0:
-                shares = int((DEFAULT_INITIAL_CAPITAL * 0.5) / current_price)
-                shares = max(shares, 1)
+                shares = (self.initial_capital * 0.5) / current_price
             elif action == "SELL" and position:
                 shares = position["shares"]
             else:
-                shares = 0
+                shares = 0.0
 
         rationale = str(parsed.get("rationale", decision_text[:200]))
 
@@ -421,10 +465,57 @@ class PortfolioAgent:
 
         return {
             "action": action,
-            "shares": shares,
+            "shares": self._round_shares(shares),
             "rationale": rationale,
             "strategy_update": strategy_update,
         }
+
+    def _parse_allocation_pct(self, value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        text = str(value).strip().lower()
+        if not text:
+            return None
+        text = text.replace("%", "").replace("pct", "").replace("percent", "")
+        try:
+            pct = float(text)
+        except (ValueError, TypeError):
+            return None
+        if pct < 0:
+            return None
+        return pct
+
+    def _shares_from_allocation(
+        self,
+        action: str,
+        allocation_pct: float,
+        trade_state: Dict[str, Any],
+        current_price: float,
+    ) -> float:
+        pct = max(min(float(allocation_pct), 100.0), 0.0)
+
+        if action == "BUY":
+            if current_price <= 0:
+                return 0.0
+            cash = self.initial_capital * (pct / 100.0)
+            shares = cash / current_price
+            return self._round_shares(shares)
+
+        if action == "SELL":
+            position = trade_state.get("position")
+            total_shares = float(position.get("shares", 0)) if position else 0.0
+            if total_shares <= 0:
+                return 0.0
+            if pct >= 100.0:
+                return self._round_shares(total_shares)
+            shares = total_shares * (pct / 100.0)
+            return self._round_shares(shares)
+
+        return 0.0
+
+    @staticmethod
+    def _round_shares(value: float) -> float:
+        return round(float(value), 2)
 
     def _fallback_decision(
         self,
@@ -448,9 +539,7 @@ class PortfolioAgent:
         shares = 0
         if action == "BUY" and current_price > 0:
             # BUY: 50% of fixed capital
-            shares = int((DEFAULT_INITIAL_CAPITAL * 0.5) / current_price)
-            if shares < 1:
-                shares = 1
+            shares = (self.initial_capital * 0.5) / current_price
         elif action == "SELL":
             # FR-020: SELL → 전량 매도
             position = trade_state.get("position")
@@ -458,7 +547,7 @@ class PortfolioAgent:
 
         return {
             "action": action,
-            "shares": shares,
+            "shares": self._round_shares(float(shares)) if shares else 0.0,
             "rationale": (
                 f"Portfolio agent timeout, using pipeline decision directly: {action}"
             ),

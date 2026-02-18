@@ -70,7 +70,7 @@ class HealthResponse(BaseModel):
 class MarketPositionResponse(BaseModel):
     position_id: int
     ticker: str
-    shares: int
+    shares: float
     avg_cost: Optional[float]
     current_price: Optional[float]
     pnl: float
@@ -96,7 +96,7 @@ class ActivityEvent(BaseModel):
     scheduled_cycle: Optional[int] = None
     action: Optional[str] = None
     decision: Optional[str] = None
-    shares: Optional[int] = None
+    shares: Optional[float] = None
     price: Optional[float] = None
     report_id: Optional[int] = None
     trade_id: Optional[int] = None
@@ -388,7 +388,7 @@ async def get_positions_market():
     results: List[MarketPositionResponse] = []
     for row in rows:
         ticker = row["ticker"]
-        shares = int(row.get("shares", 0) or 0)
+        shares = float(row.get("shares", 0) or 0.0)
         avg_cost = row.get("avg_cost")
         current_price = prices.get(ticker)
 
@@ -447,7 +447,7 @@ async def get_metrics():
     total_unrealized_pnl = 0.0
     total_cost_basis = 0.0
     for row in rows:
-        shares = int(row.get("shares", 0) or 0)
+        shares = float(row.get("shares", 0) or 0.0)
         avg_cost = row.get("avg_cost")
         current_price = prices.get(row["ticker"])
 
@@ -670,6 +670,19 @@ async def get_position_graph(
     if data is None or data.empty:
         return {"ticker": ticker, "start": start_date, "end": now.date().isoformat(), "points": []}
 
+    def _to_float(value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        if hasattr(value, "iloc"):
+            try:
+                value = value.iloc[0]
+            except Exception:
+                pass
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
     points: List[Dict[str, Any]] = []
     data = data.reset_index()
     for _, row in data.iterrows():
@@ -684,11 +697,11 @@ async def get_position_graph(
         points.append(
             {
                 "date": date_str,
-                "open": float(row.get("Open")) if row.get("Open") is not None else None,
-                "high": float(row.get("High")) if row.get("High") is not None else None,
-                "low": float(row.get("Low")) if row.get("Low") is not None else None,
-                "close": float(row.get("Close")) if row.get("Close") is not None else None,
-                "volume": float(row.get("Volume")) if row.get("Volume") is not None else None,
+                "open": _to_float(row.get("Open")),
+                "high": _to_float(row.get("High")),
+                "low": _to_float(row.get("Low")),
+                "close": _to_float(row.get("Close")),
+                "volume": _to_float(row.get("Volume")),
             }
         )
 

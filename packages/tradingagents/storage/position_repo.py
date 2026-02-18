@@ -98,7 +98,7 @@ class PositionRepository:
     def update_shares(
         self,
         position_id: int,
-        shares: int,
+        shares: float,
         avg_cost: float,
         commit: bool = True,
         conn=None,
@@ -123,7 +123,7 @@ class PositionRepository:
             connection.commit()
 
         logger.info(
-            f"Updated position {position_id}: shares={shares}, avg_cost=${avg_cost:.2f}"
+            f"Updated position {position_id}: shares={shares:.2f}, avg_cost=${avg_cost:.2f}"
         )
 
     def close_position(

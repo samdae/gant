@@ -86,11 +86,13 @@ class TickerScheduler:
 
         # Initialize PortfolioAgent (DB-based)
         # P2-B: Pass hybrid_memory for RAG search
+        initial_capital = config.get("default_initial_capital", 1000.0)
         self.portfolio_agent = PortfolioAgent(
             llm=graph.deep_thinking_llm,
             trade_manager=self.trade_manager,
             db=self.db,
-            hybrid_memory=graph.memory
+            hybrid_memory=graph.memory,
+            initial_capital=initial_capital,
         )
 
         logger.info(f"TickerScheduler initialized (DB-based)")
@@ -578,7 +580,7 @@ class TickerScheduler:
         position_id = active_position["id"] if active_position else None
 
         # 3. Get current price (with retries)
-        current_price = self._get_current_price(ticker, schedule_id)
+        current_price = round(self._get_current_price(ticker, schedule_id), 2)
 
         logger.info(f"{ticker}: Current price: ${current_price:.2f}")
 
@@ -652,7 +654,8 @@ class TickerScheduler:
 
             pa_opinion = portfolio_decision.get("rationale", "")
             action = portfolio_decision["action"]
-            shares = portfolio_decision["shares"]
+            shares = float(portfolio_decision.get("shares", 0.0) or 0.0)
+            shares = round(shares, 6)
 
             logger.info(
                 f"{ticker}: Portfolio decision: {action} "
@@ -668,7 +671,7 @@ class TickerScheduler:
             trade_executed = False
             trade_action = None
             trade_shares = 0
-            trade_price = current_price
+            trade_price = round(current_price, 2)
             sell_all = False
 
             if action == "BUY" and shares > 0:
@@ -683,9 +686,9 @@ class TickerScheduler:
                         f"{ticker}: SELL requested but no position; skipping trade"
                     )
                 else:
-                    total_shares = active_position["shares"]
+                    total_shares = float(active_position["shares"])
 
-                    if shares >= total_shares:
+                    if shares >= total_shares - 1e-8:
                         sell_all = True
                         trade_shares = total_shares
                     else:
@@ -952,7 +955,7 @@ class TickerScheduler:
             retry_delay: Delay between retries in seconds
 
         Returns:
-            Current price (close price of last trading day)
+            Current price (previous trading day's close)
 
         Raises:
             DataVendorError: If all attempts fail
@@ -965,12 +968,25 @@ class TickerScheduler:
                 import yfinance as yf
 
                 ticker_obj = yf.Ticker(ticker)
-                history = ticker_obj.history(period="1d")
+                history = ticker_obj.history(period="5d", interval="1d")
 
                 if history.empty:
                     raise ValueError("No price data returned")
 
-                current_price = history["Close"].iloc[-1]
+                latest_index = history.index[-1]
+                try:
+                    latest_date = latest_index.tz_convert(None).date()
+                except Exception:
+                    try:
+                        latest_date = latest_index.tz_localize(None).date()
+                    except Exception:
+                        latest_date = latest_index.date() if hasattr(latest_index, "date") else None
+
+                today = datetime.now().date()
+                if latest_date == today and len(history) > 1:
+                    current_price = history["Close"].iloc[-2]
+                else:
+                    current_price = history["Close"].iloc[-1]
                 return float(current_price)
 
             except Exception as e:

@@ -89,17 +89,18 @@
 html {
   font-size: 16px;
   scrollbar-width: none;
-  /* Firefox */
 }
 
 body {
   font-family: var(--font-body);
+  background: var(--bg);
   background: var(--bg-gradient);
   color: var(--text);
   line-height: 1.6;
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   position: relative;
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 a {
@@ -214,6 +215,18 @@ button {
   border-top-left-radius: 18px;
   border-top-right-radius: 18px;
   box-shadow: 0 -8px 20px rgba(5, 8, 14, 0.5);
+}
+
+/* fill safe-area below the nav with tab color */
+.bottom-nav::before {
+  content: "";
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-bottom, 0px);
+  background: rgb(11, 13, 17);
+  z-index: 99;
 }
 
 .bottom-nav-item {
@@ -1557,6 +1570,10 @@ button {
   stroke: rgba(255, 255, 255, 0.25);
   stroke-width: 0.5;
   stroke-dasharray: 2 1;
+}
+
+.entry-arrow {
+  fill: #ff5252;
 }
 
 .chart-point {

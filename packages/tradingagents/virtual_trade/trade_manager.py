@@ -70,7 +70,7 @@ class TradeManager:
     def open_position(
         self,
         ticker: str,
-        shares: int,
+        shares: float,
         price: float,
         date: str,
         commit: bool = True,
@@ -93,6 +93,8 @@ class TradeManager:
             ValueError: If invalid parameters
         """
         # Validate parameters
+        shares = self._round_shares(shares)
+        price = self._round_price(price)
         if shares <= 0:
             raise ValueError(f"shares must be positive, got {shares}")
         if price <= 0:
@@ -105,13 +107,13 @@ class TradeManager:
         if position:
             # Add to existing position
             position_id = position["id"]
-            old_shares = position["shares"]
-            old_avg_cost = position.get("avg_cost", 0)
+            old_shares = float(position["shares"])
+            old_avg_cost = self._round_price(position.get("avg_cost", 0))
 
             # Calculate new average cost
             total_cost = (old_shares * old_avg_cost) + (shares * price)
-            new_shares = old_shares + shares
-            new_avg_cost = total_cost / new_shares
+            new_shares = self._round_shares(old_shares + shares)
+            new_avg_cost = self._round_price(total_cost / new_shares)
 
             # Update position
             self.position_repo.update_shares(
@@ -124,8 +126,8 @@ class TradeManager:
 
             logger.info(
                 f"Added to position {position_id} for {ticker}: "
-                f"+{shares} shares @ ${price:.2f}, "
-                f"total {new_shares} shares @ ${new_avg_cost:.2f}"
+                f"+{self._format_shares(shares)} shares @ ${price:.2f}, "
+                f"total {self._format_shares(new_shares)} shares @ ${new_avg_cost:.2f}"
             )
         else:
             # Create new position
@@ -142,7 +144,7 @@ class TradeManager:
 
             logger.info(
                 f"Opened new position {position_id} for {ticker}: "
-                f"{shares} shares @ ${price:.2f}"
+                f"{self._format_shares(shares)} shares @ ${price:.2f}"
             )
 
         # Reload state
@@ -151,7 +153,7 @@ class TradeManager:
     def close_positions(
         self,
         ticker: str,
-        shares: int,
+        shares: float,
         current_price: float,
         date: str,
         commit: bool = True,
@@ -188,10 +190,12 @@ class TradeManager:
             }
 
         position_id = position["id"]
-        total_shares = position["shares"]
-        avg_cost = position.get("avg_cost", 0)
+        total_shares = float(position["shares"])
+        avg_cost = self._round_price(position.get("avg_cost", 0))
+        current_price = self._round_price(current_price)
 
-        if shares > total_shares:
+        shares = self._round_shares(shares)
+        if shares > total_shares + 1e-8:
             raise ValueError(
                 f"Insufficient shares: trying to sell {shares}, "
                 f"but only have {total_shares}"
@@ -205,7 +209,9 @@ class TradeManager:
         )
 
         # Update position shares
-        remaining_shares = total_shares - shares
+        remaining_shares = self._round_shares(total_shares - shares)
+        if abs(remaining_shares) <= 1e-8:
+            remaining_shares = 0.0
         
         if remaining_shares > 0:
             # Partial close - update shares
@@ -226,9 +232,9 @@ class TradeManager:
             )
 
         logger.info(
-            f"Closed {shares} shares for {ticker}: "
+            f"Closed {self._format_shares(shares)} shares for {ticker}: "
             f"return {realized_return_pct:.2f}%, profit ${profit:.2f}, "
-            f"remaining {remaining_shares} shares"
+            f"remaining {self._format_shares(remaining_shares)} shares"
         )
 
         return {
@@ -269,8 +275,8 @@ class TradeManager:
                 "total_returned": 0.0,
             }
 
-        total_shares = position["shares"]
-        avg_cost = position.get("avg_cost", 0)
+        total_shares = float(position["shares"])
+        avg_cost = self._round_price(position.get("avg_cost", 0))
 
         total_invested = total_shares * avg_cost
         total_returned = total_shares * current_price
@@ -325,8 +331,8 @@ class TradeManager:
                 "total_returned": 0.0,
             }
 
-        total_shares = position["shares"]
-        avg_cost = position.get("avg_cost", 0)
+        total_shares = float(position["shares"])
+        avg_cost = self._round_price(position.get("avg_cost", 0))
 
         total_invested = total_shares * avg_cost
         total_returned = total_shares * current_price
@@ -363,9 +369,25 @@ class TradeManager:
             return f"No position in {ticker}"
 
         shares = position["shares"]
-        avg_cost = position.get("avg_cost", 0)
+        avg_cost = self._round_price(position.get("avg_cost", 0))
 
-        return f"Holding {shares} shares {ticker} avg ${avg_cost:.2f}"
+        return (
+            f"Holding {self._format_shares(float(shares))} shares {ticker} "
+            f"avg ${avg_cost:.2f}"
+        )
+
+    @staticmethod
+    def _round_shares(value: float) -> float:
+        return round(float(value), 2)
+
+    @staticmethod
+    def _round_price(value: float) -> float:
+        return round(float(value), 2)
+
+    @staticmethod
+    def _format_shares(value: float) -> str:
+        text = f"{float(value):.2f}".rstrip("0").rstrip(".")
+        return text if text else "0"
 
     # Note: append_history is removed (FR-030)
     # Trade history is now stored via TradeRepository.create() directly in scheduler

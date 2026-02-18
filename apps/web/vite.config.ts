@@ -12,8 +12,8 @@ export default defineConfig({
         name: "GANT Trading Console",
         short_name: "GANT",
         description: "AI-driven trading analysis dashboard",
-        theme_color: "#0a0f1c",
-        background_color: "#0a0f1c",
+        theme_color: "#0d0f13",
+        background_color: "#0d0f13",
         display: "standalone",
         start_url: "/",
         icons: [

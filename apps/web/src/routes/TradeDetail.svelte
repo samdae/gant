@@ -699,8 +699,12 @@
                 {/if}
               {/if}
 
-              <!-- entry vertical line -->
+              <!-- entry vertical line + arrow -->
               {#if chartEntryPoint}
+                <polygon
+                  class="entry-arrow"
+                  points="{chartEntryPoint.x},{PAD_TOP} {chartEntryPoint.x - 4},{PAD_TOP - 8} {chartEntryPoint.x + 4},{PAD_TOP - 8}"
+                />
                 <line class="chart-entry-line" x1={chartEntryPoint.x} y1={PAD_TOP} x2={chartEntryPoint.x} y2={chartBaselineY} />
               {/if}
 

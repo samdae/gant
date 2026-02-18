@@ -113,7 +113,7 @@ class Database:
             id          BIGSERIAL PRIMARY KEY,
             ticker      TEXT    NOT NULL,
             status      TEXT    NOT NULL DEFAULT 'active',
-            shares      INTEGER NOT NULL DEFAULT 0,
+            shares      DOUBLE PRECISION NOT NULL DEFAULT 0,
             avg_cost    DOUBLE PRECISION,
             return_pct  DOUBLE PRECISION,
             opened_at   TIMESTAMPTZ NOT NULL,
@@ -150,7 +150,7 @@ class Database:
             position_id BIGINT NOT NULL REFERENCES positions(id),
             report_id   BIGINT NOT NULL REFERENCES reports(id),
             action      TEXT    NOT NULL,
-            shares      INTEGER NOT NULL,
+            shares      DOUBLE PRECISION NOT NULL,
             price       DOUBLE PRECISION NOT NULL,
             executed_at TIMESTAMPTZ NOT NULL
         );
@@ -220,6 +220,8 @@ class Database:
         self._ensure_column("reflections", "market", "TEXT")
         self._ensure_column("reflections", "sector", "TEXT")
         self._ensure_column("reflections", "industry", "TEXT")
+        self._ensure_column_type("positions", "shares", "double precision")
+        self._ensure_column_type("trades", "shares", "double precision")
         self._ensure_schedule_event_unique_index()
 
         logger.info("Schema initialization complete")
@@ -257,6 +259,31 @@ class Database:
             self.conn.commit()
         except Exception as exc:
             logger.warning(f"Failed to ensure column {table}.{column}: {exc}")
+
+    def _ensure_column_type(self, table: str, column: str, data_type: str) -> None:
+        try:
+            row = self.conn.execute(
+                """
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_name = %s AND column_name = %s
+                """,
+                (table, column),
+            ).fetchone()
+            if not row or not row.get("data_type"):
+                return
+            if str(row["data_type"]).lower() == data_type.lower():
+                return
+
+            self.conn.execute(
+                f"ALTER TABLE {table} ALTER COLUMN {column} TYPE {data_type} "
+                f"USING {column}::{data_type}"
+            )
+            self.conn.commit()
+        except Exception as exc:
+            logger.warning(
+                f"Failed to ensure column type {table}.{column} -> {data_type}: {exc}"
+            )
 
     def _ensure_schedule_event_unique_index(self) -> None:
         dedupe_sql = """

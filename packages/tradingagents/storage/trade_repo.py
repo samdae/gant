@@ -26,7 +26,7 @@ class TradeRepository:
         position_id: int,
         report_id: int,
         action: str,
-        shares: int,
+        shares: float,
         price: float,
         commit: bool = True,
         conn=None,
@@ -60,7 +60,7 @@ class TradeRepository:
         row = cursor.fetchone()
         trade_id = int(row["id"]) if row else 0
         logger.info(
-            f"Created trade {trade_id}: {action} {shares} shares @ ${price:.2f} "
+            f"Created trade {trade_id}: {action} {shares:.2f} shares @ ${price:.2f} "
             f"(position={position_id})"
         )
         return trade_id

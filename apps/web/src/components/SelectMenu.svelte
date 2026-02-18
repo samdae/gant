@@ -45,12 +45,11 @@
   $: selectedLabel = options.find((item) => item.value === value)?.label ?? placeholder;
 </script>
 
-<div class="select-menu" bind:this={container} on:pointerdown|stopPropagation on:click|stopPropagation>
+<div class="select-menu" bind:this={container}>
   <button
     type="button"
     class={`select-trigger ${open ? "open" : ""}`}
-    on:pointerdown|stopPropagation
-    on:click|stopPropagation={toggle}
+    on:click={toggle}
     disabled={disabled}
     aria-expanded={open}
   >
@@ -61,13 +60,12 @@
   </button>
 
   {#if open}
-    <div class="select-panel" on:pointerdown|stopPropagation on:click|stopPropagation>
+    <div class="select-panel">
       {#each options as option}
         <button
           type="button"
           class={`select-option ${option.value === value ? "active" : ""}`}
-          on:pointerdown|stopPropagation
-          on:click|stopPropagation={(event) => selectOption(option.value, event)}
+          on:pointerdown|preventDefault|stopPropagation={(event) => selectOption(option.value, event)}
         >
           <span>{option.label}</span>
           {#if option.value === value}
