@@ -33,6 +33,17 @@
     }>;
   };
 
+  type ChartStats = {
+    last: number | null;
+    change: number | null;
+    changePct: number | null;
+    high: number | null;
+    low: number | null;
+    startLabel: string;
+    endLabel: string;
+    count: number;
+  };
+
   let ticker = "";
   let loading = true;
   let error = "";
@@ -49,6 +60,19 @@
   let chartYLabels: Array<{ y: number; label: string }> = [];
   let chartXLabels: Array<{ x: number; label: string; anchor: "start" | "end" | "middle" }> = [];
   let chartBaselineY = 0;
+  let chartLastPoint: { x: number; y: number; value: number } | null = null;
+  let chartEntryPoint: { x: number; y: number } | null = null;
+  let chartTrend: "up" | "down" | "flat" = "flat";
+  let chartStats: ChartStats = {
+    last: null,
+    change: null,
+    changePct: null,
+    high: null,
+    low: null,
+    startLabel: "",
+    endLabel: "",
+    count: 0,
+  };
   let chartLoading = false;
 
   const mapDecision = (value?: string | null) => {
@@ -120,25 +144,68 @@
   const formatChartDate = (value: string) => {
     const date = new Date(value);
     if (!Number.isNaN(date.getTime())) {
-      return `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+      return `${date.getMonth() + 1}.${date.getDate()}`;
     }
     const match = String(value).match(/(\d{4})-(\d{2})-(\d{2})/);
-    if (match) return `${match[2]}.${match[3]}`;
+    if (match) return `${Number(match[2])}.${Number(match[3])}`;
     return String(value).slice(0, 5);
   };
 
+  const formatChartAxisValue = (value: number) => Math.round(value).toLocaleString();
+
+  const buildChartXLabels = (points: Array<{ date: string; close: number | null }>) => {
+    const count = points.length;
+    if (count === 0) return [] as Array<{ x: number; label: string; anchor: "start" | "end" | "middle" }>;
+    const indices =
+      count >= 5
+        ? [
+            0,
+            Math.floor((count - 1) / 4),
+            Math.floor((count - 1) / 2),
+            Math.floor(((count - 1) * 3) / 4),
+            count - 1,
+          ]
+        : Array.from({ length: count }, (_, idx) => idx);
+    const width = 120;
+    const left = 12;
+    const right = 6;
+    const plotWidth = width - left - right;
+    return indices.map((idx, position) => {
+      const x = count === 1 ? left + plotWidth / 2 : left + (idx / (count - 1)) * plotWidth;
+      const anchor = position === 0 ? ("start" as const) : position === indices.length - 1 ? ("end" as const) : ("middle" as const);
+      return { x, label: formatChartDate(points[idx].date), anchor };
+    });
+  };
+
   const buildChart = (points: Array<{ date: string; close: number | null }>) => {
-    const values = points.map((p) => p.close).filter((v): v is number => typeof v === "number");
-    if (values.length === 0) {
+    const validPoints = points.filter((p) => typeof p.close === "number") as Array<{
+      date: string;
+      close: number;
+    }>;
+    if (validPoints.length === 0) {
       chartPoints = [];
       chartLinePath = "";
       chartAreaPath = "";
       chartYLabels = [];
       chartXLabels = [];
       chartBaselineY = 0;
+      chartLastPoint = null;
+      chartEntryPoint = null;
+      chartTrend = "flat";
+      chartStats = {
+        last: null,
+        change: null,
+        changePct: null,
+        high: null,
+        low: null,
+        startLabel: "",
+        endLabel: "",
+        count: 0,
+      };
       return;
     }
 
+    const values = validPoints.map((p) => p.close);
     const min = Math.min(...values);
     const max = Math.max(...values);
     const pad = Math.max((max - min) * 0.08, max * 0.01, 1);
@@ -146,12 +213,12 @@
     const yMax = max + pad;
     const range = yMax - yMin || 1;
 
-    const width = 100;
-    const height = 60;
-    const left = 10;
-    const right = 4;
-    const top = 6;
-    const bottom = 12;
+    const width = 120;
+    const height = 70;
+    const left = 12;
+    const right = 6;
+    const top = 8;
+    const bottom = 14;
     const plotWidth = width - left - right;
     const plotHeight = height - top - bottom;
     chartBaselineY = top + plotHeight;
@@ -165,11 +232,10 @@
       return { x, y, value, date: p.date };
     });
 
-    chartPoints = mapped.filter(Boolean).map((p) => ({ x: p!.x, y: p!.y }));
-    chartLinePath = mapped
-      .filter(Boolean)
-      .map((p, idx) => `${idx === 0 ? "M" : "L"} ${p!.x} ${p!.y}`)
-      .join(" ");
+    const mappedPoints = mapped.filter(Boolean) as Array<{ x: number; y: number; value: number; date: string }>;
+    chartPoints = mappedPoints.map((p) => ({ x: p.x, y: p.y }));
+    chartLastPoint = mappedPoints.length > 0 ? mappedPoints[mappedPoints.length - 1] : null;
+    chartLinePath = mappedPoints.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
 
     const entryDate = positionOpenedAt ? new Date(positionOpenedAt) : null;
     if (entryDate) entryDate.setDate(entryDate.getDate() + 1);
@@ -190,24 +256,43 @@
         chartAreaPath = `M ${areaStart.x} ${chartBaselineY} L ${areaPoints
           .map((p) => `${p.x} ${p.y}`)
           .join(" L ")} L ${areaEnd.x} ${chartBaselineY} Z`;
+        chartEntryPoint = { x: areaStart.x, y: areaStart.y };
       } else {
         chartAreaPath = "";
+        chartEntryPoint = null;
       }
     } else {
       chartAreaPath = "";
+      chartEntryPoint = null;
     }
+
+    const entryValue = chartEntryPoint
+      ? (mapped.slice(entryIndex).find(Boolean) as { value: number } | undefined)?.value ?? null
+      : null;
+    const baseValue = entryValue ?? validPoints[0].close;
+    const lastValue = validPoints[validPoints.length - 1].close;
+    const changeValue = baseValue !== null ? lastValue - baseValue : null;
+    const changePct = baseValue && changeValue !== null ? (changeValue / baseValue) * 100 : null;
+    chartTrend = typeof changeValue === "number" && changeValue !== 0 ? (changeValue > 0 ? "up" : "down") : "flat";
+    chartStats = {
+      last: lastValue,
+      change: changeValue,
+      changePct,
+      high: max,
+      low: min,
+      startLabel: formatChartDate(points[0].date),
+      endLabel: formatChartDate(points[points.length - 1].date),
+      count: validPoints.length,
+    };
 
     const mid = (yMin + yMax) / 2;
     chartYLabels = [
-      { y: top, label: formatMoneyPlain(yMax) },
-      { y: top + plotHeight / 2, label: formatMoneyPlain(mid) },
-      { y: top + plotHeight, label: formatMoneyPlain(yMin) },
+      { y: top, label: formatChartAxisValue(yMax) },
+      { y: top + plotHeight / 2, label: formatChartAxisValue(mid) },
+      { y: top + plotHeight, label: formatChartAxisValue(yMin) },
     ];
 
-    chartXLabels = [
-      { x: left, label: formatChartDate(points[0].date), anchor: "start" },
-      { x: width - right, label: formatChartDate(points[points.length - 1].date), anchor: "end" },
-    ];
+    chartXLabels = buildChartXLabels(points);
   };
 
   const loadChart = async () => {
@@ -220,6 +305,19 @@
       buildChart(res.points || []);
     } catch {
       chartPoints = [];
+      chartLastPoint = null;
+      chartTrend = "flat";
+      chartEntryPoint = null;
+      chartStats = {
+        last: null,
+        change: null,
+        changePct: null,
+        high: null,
+        low: null,
+        startLabel: "",
+        endLabel: "",
+        count: 0,
+      };
     } finally {
       chartLoading = false;
     }
@@ -284,32 +382,75 @@
       </span>
     </div>
 
-      <div class="price-panel">
+      <div class={`price-panel ${chartTrend}`}>
         <div class="price-panel-top">
-          <div class="price-panel-title">가격 차트</div>
+          <div class="price-panel-title">
+            <span class="price-panel-label">가격</span>
+            {#if chartStats.count > 0}
+              <span class="price-panel-period">{chartStats.startLabel} - {chartStats.endLabel}</span>
+            {/if}
+          </div>
           {#if chartPoints.length > 0}
-            <div class="price-panel-pill">LIVE</div>
+            <div class="price-panel-live">
+              <span class="price-panel-live-dot"></span>
+              LIVE
+            </div>
           {/if}
+        </div>
+        <div class="price-panel-summary">
+          <div class="price-panel-price">
+            {chartStats.last !== null ? formatMoneyPlain(chartStats.last) : "-"}
+          </div>
         </div>
         {#if chartLoading}
           <div class="empty-state">차트 불러오는 중...</div>
         {:else if chartLinePath === ""}
           <div class="empty-state">차트 데이터가 없습니다.</div>
         {:else}
-          <svg viewBox="0 0 100 60" preserveAspectRatio="none" class="price-chart">
+          <svg viewBox="0 0 120 70" preserveAspectRatio="none" class="price-chart">
+            <defs>
+              <linearGradient id="chart-area-gradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--chart-area-top)" stop-opacity="0.9" />
+                <stop offset="100%" stop-color="var(--chart-area-bottom)" stop-opacity="0.1" />
+              </linearGradient>
+            </defs>
             {#each chartYLabels as label}
-              <line class="chart-grid" x1="10" y1={label.y} x2="96" y2={label.y} />
-              <text class="chart-label" x="0" y={label.y + 2}>{label.label}</text>
+              <text class="chart-label" x="0" y={label.y + 3}>{label.label}</text>
             {/each}
             {#each chartXLabels as label}
-              <text class="chart-label" x={label.x} y="58" text-anchor={label.anchor}>{label.label}</text>
+              <text class="chart-label" x={label.x} y="67" text-anchor={label.anchor}>{label.label}</text>
             {/each}
-            <line class="chart-axis" x1="10" y1={chartBaselineY} x2="96" y2={chartBaselineY} />
+            <line class="chart-axis" x1="12" y1={chartBaselineY} x2="114" y2={chartBaselineY} />
             {#if chartAreaPath}
               <path class="chart-area" d={chartAreaPath} />
             {/if}
             <path class="chart-line" d={chartLinePath} />
+            {#if chartEntryPoint}
+              <line
+                class="chart-entry-line"
+                x1={chartEntryPoint.x}
+                y1={chartEntryPoint.y}
+                x2={chartEntryPoint.x}
+                y2={chartBaselineY}
+              />
+            {/if}
+            {#if chartLastPoint}
+              <circle class="chart-point-halo" cx={chartLastPoint.x} cy={chartLastPoint.y} r="3.2" />
+              <circle class="chart-point" cx={chartLastPoint.x} cy={chartLastPoint.y} r="1.8" />
+            {/if}
           </svg>
+        {/if}
+        {#if chartStats.count > 0}
+          <div class="price-panel-footer">
+            <div class="price-panel-stat">
+              <span>고가</span>
+              <strong>{formatMoneyPlain(chartStats.high)}</strong>
+            </div>
+            <div class="price-panel-stat">
+              <span>저가</span>
+              <strong>{formatMoneyPlain(chartStats.low)}</strong>
+            </div>
+          </div>
         {/if}
       </div>
 

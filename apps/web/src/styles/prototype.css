@@ -1260,17 +1260,41 @@ button {
 
 .price-chart {
   width: 100%;
-  height: 180px;
+  height: 190px;
   display: block;
 }
 
 .price-panel {
-  background: radial-gradient(120% 120% at 10% 0%, rgba(40, 180, 120, 0.2), rgba(10, 14, 18, 0.9)),
-    linear-gradient(180deg, #0f1318 0%, #0c1014 100%);
-  border-radius: 18px;
-  padding: 16px 14px 12px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 12px 30px rgba(0, 0, 0, 0.45);
+  --panel-tint: rgba(106, 164, 255, 0.12);
+  --chart-line: var(--info);
+  --chart-halo: rgba(106, 164, 255, 0.3);
+  --chart-area-top: rgba(76, 125, 255, 0.35);
+  --chart-area-bottom: rgba(76, 125, 255, 0.06);
+  background: transparent;
+  border-radius: 0;
+  padding: 0 0 12px;
+  border: none;
+  box-shadow: none;
   margin-bottom: 16px;
+  position: relative;
+}
+
+.price-panel.up {
+  --panel-tint: rgba(255, 93, 93, 0.18);
+  --chart-line: var(--gain);
+  --chart-halo: rgba(255, 93, 93, 0.28);
+}
+
+.price-panel.down {
+  --panel-tint: rgba(76, 125, 255, 0.18);
+  --chart-line: var(--loss);
+  --chart-halo: rgba(76, 125, 255, 0.28);
+}
+
+.price-panel.flat {
+  --panel-tint: rgba(106, 164, 255, 0.12);
+  --chart-line: var(--info);
+  --chart-halo: rgba(106, 164, 255, 0.24);
 }
 
 .price-panel-top {
@@ -1281,46 +1305,153 @@ button {
 }
 
 .price-panel-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.price-panel-label {
   font-size: 0.72rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.6);
 }
 
-.price-panel-pill {
+.price-panel-period {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.price-panel-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.62rem;
   padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(76, 203, 140, 0.2);
-  color: #7be9b3;
-  border: 1px solid rgba(76, 203, 140, 0.4);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   letter-spacing: 0.08em;
+}
+
+.price-panel-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chart-line);
+  box-shadow: 0 0 8px var(--chart-halo);
+}
+
+.price-panel-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.price-panel-price {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.price-panel-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.price-panel-change.up {
+  color: var(--gain);
+}
+
+.price-panel-change.down {
+  color: var(--loss);
+}
+
+.price-panel-change.flat {
+  color: var(--text-secondary);
+}
+
+.price-panel-change-pct {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.price-panel-footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 420px) {
+  .price-panel-footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.price-panel-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.price-panel-stat strong {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .chart-line {
   fill: none;
-  stroke: #7be9b3;
-  stroke-width: 1.8;
+  stroke: var(--chart-line);
+  stroke-width: 0.6;
 }
 
 .chart-area {
-  fill: rgba(76, 203, 140, 0.22);
+  fill: url(#chart-area-gradient);
 }
 
 .chart-axis {
-  stroke: rgba(255, 255, 255, 0.1);
+  stroke: rgba(255, 255, 255, 0.12);
   stroke-width: 0.6;
 }
 
 .chart-grid {
-  stroke: rgba(255, 255, 255, 0.06);
+  stroke: rgba(255, 255, 255, 0.08);
   stroke-width: 0.5;
-  stroke-dasharray: 2 3;
+  stroke-dasharray: 3 4;
 }
 
 .chart-label {
-  font-size: 2.6px;
-  fill: rgba(255, 255, 255, 0.55);
+  font-size: 3.2px;
+  fill: rgba(255, 255, 255, 0.7);
+}
+
+.chart-entry-line {
+  stroke: rgba(255, 255, 255, 0.65);
+  stroke-width: 0.8;
+  stroke-dasharray: 2 2.5;
+}
+
+.chart-point {
+  fill: var(--chart-line);
+}
+
+.chart-point-halo {
+  fill: var(--chart-halo);
 }
 
 .history-top {
