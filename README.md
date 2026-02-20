@@ -1,142 +1,84 @@
-# 🐜 G-ANT Trader
+# G-ANT
 
-**"개미는 뚠뚠, 오늘도 뚠뚠... 하지만 스마트하게!"**
+> **Live**: [https://daehun.app](https://daehun.app)
 
-[TradingAgents](https://github.com/virattt/TradingAgents) 프레임워크를 기반으로, Google Antigravity 엔진(Gemini 3 Pro / Gemini 2.5 Pro)을 탑재한 무료 AI 주식 분석 시스템입니다. 여러 전문 에이전트가 토론과 리스크 분석을 거쳐 매수/매도/관망 판단을 내립니다.
+12개 AI 에이전트가 협업하여 주식을 분석하고, 가상 매매로 판단을 검증하며, 실패에서 스스로 학습하는 투자 분석 시스템.
+
+시장 데이터 수집 → 강세/약세 토론 → 리스크 3자 토론 → 매매 판단 → 가상 매매 실행 → 청산 시 반성/학습. 이 사이클이 티커별로 자동 반복되며, 축적된 경험이 다음 판단에 반영된다.
 
 ---
-## 심플 시스템플로우
+
+## 어떻게 분석하는가
+
 ```
-Input: TickerSymbol, StandardDate, debate_round
-default data vendors: yfinace  
-fallback:  30s delay retry & model downgrade
-Indicator, Lookback : Auto selected by AGENTS 
-
-# A는 에이전트 T는 툴 
-
-START -> 
-                                                                                       메모리
-주가(T) + 지표(T) -> 시장 분석가(A) -> 시장분석 보고서                                       TODO
-종목 별 뉴스 (T)[감정분석] -> 소셜미디어 분석가(A) -> 소셜 보고서                              TODO
-종목 별 뉴스 (T) + 글로벌 뉴스(T) + 임직원 뉴스(T) -> 뉴스 분석가(A) -> 뉴스 보고서             TODO
-28 지표(T) + 대차대조(T) + 현금흐름(T) + 손익계산(T) -> 펀더멘탈 분석가(A) -> 펀더멘탈 보고서    TODO
-------------------- 시장분석 보고서 + 소셜 보고서 + 뉴스 보고서 + 펀더멘탈 보고서 -------------------
--> 낙관(A) / 비관(A) 토론(N회 반복, memory 통해 과거 실수 복기)                              EXSISTS
--> 리서치 매니저(A) (토론 종합 → 투자 계획 수립)                                             EXSISTS
--> 트레이더(A) (매수/매도/홀드 판단)                                                        EXSISTS
--> 리스크 토론(A) (공격적(A) / 방어적(A) / 중립적(A) 토론. N회 반복)                          TODO
--> 최종 결정(A) (리스크 토론 종합 → 최종 판결)                                               EXSISTS
-
--> END
-
- 
-
-[TODO]
-
- 
+Market Analyst ──→ Social Analyst ──→ News Analyst ──→ Fundamentals Analyst
+                                                              │
+                              Bull Researcher ←→ Bear Researcher (N회 토론)
+                                          │
+                                   Research Manager (판결)
+                                          │
+                                       Trader (투자 계획)
+                                          │
+                    Aggressive ←→ Conservative ←→ Neutral (N회 리스크 토론)
+                                          │
+                                   Risk Judge (최종 판결 + strategy_json)
+                                          │
+                                   Portfolio Agent (실행 결정)
 ```
 
----
+4명의 분석가가 각각 시장 데이터, 소셜 감성, 뉴스, 재무제표를 독립 분석한다. 이 보고서를 바탕으로 강세/약세 리서처가 토론하고, Research Manager가 판결을 내린다. Trader가 투자 계획을 수립하면, 공격적/보수적/중립 3명이 리스크를 토론하고 Risk Judge가 최종 BUY/SELL/HOLD를 결정한다.
 
-## 아키텍처
+여기까지가 12에이전트 파이프라인이며, **포지션 정보 없이 완전 객관적으로** 분석한다. 포지션을 아는 것은 마지막 Portfolio Agent뿐이다. PA는 파이프라인 결정과 과거 경험(RAG)을 종합하여 실제 매매 수량을 결정한다.
 
-### Agents (12)
-
-이 시스템은 하나의 AI가 아닌 **역할이 다른 12개 에이전트**의 협업으로 의사결정을 내립니다.
-
-| Phase       | 에이전트                 | 역할                                                      | LLM   |
-| ----------- | ------------------------ | --------------------------------------------------------- | ----- |
-| 데이터 수집 | **Market Analyst**       | 주가 + 기술 지표 분석                                     |  |
-|             | **Sentiment Analyst**    | 뉴스 기사를 센티먼트 관점으로 분석 (※ 실제 SNS 수집 아님) |  |
-|             | **News Analyst**         | 종목뉴스 + 글로벌 매크로 + 내부자 거래                    |  |
-|             | **Fundamentals Analyst** | 재무제표 + 기업 기본 지표 28개                            |  |
-| 투자 토론   | **Bull Researcher**      | 매수 논거 주장                                            |  |
-|             | **Bear Researcher**      | 매도 논거 주장                                            |  |
-| 종합        | **Research Manager**     | 토론 결과 종합 → 투자 계획                                | deep  |
-| 매매        | **Trader**               | BUY/HOLD/SELL 매매 판단                                   |  |
-| 리스크      | **Aggressive Analyst**   | 고위험-고수익 옹호                                        |  |
-|             | **Conservative Analyst** | 리스크 경고, 보수적 접근                                  |  |
-|             | **Neutral Analyst**      | 양쪽 균형, 데이터 중재                                    |  |
-| 최종        | **Risk Judge**           | 리스크 토론 종합 → 최종 판결                              | deep  |
-
-
-### Memory 시스템
-
-Bull, Bear, Trader, Research Manager, Risk Judge에 각각 독립된 Memory가 있습니다. `reflect_and_remember(returns)` 호출 시 실제 수익/손실을 기반으로 과거 판단을 반성하고, 다음 분석에서 유사 상황 조회 시 활용합니다.
-
-### 분석 흐름
-
-토론 라운드 수는 `max_debate_rounds`와 `max_risk_discuss_rounds`로 조절됩니다 (기본: 1라운드).
-
-### 데이터 소스
-
-시장 데이터는 **yfinance**를 기본 데이터 벤더로 사용합니다. Alpha Vantage로 전환하려면 `ALPHA_VANTAGE_API_KEY` 환경변수 설정 후 config의 `data_vendors`를 수정하면 됩니다.
-
-수집 데이터:
-
-- 주가/거래량/기술 지표 (SMA, RSI, MACD 등)
-- 재무제표 (손익계산서, 대차대조표, 현금흐름표)
-- 내부자 거래 내역
-- 뉴스 헤드라인 및 글로벌 뉴스
+Risk Judge는 `strategy_json`으로 확신도(conviction)와 비중(allocation_pct)을 구조화 출력하며, PA가 이를 기반으로 가용 현금 대비 수량을 계산한다.
 
 ---
 
-## LLM Provider
+## 어떻게 학습하는가
 
-API 키 없이 **Google OAuth 인증만으로** Gemini 모델을 사용합니다. 두 가지 provider를 지원합니다.
+가상 매매로 분석 결과를 추적하고, 포지션 청산 시 전체 사이클을 되돌아보며 교훈을 추출한다.
 
-| Provider            | 모델                       | 인증 파일                    | 특징                     |
-| ------------------- | -------------------------- | ---------------------------- | ------------------------ |
-| `gemini-cli` (기본) | gemini-2.5-pro, 2.5-flash  | `~/.gemini/oauth_creds.json` | Gemini CLI의 토큰 재사용 |
-| `antigravity`       | gemini-3-pro-high, 3-flash | `~/.antigravity_tokens.json` | 자체 OAuth 플로우        |
+**가상 매매**: 티커당 $5,000 독립 자금. 매수/매도 모두 PA가 수량 결정 (소수점 매매 지원). 포지션 전량 청산 시 반성 에이전트가 가동된다.
 
-### 모델 매핑
+**반성 에이전트**: 해당 포지션의 전체 분석 리포트 + 매매 이력을 LLM에 전달하여 반성문과 핵심 교훈을 생성한다. 결과는 성공/실패 레이블 + 섹터/산업/시장 메타데이터와 함께 저장된다.
 
-`gemini-cli` provider 사용 시, config의 모델명은 자동으로 매핑됩니다:
-
-| Config 모델명       | 실제 호출 모델     |
-| ------------------- | ------------------ |
-| `gemini-3-flash`    | `gemini-2.5-flash` |
-| `gemini-3-pro`      | `gemini-2.5-pro`   |
-| `gemini-3-pro-high` | `gemini-2.5-pro`   |
-
-### 인증 방식
-
-1. **Refresh Token** (env 변수): `GEMINI_CLI_REFRESH_TOKEN` 또는 `ANTIGRAVITY_REFRESH_TOKEN` 설정 시 자동 토큰 갱신. CI/headless 환경에 적합.
-2. **캐시 파일**: 이전 인증에서 저장된 토큰 파일을 자동 로드. 토큰 만료 시 refresh token으로 갱신.
-3. **브라우저 OAuth**: 위 두 방법이 모두 실패하면 브라우저가 열려 Google 로그인을 요청합니다.
-
-우선순위: **env 변수 → 캐시 파일 → 브라우저 인증**
-
-### Resilience
-
-API 호출 실패 시 자동 복구:
-
-- **429 (Rate Limit)**: 30초 대기 후 동일 모델로 재시도 (최대 5회)
-- **503 (Capacity)**: 폴백 모델로 자동 전환 (`2.5-pro → 2.5-flash`, `3-pro-high → 3-pro-low → 3-flash`)
+**Hybrid RAG**: 다음 분석에서 PA가 유사 경험을 검색한다. Postgres FTS(키워드)와 ChromaDB(시맨틱)를 RRF Fusion으로 결합하여 가장 관련 높은 과거 교훈을 찾는다. 경험이 있으면 분석 60% + 경험 40% 가중치로 독립 판단하고, 경험이 없으면 파이프라인 결정을 그대로 따른다.
 
 ---
 
-## 주요 설정 (default_config.py)
+## 어떻게 동작하는가
 
-| 키                        | 기본값                             | 설명                          |
-| ------------------------- | ---------------------------------- | ----------------------------- |
-| `llm_provider`            | `gemini-cli` (env: `LLM_PROVIDER`) | LLM provider 선택             |
-| `deep_think_llm`          | `gemini-3-pro-high`                | 심층 분석용 모델              |
-| `quick_think_llm`         | `gemini-3-flash`                   | 빠른 판단용 모델              |
-| `max_debate_rounds`       | 1                                  | Bull vs Bear 토론 라운드 수   |
-| `max_risk_discuss_rounds` | 1                                  | 리스크 논의 라운드 수         |
-| `data_vendors`            | 모두 `yfinance`                    | 데이터 소스 벤더 (카테고리별) |
+티커별 APScheduler가 주기적으로 분석을 트리거한다. 분석 요청은 asyncio.Queue에 들어가고, 워커 1개가 순차 처리한다 (LLM rate limit 대응). 새 시장 데이터가 없으면 스킵하고, 파싱/에이전트 실패 시 자동으로 1회 재큐잉한다. 서버 재시작 시에는 미완료 스케줄을 자동 복구한다.
 
+분석 중 각 에이전트의 진행 상태는 WebSocket으로 실시간 스트리밍되며, 동시에 DB에 영속화되어 이후 이력 조회가 가능하다.
+
+웹 대시보드는 Svelte SPA로 구현되어 있다. 포지션 현황, 스케줄 관리, 리포트 열람, 실시간 모니터링을 지원하며, 모바일 최적화 다크 테마와 PWA 설치를 제공한다.
 
 ---
 
-## 수집 상세
+## 기술 구성
+
+Python 3.10+, FastAPI, LangGraph, APScheduler로 백엔드를 구성하고, Svelte 4 + TypeScript + Vite로 프론트엔드를 구현했다. 데이터는 PostgreSQL 17에 저장하고 ChromaDB로 벡터 검색을 수행한다. LLM은 Google Gemini를 OAuth 인증으로 사용하며 API 키가 필요 없다. 429 시 동일 모델 재시도, 503 시 하위 모델로 자동 폴백한다.
+
+시장 데이터는 yfinance를 기본으로 사용하고 Alpha Vantage로 자동 폴백한다.
+
+---
+
+## 문서
+
+| 문서 | 설명 |
+|------|------|
+| [spec.md](docs/tradingagents/spec.md) | 요구사항 정의 (FR-001~037) |
+| [arch-be.md](docs/tradingagents/arch-be.md) | 백엔드 설계 (DB 스키마, API 명세, 에러 처리) |
+| [arch-fe.md](docs/tradingagents/arch-fe.md) | 프론트엔드 설계 (컴포넌트 구조, 상태 관리, 라우팅) |
+| [ui.md](docs/tradingagents/ui.md) | UI 명세 (화면별 컴포넌트, 상태, 인터랙션) |
+
+---
 
 <details>
-<summary><b>지표수집기 상세: 15개 기술 지표</b></summary>
+<summary><b>수집 데이터: 15개 기술 지표</b></summary>
 
-LLM에게 15개 지표 목록이 주어지고, **"상호 보완적인 최대 8개를 선택하라"** 고 지시. LLM이 시장 상황 판단하여 자율 선택 후, 지표 1개당 1회씩 tool call.
+LLM에게 15개 지표 목록이 주어지고 상호 보완적인 최대 8개를 자율 선택한다.
 
 | 카테고리 | 지표            | 설명                                            |
 | -------- | --------------- | ----------------------------------------------- |
@@ -154,12 +96,10 @@ LLM에게 15개 지표 목록이 주어지고, **"상호 보완적인 최대 8�
 | 거래량   | `vwma`          | 거래량 가중 이동평균                            |
 |          | `mfi`           | MFI — 매수/매도 압력                            |
 
-백룩 기간: `look_back_days` 파라미터 (기본 30일, LLM이 결정)
-
 </details>
 
 <details>
-<summary><b>펀더멘탈 28개 지표 목록</b></summary>
+<summary><b>수집 데이터: 28개 펀더멘탈 지표</b></summary>
 
 시가총액, P/E(TTM), Forward P/E, PEG, P/B, EPS(TTM), Forward EPS, 배당수익률, Beta, 52주 고가/저가, 50/200일 평균가, 매출(TTM), 매출총이익, EBITDA, 순이익, 이익률, 영업이익률, ROE, ROA, 부채비율, 유동비율, 장부가치, FCF
 
@@ -167,177 +107,6 @@ LLM에게 15개 지표 목록이 주어지고, **"상호 보완적인 최대 8�
 
 ---
 
-## Repo Layout
+## License
 
-- `apps/web`: 프론트엔드
-- `apps/api`: API 엔트리/배포 설정
-- `packages/tradingagents`: 코어 라이브러리(에이전트 포함)
-- `scripts`: 실행/운영 스크립트
-- `infra`: Docker/compose 설정
-
-## 설치 및 실행
-
-### Prerequisites
-
-- Python 3.10+
-- (선택) `gemini-cli` 설치 및 인증:
-  ```bash
-  npm install -g @google/gemini-cli
-  gemini   # 최초 실행 시 브라우저 인증
-  ```
-
-### Install
-
-```bash
-git clone https://github.com/samdae/g-ant-trader.git
-cd g-ant-trader/monorepo
-pip install -r requirements.txt
-```
-
-### Run (local analysis)
-
-```bash
-python main.py
-```
-
-`main.py`에서 종목, 날짜, 모델 등을 직접 설정합니다. 기본 설정은 `default_config.py`에서 읽고, `.env`로 override할 수 있습니다.
-
-### Run (API)
-
-```bash
-scripts/run_api.sh
-```
-
-### Run (Web)
-
-```bash
-scripts/run-fe.sh
-```
-
-### Run (DB, optional)
-
-```bash
-scripts/run-db.sh
-```
-
-### 환경변수 설정
-
-`.env` 파일로 기본값을 설정할 수 있습니다 (`.env.example` 참고):
-
-```env
-# Provider 기본값 (CLI wizard에서도 변경 가능)
-LLM_PROVIDER=gemini-cli
-
-# Headless 인증용 Refresh Token (선택)
-GEMINI_CLI_REFRESH_TOKEN=<your-token>
-ANTIGRAVITY_REFRESH_TOKEN=<your-token>
-
-# Alpha Vantage (yfinance 대신 사용 시)
-ALPHA_VANTAGE_API_KEY=<your-key>
-```
-
----
-
-## 반성문(Reflection) 로직 레퍼런스
-
-> 에이전트가 매매 경험에서 학습하는 핵심 메커니즘입니다.
-
-### 트리거 조건
-
-| 상황 | Reflect 실행 |
-|------|-------------|
-| **전량 청산** (`shares >= total_shares` or `shares == 0`) | ✅ 실행 |
-| **부분 매도** | ❌ 미실행 (포지션 미완료) |
-| **BUY / HOLD** | ❌ 미실행 |
-
-### 실행 흐름
-
-```
-전량 청산 완료
-  └── close_all_positions() → realized_return_pct 계산
-        └── structured_context 구성
-              {ticker, return_pct, analysis_count, has_memory, schema_version}
-              └── graph.reflect_and_remember(structured_context)
-                    └── 5개 에이전트 각각 반성 실행:
-                          ├── reflect_bull_researcher()
-                          ├── reflect_bear_researcher()
-                          ├── reflect_trader()
-                          ├── reflect_invest_judge()
-                          └── reflect_risk_manager()
-```
-
-### 개별 반성 처리 (`reflect_*()` 내부)
-
-```
-1. situation = current_state에서 market report 추출 (객관적 시장 상황)
-2. report = 해당 에이전트가 이번 분석에서 내린 판단 텍스트
-3. LLM(quick_think)에게 반성문 생성 요청
-4. memory.add_situations([(situation, 반성문)], metadata)
-   ├── JSONL 파일에 append (memory/experience/{agent_name}.jsonl)
-   └── ChromaDB에 벡터 인덱싱
-```
-
-### 반성 프롬프트 4단계 구조
-
-LLM에게 다음 순서로 반성을 지시합니다:
-
-| 단계 | 지시 | 기대 출력 |
-|------|------|----------|
-| **1. Reasoning** | 각 결정이 맞았는지/틀렸는지 판단. 기여 요인 분석 | 시장 인텔리전스, 기술 지표, 뉴스, 센티멘트 등 요인별 가중 |
-| **2. Improvement** | 틀린 결정에 대해 수정안 제시 | 구체적 행동 권고 (예: "HOLD 대신 BUY 했어야") |
-| **3. Summary** | 성공/실패에서 배운 교훈 정리 | 향후 유사 상황에 적용할 인사이트 |
-| **4. Query** | 핵심 인사이트를 1000토큰 이내 압축 | RAG 검색에 최적화된 밀도 높은 텍스트 |
-
-### LLM 입력 구성
-
-```
-[System] 위 4단계 반성 프롬프트
-
-[Human]
-  Structured Context:
-    Returns: {return_pct}%
-    Ticker: {ticker}
-    Holding Period: {holding_days} days
-    Analysis Count: {analysis_count}
-    Memory Status: Had prior memories / No prior memories (bootstrap)
-
-  Analysis/Decision: {해당 에이전트의 분석 텍스트}
-  Objective Market Reports for Reference: {시장 보고서}
-```
-
-### 저장 형식 (JSONL)
-
-```jsonl
-{
-  "situation": "시장 상황 텍스트 (market report 기반)",
-  "recommendation": "LLM이 생성한 반성문",
-  "metadata": {
-    "ticker": "NVDA",
-    "return_pct": -3.42,
-    "has_memory": true,
-    "schema_version": 1,
-    "holding_days": 12,
-    "analysis_count": 3,
-    "created_at": "2026-02-13T01:30:00"
-  }
-}
-```
-
-### 다음 분석에서 활용
-
-```
-다음 분석 시 → HybridMemory.get_memories(current_situation)
-  ├── BM25: situation 텍스트 유사도 검색
-  ├── Vector: ChromaDB 임베딩 유사도 검색
-  └── RRF Fusion → 가장 관련 높은 과거 반성문 반환
-      → 에이전트 프롬프트에 주입 ("과거 이런 실수를 한 적 있다...")
-```
-
-### 핵심 파일
-
-| 파일 | 역할 |
-|------|------|
-| `packages/tradingagents/graph/reflection.py` | `Reflector` 클래스 — 반성 프롬프트 + LLM 호출 |
-| `packages/tradingagents/graph/trading_graph.py` | `reflect_and_remember()` — 5개 에이전트 반성 오케스트레이션 |
-| `packages/tradingagents/memory/hybrid_memory.py` | `HybridMemory` — JSONL 저장 + ChromaDB 인덱싱 + RAG 검색 |
-| `packages/tradingagents/scheduler/ticker_scheduler.py` | 전량 청산 시 reflect 트리거 (L396~422) |
+[Apache License 2.0](LICENSE)
