@@ -50,7 +50,7 @@ DashboardPage:
   - PageHeader:
       - Title: "홈"
       - StatusBadge: 온라인/오프라인/실행중 (queue.running 기반)
-  - ScheduleSummaryBanner (card, 클릭 → /archive):
+  - ScheduleSummaryBanner (card, 클릭 → /archive — 현재 라우트 미등록으로 / 리다이렉트):
       - 오늘 실행 총 합계
       - 완료/건너뜀/실패/실행중 4항목
   - MetricStrip (card, 2 segments):
@@ -173,15 +173,18 @@ TradeDetailPage:
       - PnL badge
   - PositionSummaryCard:
       - 보유 주식수 / 평균가 / 현재가 / 총 금액 / 수익률
-  - OHLCChart (Canvas):
+  - OHLCChart (SVG):
+      - 캔들/라인 모드 토글 (chartMode: candle | line)
       - 일봉 차트 (GET /position/{id}/graph)
-      - 매매 마커 (BUY=빨강 삼각형, SELL=파랑 삼각형)
-      - 평균가 라인
-  - TabBar: [최신 리포트 / 전체 리포트 / 매매 이력]
+      - 볼륨 바 (하단)
+      - 매매 마커 (BUY=gain 삼각형, SELL=loss 삼각형)
+      - 평균가 수평선
+      - 크로스헤어 (터치/마우스)
+      - 핀치 줌 (pointWidth 8~40px)
+  - TabBar: [리포트 / 매매 이력]
   - TabContent:
-      - LatestReport: 리포트 요약 섹션 (마크다운 렌더링)
-      - AllReports: 리포트 카드 목록
-      - TradeHistory: 매매 이력 테이블
+      - Report: 최신 리포트 요약 + 전체 리포트 드롭다운 (SelectMenu)
+      - History: 매매 이력 테이블
 ```
 
 **States**: loading / error / notFound / loaded
@@ -190,7 +193,7 @@ TradeDetailPage:
 
 **특이사항**:
 - `marked` + `DOMPurify`로 마크다운 → 안전한 HTML 변환
-- Canvas 기반 OHLC 차트 직접 구현 (외부 차팅 라이브러리 없음)
+- SVG 기반 OHLC 차트 직접 구현 (외부 차팅 라이브러리 없음). 캔들/라인 모드 전환, 핀치 줌, 크로스헤어 지원
 - 30초 간격 자동 새로고침 (setInterval)
 
 ---
@@ -234,12 +237,14 @@ ReportDetailPage:
       - Title: ticker + display_name
   - CycleSelector (SelectMenu):
       - 사이클 목록 (최신 순)
-  - ReportSections (accordion):
-      - 분석: 시장 분석, 펀더멘탈 분석
-      - 투자 토론: 강세 논거, 약세 논거, 판정
-      - 리스크: 공격적/보수적/중립 의견, 판정
-      - 결정: 트레이더 결정, 투자 계획, 최종 결정
-      - PA: PA 의견, PA 액션/수량
+  - ReportSections (accordion, 7그룹):
+      - 분석: 시장 분석, 펀더멘털 분석
+      - 투자 토론: 심판 결론(판정) + 하위(강세 분석, 약세 분석)
+      - 투자 계획: 투자 계획
+      - 매매 결정: 트레이더 결정
+      - 리스크 토론: 리스크 결론(판정) + 하위(공격적/보수적/중립 분석)
+      - 최종 결정: 최종 매매 결정
+      - 트레이더 의견: PA 의견
 ```
 
 **States**: loading / error / empty / loaded
@@ -276,9 +281,11 @@ LiveAnalysisPage:
 **API Calls**: `fetchQueue`, `fetchLiveEvents(ticker)`, `WS /ws/analyze/{ticker}`
 
 **특이사항**:
-- running ticker 감지 시 자동 WS 연결
-- 기존 이벤트 DB에서 로드 + WS 실시간 이벤트 병합
-- 5단계 phase 그룹 한국어 라벨 (분석/투자 토론/매매 결정/리스크 평가/실행)
+- onMount 시 `fetchQueue` 1회 호출, running ticker 있으면 자동 WS 연결
+- `fetchLiveEvents(ticker)` → DB 기존 이벤트 로드 → `seedEvents`로 stepStates 초기화
+- WS 실시간 이벤트와 병합 (messages 최대 20개 유지)
+- 5단계 phase 그룹 한국어 라벨: 분석 / 투자 토론 / 매매 결정 / 리스크 토론 / 실행
+- 13개 에이전트별 한국어 라벨 매핑 (시장 분석 에이전트, 강세 분석 에이전트 등)
 
 ---
 
@@ -357,8 +364,8 @@ colors:
 ## 5. Navigation Flow
 
 ```
-BottomNav: 예약 ─ 실시간 ─ [홈] ─ 투자 ─ AI분석
-AppHeader: 예약 ─ 실시간 ─ [홈] ─ 투자 ─ 검색
+BottomNav: 예약(/schedules) ─ 실시간(/live) ─ [홈](/) ─ 투자(/positions) ─ AI분석(/reports)
+AppHeader: 예약(/schedules) ─ 실시간(/live) ─ [홈](/) ─ 투자(/positions) ─ 검색(/search ⚠️ 라우트 미등록)
 
 Dashboard (/) ──→ Positions (/positions) ──→ TradeDetail (/trade/:ticker)
               ──→ Schedules (/schedules) ──→ ScheduleDetail (/schedules/:ticker)

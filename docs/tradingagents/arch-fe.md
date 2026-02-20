@@ -295,9 +295,9 @@ state_management:
     - component: "ScheduleDetail.svelte"
       states: "cycles, selectedCycleId, events, stepStates"
     - component: "TradeDetail.svelte"
-      states: "position, trades, reports, currentPrice, chartData, activeTab"
+      states: "summary, trades, reports, positionId, avgCost, tab(report|history), rawPoints, chartMode(candle|line), chartStats, pointWidth, crosshair, tradeMarkers, selectedHistoryId"
     - component: "ReportDetail.svelte"
-      states: "reports, selectedReportId, expandedSections"
+      states: "report, reports, selectedReportId, reportOptions, decisionKey, decisionLabel, openSections"
     - component: "Live.svelte"
       states: "queue, messages, ws, connectedTicker, stepStates"
     - component: "Auth.svelte"
@@ -492,7 +492,7 @@ api_integration:
 | 7 | FR-025 | 티커 자동완성 | src/routes/Schedules.svelte | searchTickers | Yahoo Finance 검색 + 250ms debounce | [x] |
 | 8 | FR-037 | 스케줄 상세 이벤트 | src/routes/ScheduleDetail.svelte | fetchScheduleCycleEvents | 에이전트 타임라인 렌더링 | [x] |
 | 9 | FR-013 | 매매 상세 | src/routes/TradeDetail.svelte | fetchPositionDetail | 포지션 + 매매 + 리포트 | [x] |
-| 10 | FR-034 | OHLC 차트 | src/routes/TradeDetail.svelte | fetchPositionGraph | Canvas 기반 일봉 차트 | [x] |
+| 10 | FR-034 | OHLC 차트 | src/routes/TradeDetail.svelte | fetchPositionGraph | SVG 기반 캔들/라인 차트 + 핀치 줌 + 크로스헤어 | [x] |
 | 11 | FR-032 | 리포트 목록 | src/routes/Reports.svelte | fetchReportTickers | 티커별 요약 카드 | [x] |
 | 12 | FR-032 | 리포트 상세 | src/routes/ReportDetail.svelte | fetchReportsByTicker | 13개 섹션 마크다운 렌더링 | [x] |
 | 13 | FR-025 | 실시간 분석 | src/routes/Live.svelte | connectLiveStream, fetchLiveEvents | WS + DB 이벤트 병합 | [x] |
@@ -633,6 +633,10 @@ styling_convention:
 - 기존 프로토타입 CSS 활용으로 개발 속도 극대화
 - marked + DOMPurify로 마크다운 리포트 안전 렌더링
 
+### Known Issues
+- AppHeader 네비게이션의 "검색" 링크(`/search`)가 라우트 미등록 → NotFound → `/` 리다이렉트
+- Dashboard ScheduleSummaryBanner 클릭(`/archive`)도 라우트 미등록 → NotFound → `/` 리다이렉트
+
 ### Assumptions
 - **Confirmed**: 백엔드 API가 안정적이고 arch-be.md와 일치
 - **Confirmed**: 인증 토큰은 localStorage에 영구 저장
@@ -658,7 +662,7 @@ styling_convention:
 | Bundle size | < 200KB | Svelte 컴파일 (no virtual DOM) |
 | API 캐싱 | 5분 TTL | localStorage + 오프라인 폴백 |
 | SW 캐싱 | reports: CacheFirst 10min, API: StaleWhileRevalidate 5min | Workbox 설정 |
-| OHLC 차트 | Canvas 직접 렌더링 | 외부 차트 라이브러리 없음 |
+| OHLC 차트 | SVG 직접 렌더링 (캔들/라인 모드, 핀치 줌) | 외부 차트 라이브러리 없음 |
 | 자동 새로고침 | TradeDetail 30초 | setInterval |
 
 ### Accessibility
