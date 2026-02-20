@@ -1,10 +1,9 @@
 # UI Specification: TradingAgents (GANT)
 
 > Created: 2026-02-13
-> Updated: 2026-02-15
+> Updated: 2026-02-20 (code-based reverse sync)
 > Service: tradingagents
 > Platform: responsive
-> Prototype: docs/tradingagents/prototype/
 > Requirements: docs/tradingagents/spec.md
 > Backend API: docs/tradingagents/arch-be.md
 
@@ -23,85 +22,55 @@ approach: "Mobile First"
 
 ## 1. Screen List
 
-| #   | Screen        | Route              | Related Endpoints                                                                                                  | Auth Required    | Spec Reference         |
-| --- | ------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------ | ---------------- | ---------------------- |
-| 1   | Dashboard     | `/`                | `GET /health`, `GET /queue`, `GET /positions/market`, `GET /metrics`, `GET /activity`                              | No               | FR-025, FR-034         |
-| 2   | Positions     | `/positions`       | `GET /positions/market`, `GET /metrics`                                                                            | No               | FR-013, FR-025, FR-034 |
-| 3   | Schedules     | `/schedules`       | `GET /schedules`, `GET /queue`, `GET /schedules/{ticker}/cycles`, `POST /schedules`, `DELETE /schedules/{ticker}` | POST/DELETE: Yes | FR-016, FR-025, FR-026 |
-| 4   | Trade Detail  | `/trade/:ticker`   | `GET /positions?status=active`, `GET /positions/{id}`, `GET /reports?ticker=`                                      | No               | FR-013, FR-014, FR-020 |
-| 5   | Archive       | `/archive/:ticker` | `GET /reports?ticker=`                                                                                             | No               | FR-025, FR-032         |
-| 6   | Live Analysis | `/live`            | `WS /ws/analyze/{ticker}`, `GET /queue`                                                                            | No               | FR-025                 |
-| 7   | Memory Search | `/search`          | `GET /search?query={query}`                                                                                        | No               | FR-015, FR-025         |
-| 8   | Auth          | `/auth`            | —                                                                                                                  | No               | FR-026                 |
+| #   | Screen          | Route                | Related Endpoints                                                                                              | Auth Required    | Spec Reference         |
+| --- | --------------- | -------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------- | ---------------------- |
+| 1   | Dashboard       | `/`                  | `GET /health`, `GET /queue`, `GET /positions/market`, `GET /metrics`, `GET /activity`, `GET /schedules/summary` | No               | FR-025, FR-034         |
+| 2   | Positions       | `/positions`         | `GET /positions/market`, `GET /metrics`                                                                        | No               | FR-013, FR-025, FR-034 |
+| 3   | Schedules       | `/schedules`         | `GET /schedules`, `GET /queue`, `GET /schedules/{ticker}/cycles`, `GET /search/tickers`, `POST /schedules`, `DELETE /schedules/{ticker}` | POST/DELETE: Yes | FR-016, FR-025, FR-026 |
+| 4   | Schedule Detail | `/schedules/:ticker` | `GET /schedules/{ticker}/cycles`, `GET /schedules/{ticker}/cycles/{id}/events`                                 | No               | FR-025, FR-037         |
+| 5   | Trade Detail    | `/trade/:ticker`     | `GET /positions`, `GET /positions/{id}`, `GET /positions/market`, `GET /reports?ticker=`, `GET /position/{id}/graph` | No               | FR-013, FR-014, FR-020, FR-034 |
+| 6   | Reports         | `/reports`           | `GET /reports/tickers`                                                                                         | No               | FR-025, FR-032         |
+| 7   | Report Detail   | `/reports/:ticker`   | `GET /reports?ticker=`                                                                                         | No               | FR-025, FR-032         |
+| 8   | Live Analysis   | `/live`              | `WS /ws/analyze/{ticker}`, `GET /queue`, `GET /live/{ticker}/events`                                           | No               | FR-025, FR-037         |
+| 9   | Auth            | `/auth`              | —                                                                                                              | No               | FR-026                 |
+| 10  | Not Found       | `*`                  | —                                                                                                              | No               | —                      |
 
 ---
 
 ## 2. Screen Specifications
 
-> Prototype note: `docs/tradingagents/prototype/app.js` currently wires routing, tabs, and modals only. API wiring below is the intended data source for production.
-
 ### 2.1 Dashboard (`/`)
 
-**Purpose**: 시스템 상태, 핵심 KPI, 활성 포지션, 큐 상태, 최근 활동을 한 화면에 요약.
-
-**UI Components**:
-
-```
-Mobile (< 640px)
-┌─────────────────────────────┐
-│ GANT                        │
-│ System OK                   │
-├─────────────────────────────┤
-│ KPI cards (3)               │
-│ Active Positions (table)    │
-│ Queue                       │
-│ Recent Activity             │
-└─────────────────────────────┘
-
-Desktop (> 1024px)
-┌──────────────────────────────────────────────────────────────────────┐
-│ GANT        [Dashboard] [Positions] [Schedules] [Live] [Search]      │
-├──────────────────────────────────────────────────────────────────────┤
-│ KPI cards (3)                                                       │
-│ Active Positions (left) | Queue + Activity (right)                  │
-└──────────────────────────────────────────────────────────────────────┘
-```
+**Purpose**: 시스템 상태, 핵심 KPI, 오늘 실행 요약, 활성 포지션, 큐 상태, 최근 활동을 한 화면에 요약.
 
 **Component Hierarchy**:
 
 ```yaml
 DashboardPage:
-  - AppHeader:
-      - Logo: "GANT"
-      - Navigation: [Dashboard, Positions, Schedules, Live, Search]
-  - StatusBadge: System OK
-  - MetricCardGrid (3 cards):
-      - TotalPnlCard
-      - PositionsCard (active + win/loss)
-      - SchedulesCard (count + uptime)
+  - PageHeader:
+      - Title: "홈"
+      - StatusBadge: 온라인/오프라인/실행중 (queue.running 기반)
+  - ScheduleSummaryBanner (card, 클릭 → /archive):
+      - 오늘 실행 총 합계
+      - 완료/건너뜀/실패/실행중 4항목
+  - MetricStrip (card, 2 segments):
+      - TotalPnlSegment (총손익 + 수익률)
+      - InvestmentSegment (투자 수 + 승/패)
   - DashboardGrid:
-      - ActivePositionsCard (table)
-      - QueueCard
-      - RecentActivityCard
+      - ActivePositionsCard (table):
+          - ticker + display_name + 총금액 + PnL
+          - 클릭 → /trade/{ticker}
+      - QueueCard:
+          - running (실행중) + pending (대기중) 표시
+          - 링크 → /live
+      - RecentActivityCard:
+          - activity 이벤트 목록 (trade/analysis 유형)
+          - activity dot 색상: buy=파랑, sell=빨강, hold=회색, analysis=보라
 ```
 
-**States**:
+**States**: loading / error (오프라인 배지) / loaded
 
-| State   | UI Behavior                                                       |
-| ------- | ----------------------------------------------------------------- |
-| loading | KPI 카드 + Positions/Queue/Activity skeleton                      |
-| empty   | KPI 카드 표시 + Positions "No active positions"                   |
-| error   | 상단 Status 배지 "degraded" + retry 배너                          |
-| loaded  | KPI 3개 + Positions/Queue/Activity 렌더링                          |
-
-**User Interactions**:
-
-| #   | Action               | Trigger  | API Call (intended)                                                                 | Result                           |
-| --- | -------------------- | -------- | ---------------------------------------------------------------------------------- | -------------------------------- |
-| 1   | Load dashboard       | Load     | `GET /health`, `GET /queue`, `GET /positions/market`, `GET /metrics`, `GET /activity` | KPI + cards 렌더링               |
-| 2   | View positions       | Click    | —                                                                                  | Route → `/positions`             |
-| 3   | Open trade detail    | Row click| —                                                                                  | Route → `/trade/{ticker}`        |
-| 4   | Live view            | Click    | —                                                                                  | Route → `/live`                  |
+**API Calls**: `fetchMetrics`, `fetchPositionsMarket`, `fetchQueue`, `fetchActivity`, `fetchHealth`, `fetchScheduleSummary`
 
 ---
 
@@ -109,323 +78,293 @@ DashboardPage:
 
 **Purpose**: 활성 포지션의 현재가·미실현 수익률 표시. 클릭 시 Trade Detail로 이동.
 
-**UI Components**:
-
-```
-Mobile: 카드 리스트
-Desktop: 테이블 (Ticker / Shares / Avg Cost / Current / P&L / Return)
-```
-
 **Component Hierarchy**:
 
 ```yaml
 PositionsPage:
-  - AppHeader
-  - PnlBanner (from /metrics)
-  - PositionList:
-      - PositionCard (mobile) / PositionRow (desktop)
+  - PageHeader:
+      - Title: "투자"
+      - PnlBanner (총 손익)
+  - Table (desktop): ticker, 보유, 1주 평균, 총 금액(+PnL), 수익률
+  - CardList (mobile): ticker + display_name + return badge + 보유 상세
 ```
 
-**States**:
+**States**: loading / error / empty ("투자가 없습니다.") / loaded
 
-| State   | UI Behavior                                                                                  |
-| ------- | -------------------------------------------------------------------------------------------- |
-| loading | Skeleton rows/cards                                                                          |
-| empty   | EmptyState: "No active positions. Add a schedule to start trading."                          |
-| error   | ErrorMessage + retry                                                                          |
-| loaded  | 리스트 렌더링, current_price null 시 "Price unavailable" 표시                                |
+**API Calls**: `fetchPositionsMarket`, `fetchMetrics`
 
-**User Interactions**:
-
-| #   | Action            | Trigger | API Call (intended)                           | Result                        |
-| --- | ----------------- | ------- | -------------------------------------------- | ----------------------------- |
-| 1   | Load positions    | Load    | `GET /positions/market`, `GET /metrics`       | 리스트 + Total P&L 렌더링     |
-| 2   | View trade detail | Click   | —                                            | Route → `/trade/{ticker}`     |
+**Interactions**: 행 클릭 → `/#/trade/{ticker}`
 
 ---
 
 ### 2.3 Schedules (`/schedules`)
 
-**Purpose**: 분석 스케줄 CRUD. 티커 추가/삭제 + 상태 표시. WRITE는 Bearer token 필요.
-
-**UI Components**:
-
-```
-Schedule cards with ticker, interval, next run, last run, status badge
-Add Schedule modal (ticker + interval)
-Delete confirm modal
-Token modal for write operations
-```
+**Purpose**: 분석 스케줄 CRUD. 티커 추가/삭제 + 상태(실행중/대기중/활성) 표시.
 
 **Component Hierarchy**:
 
 ```yaml
 SchedulesPage:
-  - AppHeader
   - PageHeader:
-      - AddButton
-  - ScheduleList:
-      - ScheduleCard (repeat)
-  - AddScheduleModal
+      - Title: "예약"
+      - AddButton: "+ 추가"
+  - ScheduleList (card grid):
+      - ScheduleCard (repeat):
+          - ticker + display_name + status badge
+          - 주기 (매일/N일마다) + 회차
+          - 좌 스와이프 → 삭제 확인 (모바일 제스처)
+          - 클릭 → /schedules/{ticker}
+  - AddScheduleModal:
+      - TickerInput (자동완성, GET /search/tickers)
+      - DisplayNameInput
+      - IntervalDaysInput (1~365)
+      - 유효성 검사: ticker A-Z0-9.-{1,15}
   - DeleteConfirmModal
-  - TokenModal
 ```
 
-**States**:
+**States**: loading / error / empty / loaded / submitting (버튼 disabled)
 
-| State        | UI Behavior                                                                                     |
-| ------------ | ----------------------------------------------------------------------------------------------- |
-| loading      | Skeleton cards                                                                                  |
-| empty        | EmptyState + Add CTA                                                                            |
-| error        | ErrorMessage + retry                                                                            |
-| loaded       | 스케줄 카드 목록 렌더링                                                                         |
-| submitting   | Submit/Delete 버튼 disabled                                                                     |
-| conflict_409 | Add 모달에 inline error                                                                          |
+**API Calls**: `fetchSchedules`, `fetchQueue`, `fetchScheduleCycles`, `searchTickers`, `createSchedule`, `deleteSchedule`
 
-**User Interactions**:
-
-| #   | Action              | Trigger              | API Call (intended)                                              | Result                       |
-| --- | ------------------- | -------------------- | ----------------------------------------------------------------- | ---------------------------- |
-| 1   | Load schedules      | Load                 | `GET /schedules`, `GET /queue`, `GET /schedules/{ticker}/cycles` | 카드 상태/last run 렌더링   |
-| 2   | Create schedule     | Submit add modal     | `POST /schedules` (Bearer)                                       | 목록 갱신                    |
-| 3   | Delete schedule     | Confirm delete modal | `DELETE /schedules/{ticker}` (Bearer)                            | 목록 갱신                    |
+**특이사항**:
+- 티커 입력 시 Yahoo Finance 자동완성 (`GET /search/tickers`, 250ms debounce)
+- 선택 시 display_name 자동 채움
+- 스와이프 삭제 (touchstart/touchmove/touchend, threshold -80px)
 
 ---
 
-### 2.4 Trade Detail (`/trade/:ticker`)
+### 2.4 Schedule Detail (`/schedules/:ticker`)
 
-**Purpose**: 특정 티커의 포지션 상태, 최신 리포트, 히스토리 표시.
+**Purpose**: 특정 티커의 분석 사이클 이력과 에이전트별 이벤트 타임라인 표시.
 
-**UI Components**:
+**Component Hierarchy**:
 
+```yaml
+ScheduleDetailPage:
+  - PageHeader:
+      - BackButton → /schedules
+      - Title: ticker + display_name
+  - CycleSelector (SelectMenu dropdown):
+      - 사이클 목록 (최신 순)
+  - EventTimeline:
+      - PhaseGroup (Data Collection / Investment Debate / Trade Decision / Risk Assessment / Execution)
+      - AgentStep (repeat):
+          - agent name + status icon (running/completed/error/skipped)
+          - message + timestamp
 ```
-Summary card (shares / avg cost / current / P&L)
-Tabs: Latest Report / History
-Archive link
-```
+
+**States**: loading / error / empty / loaded / loadingEvents
+
+**API Calls**: `fetchScheduleCycles(ticker, 10)`, `fetchScheduleCycleEvents(ticker, scheduleId)`
+
+---
+
+### 2.5 Trade Detail (`/trade/:ticker`)
+
+**Purpose**: 특정 티커의 포지션 상태, OHLC 차트, 최신 리포트, 매매 이력 표시.
 
 **Component Hierarchy**:
 
 ```yaml
 TradeDetailPage:
-  - AppHeader
-  - PageHeader (Back, Title, PnL badge)
-  - PositionSummaryCard
-  - TabBar: [Latest Report, History]
+  - PageHeader:
+      - BackButton → /positions
+      - Title: ticker + display_name
+      - PnL badge
+  - PositionSummaryCard:
+      - 보유 주식수 / 평균가 / 현재가 / 총 금액 / 수익률
+  - OHLCChart (Canvas):
+      - 일봉 차트 (GET /position/{id}/graph)
+      - 매매 마커 (BUY=빨강 삼각형, SELL=파랑 삼각형)
+      - 평균가 라인
+  - TabBar: [최신 리포트 / 전체 리포트 / 매매 이력]
   - TabContent:
-      - LatestReport
-      - HistoryList
-  - ArchiveLink
+      - LatestReport: 리포트 요약 섹션 (마크다운 렌더링)
+      - AllReports: 리포트 카드 목록
+      - TradeHistory: 매매 이력 테이블
 ```
 
-**Data Resolution (intended)**:
+**States**: loading / error / notFound / loaded
 
-1. `GET /positions?status=active` → ticker match to find position_id
-2. If not active, `GET /positions?status=closed` → latest closed position_id for ticker
-3. `GET /positions/{id}` → trades + reports
-4. `GET /reports?ticker=` → for summary cards/cycle numbers
+**API Calls**: `fetchPositions`, `fetchPositionsMarket`, `fetchPositionDetail(id)`, `fetchReportsByTicker(ticker)`, `fetchPositionGraph(id, days)`
 
-**User Interactions**:
-
-| #   | Action            | Trigger | API Call (intended)                   | Result                              |
-| --- | ----------------- | ------- | ------------------------------------ | ----------------------------------- |
-| 1   | Load trade detail | Load    | `GET /positions`, `GET /positions/{id}`, `GET /reports?ticker=` | 상세 렌더링                        |
-| 2   | Switch tab        | Click   | —                                    | 탭 전환                             |
-| 3   | View archive      | Click   | —                                    | Route → `/archive/{ticker}`         |
+**특이사항**:
+- `marked` + `DOMPurify`로 마크다운 → 안전한 HTML 변환
+- Canvas 기반 OHLC 차트 직접 구현 (외부 차팅 라이브러리 없음)
+- 30초 간격 자동 새로고침 (setInterval)
 
 ---
 
-### 2.5 Archive (`/archive/:ticker`)
+### 2.6 Reports (`/reports`)
 
-**Purpose**: 티커별 과거 분석 리포트 목록을 카드 형태로 표시.
-
-**UI Components**:
-
-```
-Archive cards with cycle badge, decision badge, date, short summary
-Pagination controls
-```
+**Purpose**: 티커별 AI 분석 리포트 요약 목록. 클릭 시 상세 리포트로 이동.
 
 **Component Hierarchy**:
 
 ```yaml
-ArchivePage:
-  - AppHeader
-  - PageHeader (Back, Title)
-  - ArchiveList:
-      - ArchiveCard (repeat)
-  - Pagination
+ReportsPage:
+  - PageHeader: "AI분석"
+  - TickerList (card grid):
+      - TickerCard (repeat):
+          - ticker + display_name
+          - report_count + latest_cycle + latest_at
+          - 최신 결정 (BUY/SELL/HOLD badge)
+          - portfolio_action + trade_action
+          - 클릭 → /reports/{ticker}
 ```
 
-**User Interactions**:
+**States**: loading / error / empty / loaded
 
-| #   | Action            | Trigger | API Call (intended)     | Result                |
-| --- | ----------------- | ------- | ----------------------- | --------------------- |
-| 1   | Load archive list | Load    | `GET /reports?ticker=`  | 리포트 목록 렌더링    |
+**API Calls**: `fetchReportTickers`
+
+**특이사항**: 결정 추출 로직 (BUY/SELL/HOLD, 한국어 매수/매도/관망 인식)
 
 ---
 
-### 2.6 Live Analysis (`/live`)
+### 2.7 Report Detail (`/reports/:ticker`)
+
+**Purpose**: 특정 티커의 분석 리포트 상세 (13개 섹션별 내용 표시).
+
+**Component Hierarchy**:
+
+```yaml
+ReportDetailPage:
+  - PageHeader:
+      - BackButton → /reports
+      - Title: ticker + display_name
+  - CycleSelector (SelectMenu):
+      - 사이클 목록 (최신 순)
+  - ReportSections (accordion):
+      - 분석: 시장 분석, 펀더멘탈 분석
+      - 투자 토론: 강세 논거, 약세 논거, 판정
+      - 리스크: 공격적/보수적/중립 의견, 판정
+      - 결정: 트레이더 결정, 투자 계획, 최종 결정
+      - PA: PA 의견, PA 액션/수량
+```
+
+**States**: loading / error / empty / loaded
+
+**API Calls**: `fetchReportsByTicker(ticker, limit)`
+
+**특이사항**: 마크다운 렌더링 (marked + DOMPurify), 각 섹션 접기/펼치기
+
+---
+
+### 2.8 Live Analysis (`/live`)
 
 **Purpose**: WebSocket으로 에이전트 실행 상태를 실시간 스트리밍.
-
-**UI Components**:
-
-```
-Left: Queue
-Right: Agent pipeline feed (phase groups + steps)
-```
 
 **Component Hierarchy**:
 
 ```yaml
 LiveAnalysisPage:
-  - AppHeader
-  - PageHeader
-  - LiveLayout:
-      - QueueCard
-      - AgentPipelineCard:
-          - PhaseGroup (repeat)
-          - AgentStep (repeat)
+  - PageHeader: "실시간"
+  - QueueSection:
+      - RunningTicker (실행중)
+      - PendingList (대기중)
+  - AgentPipeline:
+      - PhaseGroup (분석/투자토론/매매결정/리스크평가/실행):
+          - AgentStep (repeat):
+              - step number + agent name + status icon
+              - message text
+  - EventLog:
+      - 최근 이벤트 역순 목록
 ```
 
-**States**:
+**States**: loading / idle ("대기 중") / connected (WS live) / disconnected
 
-| State        | UI Behavior                                                       |
-| ------------ | ----------------------------------------------------------------- |
-| loading      | Queue skeleton + "Connecting..."                                 |
-| idle         | "Waiting for analysis to start"                                  |
-| connected    | WS live indicator + step updates                                   |
-| disconnected | Reconnect banner + auto retry                                      |
+**API Calls**: `fetchQueue`, `fetchLiveEvents(ticker)`, `WS /ws/analyze/{ticker}`
 
-**User Interactions**:
-
-| #   | Action        | Trigger | API Call (intended)                          | Result              |
-| --- | ------------- | ------- | ------------------------------------------- | ------------------- |
-| 1   | Load queue    | Load    | `GET /queue`                                 | 큐 렌더링           |
-| 2   | Connect WS    | Load    | `WS /ws/analyze/{running_ticker}`            | 실시간 스트림 시작  |
+**특이사항**:
+- running ticker 감지 시 자동 WS 연결
+- 기존 이벤트 DB에서 로드 + WS 실시간 이벤트 병합
+- 5단계 phase 그룹 한국어 라벨 (분석/투자 토론/매매 결정/리스크 평가/실행)
 
 ---
 
-### 2.7 Memory Search (`/search`)
+### 2.9 Auth (`/auth`)
 
-**Purpose**: 과거 반성 데이터를 검색하고 성공/실패 라벨과 함께 표시.
-
-**UI Components**:
-
-```
-Search input + button
-Result cards with outcome badge, ticker, RRF score, return_pct, situation, recommendation
-```
-
-**Component Hierarchy**:
-
-```yaml
-MemorySearchPage:
-  - AppHeader
-  - PageHeader
-  - SearchForm
-  - ResultsList
-```
-
-**User Interactions**:
-
-| #   | Action  | Trigger | API Call (intended)                | Result        |
-| --- | ------- | ------- | --------------------------------- | ------------- |
-| 1   | Search  | Submit  | `GET /search?query={query}`       | 결과 렌더링   |
-
----
-
-### 2.8 Auth (`/auth`)
-
-**Purpose**: WRITE 작업을 위한 Admin 토큰 입력 화면. 성공 시 localStorage에 저장하고 이전 화면으로 복귀.
-
-**UI Components**:
-
-```
-Token input + Save button + Cancel
-```
+**Purpose**: WRITE 작업을 위한 Admin 토큰 입력. 성공 시 localStorage에 저장 + 원래 화면 복귀.
 
 **Component Hierarchy**:
 
 ```yaml
 AuthPage:
-  - AppHeader
-  - PageHeader: "Admin Authentication"
-  - TokenForm:
+  - Card:
+      - Title: "관리자 접근"
       - TokenInput (password type)
-      - SaveButton
-      - CancelButton
+      - Error message (inline)
+      - SaveButton + CancelButton
 ```
 
-**States**:
+**States**: initial / error ("토큰을 입력해 주세요.")
 
-| State   | UI Behavior                                |
-| ------- | ------------------------------------------ |
-| initial | 입력 폼 표시                                |
-| error   | "Invalid token" inline 메시지 + toast     |
-| saved   | localStorage 저장 + 이전 페이지로 복귀     |
+**특이사항**: `?return=` 쿼리 파라미터로 원래 화면 경로 복원
 
-**User Interactions**:
+---
 
-| #   | Action       | Trigger      | API Call | Result                                  |
-| --- | ------------ | ------------ | -------- | --------------------------------------- |
-| 1   | Save token   | Click [Save] | —        | localStorage 저장 후 원래 화면으로 복귀 |
-| 2   | Cancel       | Click [Cancel] | —      | 이전 화면으로 복귀                      |
+### 2.10 Not Found (`*`)
+
+**Purpose**: 미등록 라우트 접근 시 대시보드로 자동 리다이렉트.
 
 ---
 
 ## 3. Shared Components
 
-| Component       | Props                               | Usage                                         |
-| --------------- | ----------------------------------- | --------------------------------------------- |
-| AppHeader       | currentRoute                        | All pages                                     |
-| BottomNav       | currentRoute                        | Mobile nav                                    |
-| DrawerMenu      | isOpen, onClose                     | Hidden fallback nav                           |
-| MetricCard      | label, value, subText, tone         | Dashboard KPI row                             |
-| StatusBadge     | status: `ok` \| `warn` \| `error`     | Dashboard header                              |
-| TickerBadge     | ticker: string                      | Positions, Schedules, Trade, Archive, Search  |
-| DecisionBadge   | decision: `BUY` \| `SELL` \| `HOLD` | Trade History, Latest Report                  |
-| ReturnPctBadge  | value: float                        | Positions, Archive                            |
-| OutcomeBadge    | outcome: `win` \| `loss` \| null     | Memory Search                                 |
-| ActivityItem    | title, timestamp, type              | Dashboard Recent Activity                     |
-| ConfirmModal    | title, message, onConfirm, onCancel | Schedules (delete), Token prompt              |
-| TabBar          | tabs[], activeTab, onTabChange      | Trade Detail                                   |
-| LiveIndicator   | —                                   | Live Analysis                                  |
+| Component       | Props / State                       | File                              | Usage                                         |
+| --------------- | ----------------------------------- | --------------------------------- | --------------------------------------------- |
+| AppHeader       | navItems, $location                 | `components/AppHeader.svelte`     | 모든 페이지 상단 (로고 + 데스크톱 네비게이션) |
+| BottomNav       | navItems, $location                 | `components/BottomNav.svelte`     | 모바일 하단 5탭 (예약/실시간/홈/투자/AI분석)  |
+| SelectMenu      | value, options, placeholder, disabled | `components/SelectMenu.svelte`  | ScheduleDetail, ReportDetail (사이클 선택)     |
+
+### Utility Functions (`lib/utils/format.ts`)
+
+| Function           | Description                                    |
+| ------------------ | ---------------------------------------------- |
+| `formatMoney`      | 부호 포함 통화 포맷 (+$1,234.56)              |
+| `formatMoneyPlain` | 부호 없는 통화 포맷 ($1,234.56)               |
+| `formatPercent`    | 퍼센트 포맷 (+12.34%)                         |
+| `formatDateTime`   | ISO → 로컬 날짜시간                            |
+| `formatAgo`        | ISO → 상대 시간 (방금 전, N분 전, N시간 전)   |
+| `formatErrorMessage` | Error → 사용자 친화적 메시지                 |
 
 ---
 
 ## 4. Design System Reference
 
 ```yaml
-ui_library: "Custom HTML/CSS"
-font: "Inter"
-color_scheme: "Light Breeze"
+ui_library: "Custom CSS (Toss Securities-inspired dark UI)"
+font: "Pretendard Variable"
+color_scheme: "Dark"
 layout:
-  container: "max-width 1280px"
-  grid: "card-grid + dashboard-grid"
+  container: "page-container (max-width 내부 정의)"
+  grid: "list-grid + dashboard-grid"
 colors:
-  primary: "#6366f1"
-  gain: "#059669"
-  loss: "#e11d48"
-  info: "#2563eb"
-  warn: "#d97706"
-  bg: "#f8f9fb"
+  bg: "#0d0f13"
+  surface: "#1f2023"
+  border: "#23262d"
+  text: "#e8edf5"
+  text-dim: "#8b96a8"
+  primary: "#5b8bff"
+  gain: "#ff5d5d"
+  loss: "#4c7dff"
+  info: "#6aa4ff"
+  warn: "#f4b24d"
 ```
 
 ---
 
 ## 5. Navigation Flow
 
-```mermaid
-graph TD
-    A["Dashboard /"] --> B["Positions /positions"]
-    A --> C["Schedules /schedules"]
-    A --> D["Live /live"]
-    A --> E["Search /search"]
-    B --> F["Trade Detail /trade/:ticker"]
-    F --> G["Archive /archive/:ticker"]
-    C --> H["Auth /auth"]
+```
+BottomNav: 예약 ─ 실시간 ─ [홈] ─ 투자 ─ AI분석
+AppHeader: 예약 ─ 실시간 ─ [홈] ─ 투자 ─ 검색
+
+Dashboard (/) ──→ Positions (/positions) ──→ TradeDetail (/trade/:ticker)
+              ──→ Schedules (/schedules) ──→ ScheduleDetail (/schedules/:ticker)
+              ──→ Live (/live)
+              ──→ Reports (/reports) ──→ ReportDetail (/reports/:ticker)
+              ──→ Auth (/auth) [401/403 시 자동 리다이렉트]
 ```
 
 ---
@@ -436,13 +375,36 @@ graph TD
 auth_model: "Bearer token (single user)"
 read_endpoints: "public"
 write_endpoints: "Authorization: Bearer {ADMIN_TOKEN}"
-token_entry: "/auth page"
+token_entry: "/auth page (with ?return= query param)"
 token_storage: "localStorage (gant_admin_token)"
-on_401: "clear token + redirect to /auth"
+on_401_403: "clearToken() + redirect to /auth?return={current_hash}"
 ```
 
 ---
 
-## 7. Next Steps
+## 7. PWA Configuration
 
-> Wire API calls in `docs/tradingagents/prototype/app.js` and replace static data with live responses.
+```yaml
+pwa:
+  register_type: "autoUpdate"
+  manifest:
+    name: "GANT Trading Console"
+    short_name: "GANT"
+    theme_color: "#0d0f13"
+    background_color: "#0d0f13"
+    display: "standalone"
+    icons: ["/icon.svg (any maskable)"]
+  workbox:
+    api_reports: "CacheFirst (10min, max 100 entries)"
+    api_other: "StaleWhileRevalidate (5min, max 100 entries)"
+```
+
+---
+
+## Reverse Extraction Info
+
+| Item           | Content                                      |
+| -------------- | -------------------------------------------- |
+| Generated      | 2026-02-13                                   |
+| Last synced    | 2026-02-20 (reverse — code-based full sync)  |
+| Analysis scope | `apps/web/src/` (Svelte + TypeScript)        |
