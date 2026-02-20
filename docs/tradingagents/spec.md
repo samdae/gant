@@ -415,13 +415,14 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 
 | Pattern                   | Inference                                                           |
 | ------------------------- | ------------------------------------------------------------------- |
-| LLM rate limit (429)      | 30s retry → model downgrade (pro → flash) → retry                   |
-| LLM capacity (503)        | Exponential backoff, model downgrade                                |
+| LLM rate limit (429)      | 30s 대기 후 **동일 모델** 재시도 (최대 5회)                          |
+| LLM capacity (503)        | 모델 다운그레이드 fallback chain: `gemini-2.5-pro → gemini-2.5-flash`, `gemini-3-pro-high → gemini-3-pro-low → gemini-3-flash`. 체인 소진 시 exponential backoff |
 | Data vendor failure       | 30s 간격 2회 재시도 후 다음 벤더로 fallback, 이력 schedule_jobs 기록 |
 | Tool call returns no data | Agent continues with empty report (`report = ""`)                   |
 | Decision parse failure    | 스케줄 실패 처리 + 자동 재큐잉 1회 (schedule_jobs 기록)              |
 | Agent execution failure   | 스케줄 실패 처리 + 자동 재큐잉 1회 (schedule_jobs 기록)              |
 | Data vendor total failure | `DataVendorError` → 스케줄 실패 처리 (재큐잉 없음)                  |
+| Current price fetch fail  | yfinance 5일 히스토리 조회 → 2회 재시도(30s 간격) → 실패 시 `DataVendorError` |
 | Empty BM25/RAG memory     | PA operates without past reference (`"No past memories found."`)    |
 | No new market data        | 스케줄 스킵 처리 (`status='skipped'`, FR-036)                       |
 | ADMIN_TOKEN 미설정        | 서버 시작 차단 (`raise RuntimeError`)                               |

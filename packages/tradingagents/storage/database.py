@@ -143,6 +143,7 @@ class Database:
             portfolio_shares                  DOUBLE PRECISION,
             portfolio_rationale               TEXT,
             pa_opinion                        TEXT,
+            pipeline_strategy                 TEXT,
             created_at                        TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_reports_schedule ON reports(schedule_id);

@@ -616,7 +616,7 @@ Reflector.reflect_on_position(position_id, db, ticker)
 | GET | `/positions` | — | 포지션 목록 (?status, ?cursor, ?limit) |
 | GET | `/positions/{id}` | — | 포지션 상세 (trades + reports) |
 | GET | `/positions/market` | — | 활성 포지션 + yfinance 현재가 + PnL |
-| GET | `/position/{id}/graph` | — | OHLC 일봉 차트 (?days, 캐시 지원) |
+| GET | `/position/{id}/graph` | — | OHLC 일봉 차트 (?days, 인메모리 캐시: 당일 24h TTL / 과거 7d TTL) |
 | GET | `/reports` | — | 보고서 목록 (?ticker, ?position_id, ?cursor, ?limit) |
 | GET | `/reports/tickers` | — | 티커별 보고서 요약 |
 | GET | `/reflections` | — | 반성문 목록 (?outcome, ?cursor, ?limit) |
@@ -685,11 +685,13 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 
 | 리스크 | 영향 | 완화 |
 |--------|------|------|
-| Postgres 연결 끊김 | 분석 중단 | per-thread 재연결 + autocommit=False |
+| Postgres 연결 끊김 | 분석 중단 | per-thread 재연결 (`get_connection`에서 `SELECT 1` 체크 후 자동 재연결) |
 | ChromaDB 벡터 비동기 | 반성 저장 후 즉시 검색 불가 | 반성 직후 동일 사이클에서 RAG 읽기 없음 (다음 사이클부터) |
 | Postgres FTS 한국어 토크나이저 부재 | 한글 검색 품질 저하 | `'simple'` 설정 + 벡터 검색이 보완 |
 | 요약 품질 편차 | quick_think_llm 성능 한계 | 각 컬럼 200~400 토큰 목표 명시, 프롬프트 엔지니어링 |
 | yfinance 가격 조회 실패 | 대시보드 PnL 표시 불가 | KRX 대체 심볼 fallback (`.KS` ↔ `.KQ`), 가격 null 허용 |
+| LLM rate limit (429) | 분석 지연 | 30s 대기 후 **동일 모델** 재시도 (최대 5회, `MAX_RETRIES=5`) |
+| LLM capacity exhaustion (503) | 분석 품질 저하 | 모델 다운그레이드 fallback chain: `gemini-2.5-pro → gemini-2.5-flash`, `gemini-3-pro-high → gemini-3-pro-low → gemini-3-flash` |
 
 ### 가정사항
 
@@ -718,6 +720,7 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | 9 | LLM | Decision parse 실패 | `DecisionParseError` → 스케줄 실패 + 자동 재큐잉 1회 |
 | 10 | LLM | Agent execution 실패 | `AgentExecutionError` → 스케줄 실패 + 자동 재큐잉 1회 |
 | 11 | Data | 모든 벤더 실패 | `DataVendorError` → 스케줄 실패 (재큐잉 없음) |
+| 11a | Data | 현재가 조회 실패 | yfinance 5일 히스토리 조회, 2회 재시도(30s 간격), 모두 실패 시 `DataVendorError` |
 | 12 | Schedule | 중복 스케줄 등록 | ticker 기준 중복 체크 → 409 Conflict |
 | 13 | Schedule | 새 데이터 없음 | schedule_job status='skipped' (FR-036) |
 | 14 | Transaction | 부분 실패 | 전체 롤백, schedule_job status='failed' |
@@ -815,7 +818,25 @@ class ScheduleRequest(BaseModel):
 | Risk Judge | 12 | Risk Assessment |
 | Portfolio Agent | 13 | Execution |
 
-### 10.7 Postgres 연결 관리
+### 10.7 LLM 모델 매핑 및 Resilience
+
+| Config 모델명 | gemini-cli 실제 모델 | 용도 |
+|---|---|---|
+| `gemini-3-pro-high` | `gemini-2.5-pro` | deep_think_llm (PA, Reflector, Research Manager, Risk Judge) |
+| `gemini-3-flash` | `gemini-2.5-flash` | quick_think_llm (4 Analysts, Researchers, Trader, SummaryAgent) |
+| `gemini-3-pro-low` | (antigravity 전용) | 503 fallback 중간 단계 |
+| `gemini-3-flash-lite` | `gemini-2.5-flash-lite` | 미사용 (품질 부족) |
+
+**429 (Rate Limit)**: 30s 대기 → 동일 모델 재시도 (최대 5회)
+**503 (Capacity)**: 모델 다운그레이드 chain 적용 후 다음 모델로 즉시 재시도
+
+```
+Fallback chain:
+  gemini-2.5-pro → gemini-2.5-flash
+  gemini-3-pro-high → gemini-3-pro-low → gemini-3-flash
+```
+
+### 10.9 Postgres 연결 관리
 
 | 항목 | 값 |
 |------|-----|
@@ -826,7 +847,7 @@ class ScheduleRequest(BaseModel):
 | DDL | `SUPABASE_DIRECT_URL` 있으면 별도 연결로 DDL 실행 |
 | autocommit | `False` (명시적 commit/rollback) |
 
-### 10.8 CORS 설정
+### 10.10 CORS 설정
 
 ```python
 cors_origins = os.getenv("TRADINGAGENTS_CORS_ORIGINS", "").strip()
@@ -842,7 +863,7 @@ app.add_middleware(
 )
 ```
 
-### 10.9 UI Metrics (FR-034)
+### 10.11 UI Metrics (FR-034)
 
 #### 계산식
 
