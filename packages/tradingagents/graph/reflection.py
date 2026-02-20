@@ -201,8 +201,23 @@ Be specific, data-driven, and brutally honest. Focus on learnings that will impr
             if report.get('final_trade_decision'):
                 context += f"Final Decision: {report['final_trade_decision'][:300]}...\n\n"
 
+            # Pipeline strategy JSON (Judge's structured instruction)
+            if report.get('pipeline_strategy'):
+                import json
+                strategy = report['pipeline_strategy']
+                if isinstance(strategy, str):
+                    try:
+                        strategy = json.loads(strategy)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+                if isinstance(strategy, dict):
+                    context += f"Pipeline Strategy (Judge): action={strategy.get('action')}, conviction={strategy.get('conviction')}, allocation_pct={strategy.get('allocation_pct')}\n\n"
+
             if report.get('pa_opinion'):
                 context += f"PA Opinion: {report['pa_opinion'][:300]}...\n\n"
+
+            if report.get('portfolio_action'):
+                context += f"PA Action: {report['portfolio_action']}\n\n"
 
             context += "\n"
 

@@ -13,6 +13,9 @@
     ticker?: string;
     scheduled_cycle?: number;
     decision_position?: string;
+    portfolio_action?: string;
+    portfolio_shares?: number;
+    portfolio_rationale?: string;
     market_report?: string;
     fundamentals_report?: string;
     bull_history?: string;
@@ -147,6 +150,7 @@
 
   const getDecision = (r: Report | null): string => {
     if (!r) return "";
+    if (r.portfolio_action) return normalizeDecision(r.portfolio_action);
     if (r.decision_position) return normalizeDecision(r.decision_position);
     return extractDecision(r.final_trade_decision);
   };
@@ -156,6 +160,11 @@
     if (value === "SELL") return "매도";
     if (value === "HOLD") return "관망";
     return "";
+  };
+
+  const formatShares = (value?: number | null): string => {
+    if (value == null) return "";
+    return value.toLocaleString(undefined, { maximumFractionDigits: 6 });
   };
 
   const selectReport = (id: string) => {
@@ -241,6 +250,14 @@
         <span class="report-date">{formatDateTime(report.created_at)}</span>
         {#if report.scheduled_cycle}
           <span class="report-date">{report.scheduled_cycle} 회차</span>
+        {/if}
+        {#if report.portfolio_action}
+          <span class="report-date">
+            실제 매매: {getDecisionLabel(normalizeDecision(report.portfolio_action))}
+            {#if report.portfolio_shares != null}
+              · {formatShares(report.portfolio_shares)}주
+            {/if}
+          </span>
         {/if}
       </div>
 

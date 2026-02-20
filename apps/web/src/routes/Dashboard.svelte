@@ -87,6 +87,11 @@
     return value;
   };
 
+  const formatShares = (value?: number) => {
+    if (value == null) return "";
+    return value.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  };
+
   const formatActivity = (item: ActivityEvent) => {
     if (item.event_type === "trade") {
       const action = item.action === "BUY" ? "매수" : "매도";
@@ -96,7 +101,9 @@
     }
     if (item.event_type === "analysis") {
       const decision = mapDecision(item.decision);
-      return decision ? `결정: ${decision}` : "분석 완료";
+      if (!decision) return "분석 완료";
+      if (item.shares != null) return `결정: ${decision} (${formatShares(item.shares)}주)`;
+      return `결정: ${decision}`;
     }
     return "활동";
   };

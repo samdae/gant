@@ -382,10 +382,22 @@ class TickerScheduler:
             # This must happen BEFORE add_ticker so the ticker is in the queue
             # when APScheduler triggers, preventing duplicate schedule creation.
             latest_job = schedule_job_repo.get_latest_by_ticker(ticker)
-            if latest_job and latest_job.get("status") == "failed":
+            if latest_job and latest_job.get("status") in ("failed", "running"):
                 schedule_id = latest_job["schedule_id"]
+                if latest_job.get("status") == "running":
+                    schedule_job_repo.update_status(
+                        latest_job["id"],
+                        "failed",
+                        error_type="interrupted",
+                        error_message="Marked failed after restart",
+                        error_detail=None,
+                    )
+                    logger.info(
+                        f"Self-heal: marked running job {latest_job['id']} as failed "
+                        f"for {ticker}"
+                    )
                 logger.info(
-                    f"Self-heal: re-queuing failed schedule {schedule_id} "
+                    f"Self-heal: re-queuing schedule {schedule_id} "
                     f"for {ticker} (job {latest_job['id']})"
                 )
                 self.enqueue_schedule(ticker, schedule_id=schedule_id)
@@ -592,7 +604,7 @@ class TickerScheduler:
 
             logger.info(f"{ticker}: Running G-ANT pipeline...")
             try:
-                final_state, pipeline_decision = self.graph.propagate(
+                final_state, (pipeline_decision, pipeline_strategy) = self.graph.propagate(
                     company_name=ticker,
                     trade_date=today,
                     current_position=""  # FR-021: No position injection to 12 agents
@@ -603,6 +615,8 @@ class TickerScheduler:
                 raise AgentExecutionError(f"{ticker}: pipeline failed") from e
 
             logger.info(f"{ticker}: Pipeline decision: {pipeline_decision}")
+            if pipeline_strategy:
+                logger.info(f"{ticker}: Pipeline strategy: {pipeline_strategy}")
 
             # 6. Portfolio Agent decision (with position context)
             logger.info(f"{ticker}: Running portfolio agent...")
@@ -627,7 +641,8 @@ class TickerScheduler:
                     pipeline_decision=pipeline_decision,
                     pipeline_state=final_state,
                     current_price=current_price,
-                    context=pa_context  # Pass position context to PA
+                    context=pa_context,
+                    pipeline_strategy=pipeline_strategy,
                 )
                 if self.graph.status_callback:
                     self.graph.status_callback(
@@ -666,6 +681,10 @@ class TickerScheduler:
             logger.info(f"{ticker}: Generating summaries...")
             summaries = self.summary_agent.summarize(final_state, pa_opinion)
             summaries["decision_position"] = pipeline_decision
+            summaries["portfolio_action"] = action
+            summaries["portfolio_shares"] = shares
+            summaries["portfolio_rationale"] = pa_opinion
+            summaries["pipeline_strategy"] = pipeline_strategy
 
             # 8. Prepare trade execution (defer DB writes to transaction)
             trade_executed = False

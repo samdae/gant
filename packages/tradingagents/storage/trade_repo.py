@@ -111,6 +111,38 @@ class TradeRepository:
 
         return [dict(row) for row in cursor.fetchall()]
 
+    def get_cash_balance(self, ticker: str, initial_capital: float) -> float:
+        """Calculate available cash balance for a ticker.
+
+        Args:
+            ticker: Ticker symbol
+            initial_capital: Starting cash balance for the ticker
+
+        Returns:
+            Cash balance after applying trade cash flows
+        """
+        cursor = self.db.get_connection().execute(
+            """
+            SELECT COALESCE(
+                SUM(
+                    CASE
+                        WHEN t.action = 'SELL' THEN t.shares * t.price
+                        WHEN t.action = 'BUY' THEN -t.shares * t.price
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS net_cash
+            FROM trades t
+            JOIN positions p ON t.position_id = p.id
+            WHERE p.ticker = %s
+            """,
+            (ticker,)
+        )
+        row = cursor.fetchone()
+        net_cash = float(row["net_cash"]) if row and row.get("net_cash") is not None else 0.0
+        return float(initial_capital) + net_cash
+
 
 if __name__ == "__main__":
     # Test trade repository

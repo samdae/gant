@@ -28,6 +28,10 @@
       id: number;
       created_at: string;
       scheduled_cycle?: number;
+      decision_position?: string;
+      portfolio_action?: string;
+      portfolio_shares?: number;
+      portfolio_rationale?: string;
       final_trade_decision?: string;
       investment_plan?: string;
     }>;
@@ -541,6 +545,21 @@
     return report.final_trade_decision || "";
   };
 
+  const getReportDecision = (report?: PositionDetail["reports"][number] | null) => {
+    if (!report) return null;
+    return report.portfolio_action || report.decision_position || report.final_trade_decision || null;
+  };
+
+  const getExecutionNote = (report?: PositionDetail["reports"][number] | null) => {
+    if (!report || !report.portfolio_action) return "";
+    const action = report.portfolio_action.toUpperCase();
+    const shares = report.portfolio_shares;
+    if ((action === "BUY" || action === "SELL") && (shares == null || shares <= 0)) {
+      return "주문 수량이 0주로 계산되어 매매가 실행되지 않았습니다.";
+    }
+    return "";
+  };
+
   const renderMd = (text?: string | null): string => {
     if (!text) return "<em>데이터 없음</em>";
     const raw = marked.parse(text, { async: false }) as string;
@@ -801,9 +820,14 @@
           <div class="card" style="margin-bottom:12px">
             <div class="card-body">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                <span class={getDecisionClass(latestReport()?.final_trade_decision)}>{mapDecision(latestReport()?.final_trade_decision)}</span>
+                <span class={getDecisionClass(getReportDecision(latestReport()))}>{mapDecision(getReportDecision(latestReport()))}</span>
                 <span style="font-size:0.8125rem;color:var(--text-dim)">{formatDateTime(latestReport()?.created_at)}</span>
               </div>
+              {#if getExecutionNote(latestReport())}
+                <div style="font-size:0.78rem;color:var(--text-dim);margin-bottom:8px">
+                  {getExecutionNote(latestReport())}
+                </div>
+              {/if}
               <div class="report-content markdown-body">{@html renderMd(getReportBody(latestReport()))}</div>
             </div>
           </div>
@@ -821,7 +845,7 @@
                   <div class="history-top">
                     <span class="history-no">{getReportTitle(report)}</span>
                     <span class="history-date">{formatDateTime(report.created_at)}</span>
-                    <span class="badge badge-gain">{mapDecision(report.final_trade_decision)}</span>
+                    <span class="badge badge-gain">{mapDecision(getReportDecision(report))}</span>
                   </div>
                 </button>
                 {#if selectedHistoryId === String(report.id)}

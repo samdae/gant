@@ -11,6 +11,10 @@
     latest_cycle?: number;
     last_decision: string;
     decision_position?: string;
+    portfolio_action?: string;
+    portfolio_shares?: number;
+    trade_action?: string;
+    trade_shares?: number;
   };
 
   let tickers: TickerSummary[] = [];
@@ -96,9 +100,11 @@
         <span class="legend-item"><span class="legend-swatch legend-sell"></span>매도</span>
         <span class="legend-item"><span class="legend-swatch legend-hold"></span>관망</span>
       </div>
-      <div class="report-ticker-list list-grid">
-        {#each tickers as item}
-          {@const action = item.decision_position ? normalizeDecision(item.decision_position) : ""}
+        <div class="report-ticker-list list-grid">
+          {#each tickers as item}
+          {@const portfolioOk = item.portfolio_action ? (item.portfolio_action === "HOLD" || (item.portfolio_shares != null && item.portfolio_shares > 0)) : false}
+          {@const actionRaw = item.trade_action || (portfolioOk ? item.portfolio_action : "") || (!item.portfolio_action ? item.decision_position : "") || ""}
+          {@const action = actionRaw ? normalizeDecision(actionRaw) : ""}
           <a href={`#/reports/${item.ticker.toLowerCase()}`} class="report-ticker-card list-row {action ? 'action-bar-' + action.toLowerCase() : ''}">
             <div class="report-ticker-left">
               <span class="ticker-badge">{item.ticker}</span>

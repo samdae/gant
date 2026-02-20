@@ -1,5 +1,6 @@
 """Report repository for CRUD operations on reports table."""
 
+import json
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -25,7 +26,7 @@ class ReportRepository:
         self,
         schedule_id: int,
         position_id: Optional[int],
-        summaries: Dict[str, str],
+        summaries: Dict[str, Any],
         commit: bool = True,
         conn=None,
     ) -> int:
@@ -34,17 +35,24 @@ class ReportRepository:
         Args:
             schedule_id: Schedule ID (required)
             position_id: Position ID (optional, can be None for no-position cases)
-            summaries: Dict with 13 column names as keys, summary texts as values
+            summaries: Dict with report column names as keys, summary texts as values
                       Expected keys: market_report, fundamentals_report, bull_history,
                                     bear_history, investment_debate_judge_decision,
                                     aggressive_history, conservative_history, neutral_history,
                                     trader_investment_judge_decision, trader_investment_decision,
-                                    investment_plan, final_trade_decision, decision_position, pa_opinion
+                                    investment_plan, final_trade_decision, decision_position,
+                                    portfolio_action, portfolio_shares, portfolio_rationale,
+                                    pa_opinion, pipeline_strategy
 
         Returns:
             Report ID
         """
         created_at = datetime.now().isoformat()
+
+        # Serialize pipeline_strategy to JSON string if it's a dict
+        pipeline_strategy = summaries.get("pipeline_strategy")
+        if isinstance(pipeline_strategy, dict):
+            pipeline_strategy = json.dumps(pipeline_strategy, ensure_ascii=False)
 
         # Extract summaries (use None for missing keys)
         connection = conn or self.db.get_connection()
@@ -56,9 +64,11 @@ class ReportRepository:
                 bull_history, bear_history, investment_debate_judge_decision,
                 aggressive_history, conservative_history, neutral_history,
                 trader_investment_judge_decision, trader_investment_decision,
-                investment_plan, final_trade_decision, decision_position, pa_opinion,
+                investment_plan, final_trade_decision, decision_position,
+                portfolio_action, portfolio_shares, portfolio_rationale,
+                pa_opinion, pipeline_strategy,
                 created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -77,7 +87,11 @@ class ReportRepository:
                 summaries.get("investment_plan"),
                 summaries.get("final_trade_decision"),
                 summaries.get("decision_position"),
+                summaries.get("portfolio_action"),
+                summaries.get("portfolio_shares"),
+                summaries.get("portfolio_rationale"),
                 summaries.get("pa_opinion"),
+                pipeline_strategy,
                 created_at,
             )
         )
@@ -105,7 +119,9 @@ class ReportRepository:
                    r.bull_history, r.bear_history, r.investment_debate_judge_decision,
                    r.aggressive_history, r.conservative_history, r.neutral_history,
                    r.trader_investment_judge_decision, r.trader_investment_decision,
-                   r.investment_plan, r.final_trade_decision, r.decision_position, r.pa_opinion,
+                   r.investment_plan, r.final_trade_decision, r.decision_position,
+                   r.portfolio_action, r.portfolio_shares, r.portfolio_rationale,
+                   r.pa_opinion, r.pipeline_strategy,
                    r.created_at,
                    s.scheduled_cycle
             FROM reports r
@@ -134,7 +150,9 @@ class ReportRepository:
                    bull_history, bear_history, investment_debate_judge_decision,
                    aggressive_history, conservative_history, neutral_history,
                    trader_investment_judge_decision, trader_investment_decision,
-                   investment_plan, final_trade_decision, decision_position, pa_opinion,
+                   investment_plan, final_trade_decision, decision_position,
+                   portfolio_action, portfolio_shares, portfolio_rationale,
+                   pa_opinion, pipeline_strategy,
                    created_at
             FROM reports
             WHERE schedule_id = %s
@@ -200,6 +218,9 @@ if __name__ == "__main__":
         # Test get_by_schedule
         print("\n2. Getting report by schedule...")
         report = repo.get_by_schedule(schedule_id)
+        if not report:
+            raise RuntimeError("Report not found")
+        assert report is not None
         print(f"   Found report: {report['id']}")
         print(f"   Market report: {report['market_report'][:30]}...")
         print(f"   PA opinion: {report['pa_opinion'][:30]}...")

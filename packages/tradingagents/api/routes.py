@@ -6,6 +6,7 @@ FR-026: Public READ + Authenticated WRITE
 
 import os
 import re
+import math
 import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -113,49 +114,105 @@ class ScheduleSummary(BaseModel):
 
 
 def _fetch_latest_prices(tickers: List[str]) -> Dict[str, Optional[float]]:
-    prices: Dict[str, Optional[float]] = {}
-    for ticker in tickers:
-        prices[ticker] = None
+    prices: Dict[str, Optional[float]] = {ticker: None for ticker in tickers}
     if not tickers:
         return prices
 
-    try:
-        import yfinance as yf
+    def is_krx_numeric(symbol: str) -> bool:
+        base = symbol.split(".")[0]
+        return base.isdigit() and len(base) == 6
 
-        data: Any = yf.download(
-            tickers=list(set(tickers)),
-            period="1d",
-            interval="1d",
-            group_by="ticker",
-            auto_adjust=False,
-            progress=False,
-            threads=True,
-        )
-    except Exception as e:
-        logger.warning(f"Price fetch failed: {e}")
-        return prices
+    def alt_symbols(symbol: str) -> List[str]:
+        if not is_krx_numeric(symbol):
+            return []
+        base = symbol.split(".")[0]
+        if symbol.endswith(".KS"):
+            return [f"{base}.KQ"]
+        if symbol.endswith(".KQ"):
+            return [f"{base}.KS"]
+        if "." not in symbol:
+            return [f"{base}.KS", f"{base}.KQ"]
+        return []
 
-    if data is None or data.empty:
-        return prices
-
-    if len(tickers) == 1:
+    def extract_close_info(data: Any, symbol: str, multi: bool) -> tuple[Optional[float], Optional[Any], bool]:
         try:
-            close_series = data["Close"]
-            values = list(close_series)
-            if values:
-                prices[tickers[0]] = float(values[-1])
+            close_series = data[symbol]["Close"] if multi else data["Close"]
         except Exception:
-            pass
+            return None, None, False
+        try:
+            values = list(close_series)
+        except Exception:
+            return None, None, False
+        if not values:
+            return None, None, False
+        for value in reversed(values):
+            try:
+                val = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(val):
+                return val, values[-1], True
+        return None, values[-1], True
+
+    def fetch_data(symbols: List[str]) -> Optional[Any]:
+        if not symbols:
+            return None
+        try:
+            import yfinance as yf
+
+            return yf.download(
+                tickers=symbols,
+                period="1d",
+                interval="1d",
+                group_by="ticker",
+                auto_adjust=False,
+                progress=False,
+                threads=True,
+            )
+        except Exception as e:
+            logger.warning(f"Price fetch failed: {e}")
+            return None
+
+    primary_symbols = sorted(set(tickers))
+    primary_data = fetch_data(primary_symbols)
+    if primary_data is None or primary_data.empty:
         return prices
 
+    primary_multi = len(primary_symbols) > 1
+    missing: List[str] = []
+    diagnostics: Dict[str, List[str]] = {ticker: [] for ticker in tickers}
     for ticker in tickers:
-        try:
-            close_series = data[ticker]["Close"]
-            values = list(close_series)
-            if values:
-                prices[ticker] = float(values[-1])
-        except Exception:
+        price, last_value, has_values = extract_close_info(primary_data, ticker, primary_multi)
+        if price is not None:
+            prices[ticker] = price
             continue
+        missing.append(ticker)
+        if has_values:
+            diagnostics[ticker].append(f"{ticker} last={last_value}")
+        else:
+            diagnostics[ticker].append(f"{ticker} empty")
+
+    if missing:
+        alt_map: Dict[str, List[str]] = {ticker: alt_symbols(ticker) for ticker in missing}
+        alt_symbols_all = sorted({symbol for symbols in alt_map.values() for symbol in symbols})
+        alt_data = fetch_data(alt_symbols_all)
+        if alt_data is not None and not alt_data.empty:
+            alt_multi = len(alt_symbols_all) > 1
+            for ticker in missing:
+                for symbol in alt_map.get(ticker, []):
+                    price, last_value, has_values = extract_close_info(alt_data, symbol, alt_multi)
+                    if price is not None:
+                        logger.warning(f"Price fallback: {ticker} -> {symbol}")
+                        prices[ticker] = price
+                        break
+                    if has_values:
+                        diagnostics[ticker].append(f"{symbol} last={last_value}")
+                    else:
+                        diagnostics[ticker].append(f"{symbol} empty")
+
+    for ticker, price in prices.items():
+        if price is None:
+            logger.warning(f"Price missing for {ticker}; tried: {', '.join(diagnostics.get(ticker, []))}")
 
     return prices
 
@@ -485,89 +542,73 @@ async def get_activity(
 
     since_ts = (datetime.now() - timedelta(hours=since_hours)).isoformat()
 
-    # Trade events
-    trade_query = """
-        SELECT t.id AS trade_id, t.action, t.shares, t.price,
-               t.executed_at AS created_at,
-               p.ticker AS ticker,
-               r.id AS report_id,
-               r.schedule_id AS schedule_id,
-               s.scheduled_cycle AS scheduled_cycle
-        FROM trades t
-        JOIN positions p ON t.position_id = p.id
-        JOIN reports r ON t.report_id = r.id
-        JOIN schedules s ON r.schedule_id = s.id
-        WHERE t.executed_at >= %s
-    """
-    trade_params: List[Any] = [since_ts]
-    if ticker:
-        trade_query += " AND p.ticker = %s"
-        trade_params.append(ticker)
-    trade_query += " ORDER BY t.executed_at DESC LIMIT %s"
-    trade_params.append(limit)
-
-    trade_rows = scheduler.db.get_connection().execute(
-        trade_query, tuple(trade_params)
-    ).fetchall()
-
-    trade_events = [
-        ActivityEvent(
-            event_type="trade",
-            ticker=row["ticker"],
-            created_at=row["created_at"],
-            schedule_id=row["schedule_id"],
-            scheduled_cycle=row["scheduled_cycle"],
-            action=row["action"],
-            shares=row["shares"],
-            price=row["price"],
-            report_id=row["report_id"],
-            trade_id=row["trade_id"],
-        )
-        for row in trade_rows
-    ]
-
-    # Analysis events (reports without trades)
-    report_query = """
-        SELECT r.id AS report_id, r.created_at AS created_at,
-               r.final_trade_decision AS final_trade_decision,
+    events_query = """
+        SELECT r.id AS report_id,
                r.schedule_id AS schedule_id,
                s.scheduled_cycle AS scheduled_cycle,
-               s.ticker AS ticker
+               s.ticker AS ticker,
+               COALESCE(t.executed_at, r.created_at) AS created_at,
+               t.id AS trade_id,
+               t.action AS trade_action,
+               t.shares AS trade_shares,
+               t.price AS trade_price,
+               r.final_trade_decision AS final_trade_decision,
+               r.decision_position AS decision_position,
+               r.portfolio_action AS portfolio_action,
+               r.portfolio_shares AS portfolio_shares
         FROM reports r
         JOIN schedules s ON r.schedule_id = s.id
         LEFT JOIN trades t ON t.report_id = r.id
-        WHERE t.id IS NULL AND r.created_at >= %s
+        WHERE r.created_at >= %s
     """
-    report_params: List[Any] = [since_ts]
+    event_params: List[Any] = [since_ts]
     if ticker:
-        report_query += " AND s.ticker = %s"
-        report_params.append(ticker)
-    report_query += " ORDER BY r.created_at DESC LIMIT %s"
-    report_params.append(limit)
+        events_query += " AND s.ticker = %s"
+        event_params.append(ticker)
+    events_query += " ORDER BY created_at DESC LIMIT %s"
+    event_params.append(limit)
 
-    report_rows = scheduler.db.get_connection().execute(
-        report_query, tuple(report_params)
+    rows = scheduler.db.get_connection().execute(
+        events_query, tuple(event_params)
     ).fetchall()
 
-    report_events = []
-    for row in report_rows:
-        decision = _extract_decision(row["final_trade_decision"])
-        report_events.append(
-            ActivityEvent(
-                event_type="analysis",
-                ticker=row["ticker"],
-                created_at=row["created_at"],
-                schedule_id=row["schedule_id"],
-                scheduled_cycle=row["scheduled_cycle"],
-                decision=decision,
-                report_id=row["report_id"],
+    events: List[ActivityEvent] = []
+    for row in rows:
+        if row.get("trade_id"):
+            events.append(
+                ActivityEvent(
+                    event_type="trade",
+                    ticker=row["ticker"],
+                    created_at=row["created_at"],
+                    schedule_id=row["schedule_id"],
+                    scheduled_cycle=row["scheduled_cycle"],
+                    action=row["trade_action"],
+                    shares=row["trade_shares"],
+                    price=row["trade_price"],
+                    report_id=row["report_id"],
+                    trade_id=row["trade_id"],
+                )
             )
-        )
+        else:
+            decision = (
+                row.get("portfolio_action")
+                or row.get("decision_position")
+                or _extract_decision(row.get("final_trade_decision"))
+            )
+            events.append(
+                ActivityEvent(
+                    event_type="analysis",
+                    ticker=row["ticker"],
+                    created_at=row["created_at"],
+                    schedule_id=row["schedule_id"],
+                    scheduled_cycle=row["scheduled_cycle"],
+                    decision=decision,
+                    shares=row.get("portfolio_shares") if row.get("portfolio_action") else None,
+                    report_id=row["report_id"],
+                )
+            )
 
-    # Merge and sort
-    combined = trade_events + report_events
-    combined.sort(key=lambda e: e.created_at, reverse=True)
-    return combined[:limit]
+    return events
 
 
 @router.get("/positions/{position_id}", response_model=dict, tags=["Positions"])
@@ -791,9 +832,12 @@ async def get_report_tickers():
     for item in summaries:
         dec_cur = scheduler.db.get_connection().execute(
             """
-            SELECT r.final_trade_decision, r.decision_position
+            SELECT r.final_trade_decision, r.decision_position,
+                   r.portfolio_action, r.portfolio_shares,
+                   t.action AS trade_action, t.shares AS trade_shares
             FROM reports r
             JOIN schedules s ON r.schedule_id = s.id
+            LEFT JOIN trades t ON t.report_id = r.id
             WHERE s.ticker = %s
             ORDER BY r.id DESC LIMIT 1
             """,
@@ -802,6 +846,12 @@ async def get_report_tickers():
         dec_row = dec_cur.fetchone()
         raw = (dec_row["final_trade_decision"] or "") if dec_row else ""
         item["last_decision"] = raw[:120].strip() if raw else ""
+        if dec_row and dec_row.get("trade_action"):
+            item["trade_action"] = dec_row["trade_action"]
+            item["trade_shares"] = dec_row.get("trade_shares")
+        if dec_row and dec_row.get("portfolio_action"):
+            item["portfolio_action"] = dec_row["portfolio_action"]
+            item["portfolio_shares"] = dec_row.get("portfolio_shares")
         if dec_row and dec_row.get("decision_position"):
             item["decision_position"] = dec_row["decision_position"]
         else:

@@ -192,6 +192,12 @@ class TradingAgentsGraph:
                    If None, uses config defaults.
             current_position: (DEPRECATED - FR-021) No longer used by 12 agents.
                              Keep for backward compatibility but value is ignored.
+
+        Returns:
+            Tuple of (final_state, (decision, strategy)):
+            - final_state: Full agent state dict
+            - decision: "BUY", "SELL", or "HOLD"
+            - strategy: Optional dict with conviction/allocation from Judge
         """
 
         if depth is not None:
@@ -241,8 +247,9 @@ class TradingAgentsGraph:
         # Log state
         self._log_state(trade_date, final_state)
 
-        # Return decision and processed signal
-        return final_state, self.process_signal(final_state["final_trade_decision"])
+        # Return decision and strategy
+        decision, strategy = self.process_signal(final_state["final_trade_decision"])
+        return final_state, (decision, strategy)
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to in-memory dict (P3-A: file I/O removed).
@@ -374,5 +381,5 @@ class TradingAgentsGraph:
             # Don't raise - reflection failure shouldn't block scheduler
 
     def process_signal(self, full_signal):
-        """Process a signal to extract the core decision."""
+        """Process a signal to extract the core decision and strategy."""
         return self.signal_processor.process_signal(full_signal)

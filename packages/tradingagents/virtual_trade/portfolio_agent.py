@@ -5,15 +5,18 @@ FR-022: Enhanced with HybridMemory RAG search and debiasing.
 Independent agent (not part of LangGraph pipeline) that reviews:
 - Current trading position (from DB)
 - Analysis history (from DB reports)
-- Latest pipeline decision
+- Latest pipeline decision + strategy JSON
 - (Optional) Past experiences via HybridMemory RAG
 
-Makes portfolio-level decision with 60:40 weighting (analysis:experience).
+Makes portfolio-level decision:
+- No experience: MUST follow pipeline action, may adjust allocation_pct only
+- With experience: strategy JSON serves as comparison basis for independent judgment
 """
 
 import os
 import json
 import logging
+from datetime import datetime
 from typing import Dict, Any, Optional
 from langchain_core.language_models import BaseChatModel
 
@@ -63,11 +66,10 @@ class PortfolioAgent:
         pipeline_decision: str,
         pipeline_state: Dict[str, Any],
         current_price: float,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        pipeline_strategy: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Make portfolio decision based on current state and pipeline recommendation.
-
-        FR-022: Enhanced with HybridMemory RAG search.
 
         Args:
             ticker: Ticker symbol
@@ -75,6 +77,7 @@ class PortfolioAgent:
             pipeline_state: Final state from propagate() (with all agent reports)
             current_price: Current stock price (for position sizing)
             context: Optional context dict with position info
+            pipeline_strategy: Optional strategy JSON from Risk Judge
 
         Returns:
             Dict with:
@@ -120,6 +123,7 @@ class PortfolioAgent:
 
         # FR-022: RAG search for past experiences (if hybrid_memory available)
         rag_context = ""
+        has_experience = False
         if self.hybrid_memory:
             try:
                 # Build query from pipeline state
@@ -129,6 +133,7 @@ class PortfolioAgent:
                 memories = self.hybrid_memory.get_memories(query, n_matches=3)
                 
                 if memories:
+                    has_experience = True
                     rag_context = "\n**Past Experiences (from RAG):**\n"
                     for i, mem in enumerate(memories, 1):
                         outcome_label = mem["metadata"].get("outcome_label", "")
@@ -144,6 +149,8 @@ class PortfolioAgent:
                 logger.warning(f"{ticker}: RAG search failed: {e}")
                 rag_context = ""
 
+        cash_available = self._get_cash_available(ticker, trade_repo)
+
         # Build prompt
         prompt = self._build_prompt(
             ticker=ticker,
@@ -155,7 +162,10 @@ class PortfolioAgent:
             reports=reports,
             pipeline_decision=pipeline_decision,
             pipeline_state=pipeline_state,
-            rag_context=rag_context  # FR-022: Add RAG context
+            cash_available=cash_available,
+            rag_context=rag_context,
+            pipeline_strategy=pipeline_strategy,
+            has_experience=has_experience,
         )
 
         # Invoke LLM with timeout handling
@@ -164,7 +174,12 @@ class PortfolioAgent:
             decision_text = response.content
 
             # Parse decision
-            decision = self._parse_decision(decision_text, trade_state, current_price)
+            decision = self._parse_decision(
+                decision_text,
+                trade_state,
+                current_price,
+                cash_available,
+            )
 
             logger.info(
                 f"Portfolio decision for {ticker}: {decision['action']} "
@@ -211,7 +226,10 @@ class PortfolioAgent:
         reports: list,
         pipeline_decision: str,
         pipeline_state: Dict[str, Any],
-        rag_context: str = ""
+        cash_available: float,
+        rag_context: str = "",
+        pipeline_strategy: Optional[Dict[str, Any]] = None,
+        has_experience: bool = False,
     ) -> str:
         """Build prompt for portfolio agent LLM.
         
@@ -222,14 +240,21 @@ class PortfolioAgent:
         # Extract position info
         position = trade_state.get("position")
         total_shares = position["shares"] if position else 0
-        cash_available = self.initial_capital
+        cash_available = max(cash_available, 0.0)
 
         # Format recent analysis history
         history_text = ""
         if reports:
             for r in reports:
+                created_at = r.get("created_at")
+                if isinstance(created_at, datetime):
+                    created_str = created_at.date().isoformat()
+                elif created_at:
+                    created_str = str(created_at)[:10]
+                else:
+                    created_str = "-"
                 # Format report summary
-                history_text += f"\n- Cycle (created: {r['created_at'][:10]})"
+                history_text += f"\n- Cycle (created: {created_str})"
                 if r.get('final_trade_decision'):
                     history_text += f"\n  Decision: {r['final_trade_decision'][:150]}..."
                 if r.get('pa_opinion'):
@@ -237,28 +262,52 @@ class PortfolioAgent:
         else:
             history_text = "\n(No prior analysis)"
 
-        # Extract pipeline state excerpts
-        market_excerpt = pipeline_state.get("market_report", "")[:500]
-        fundamentals_excerpt = pipeline_state.get("fundamentals_report", "")[:500]
+        # Extract only final_trade_decision (NOT raw market/fundamentals)
         final_decision_excerpt = pipeline_state.get("final_trade_decision", "")[:500]
 
-        # FR-022: Build weighted decision framework
-        weighting_guidance = """
-**Decision Weighting Framework (FR-022)**:
-- Current Analysis (G-ANT pipeline): 60% weight
-  - Fresh data, objective market assessment
-  - Technical + fundamental + sentiment combined
-- Past Experiences (RAG memories): 40% weight
-  - Historical patterns and lessons learned
-  - Success/failure cases in similar contexts
+        # Format pipeline strategy JSON if available
+        strategy_block = ""
+        if pipeline_strategy:
+            strategy_block = f"""
+**파이프라인 전략 (구조화):**
+```json
+{json.dumps(pipeline_strategy, ensure_ascii=False, indent=2)}
+```
+"""
+        else:
+            strategy_block = "(전략 JSON 없음 — 최종결정 텍스트만 참고)"
 
-**Debiasing Guidelines**:
-- Avoid recency bias: Don't overweight last cycle's outcome
-- Avoid confirmation bias: Consider contradicting evidence
-- Avoid anchoring: Current price ≠ "correct" price
+        # Experience-based guidance
+        if has_experience:
+            experience_guidance = """
+**의사결정 가중치:**
+- 파이프라인 분석: 60% — 최신 시장 데이터 기반 객관적 평가
+- 과거 경험 (RAG): 40% — 유사 상황의 성공/실패 교훈
+
+**경험이 있으므로**, 파이프라인 전략과 과거 교훈을 비교하여 독립적으로 판단 가능합니다.
+단, action을 변경하려면 반드시 명확한 과거 교훈에 근거해야 합니다.
+
+**디바이어싱 가이드:**
+- 최근 편향 방지: 직전 사이클 결과에 과도한 가중치 부여 금지
+- 확증 편향 방지: 반대 근거도 반드시 고려
+- 앵커링 방지: 현재 가격 ≠ 적정 가격
+"""
+        else:
+            experience_guidance = """
+**⚠️ 과거 경험이 없습니다.**
+경험 데이터 없이 파이프라인 결정을 임의로 변경하는 것은 금지됩니다.
+
+**필수 규칙:**
+1. 파이프라인의 action(BUY/SELL/HOLD)을 **반드시 그대로 따라야** 합니다
+2. allocation_pct(비중)만 조절할 수 있습니다
+3. 파이프라인이 HOLD이면 반드시 HOLD를 출력하세요
+4. 파이프라인이 BUY이면 반드시 BUY를 출력하세요
+5. 파이프라인이 SELL이면 반드시 SELL를 출력하세요
+
+전략 JSON의 allocation_pct가 있으면 그 값을 참고하되, 본인의 판단으로 조절 가능합니다.
 """
 
-        prompt = f"""당신은 가상 트레이딩 시스템의 포트폴리오 매니저입니다. 현재 포지션 상태, 최근 분석 히스토리, 과거 경험, 최신 파이프라인 추천을 종합해 최종 의사결정을 내려주세요.
+        prompt = f"""당신은 가상 트레이딩 시스템의 포트폴리오 매니저입니다. 파이프라인의 최종결정과 전략을 기반으로 실행 가능한 매매 결정을 내려주세요.
 
 **현재 포트폴리오 상태:**
 - 티커: {ticker}
@@ -268,68 +317,42 @@ class PortfolioAgent:
 - 포지션 평가금액: ${current_position_value:.2f}
 - 미실현 수익률: {unrealized_return_pct:.2f}%
 - 포트폴리오 상태: {trade_state['status']}
-- 매 거래 기본 자금: ${cash_available:.2f}
+- 가용 현금: ${cash_available:.2f}
 
 **최근 분석 히스토리:**{history_text}
 
 {rag_context}
 
-**최신 G-ANT 파이프라인 추천 (가중치 60%):**
-- 결정: {pipeline_decision}
-- 시장 분석: {market_excerpt}
-- 펀더멘털: {fundamentals_excerpt}
-- 최종 결정 요약: {final_decision_excerpt}
+**최신 G-ANT 파이프라인 최종결정:**
+- 결정 (action): {pipeline_decision}
+- 최종 결정 원문: {final_decision_excerpt}
 
-{weighting_guidance}
+{strategy_block}
 
-**당신의 작업:**
-1. 현재 포지션과 최근 성과를 검토
-2. 과거 경험이 있으면 핵심 교훈 추출
-3. 최신 파이프라인 추천을 60:40 비중으로 평가
-4. 디바이어싱 가이드를 적용
-5. 포트폴리오 레벨에서 BUY/SELL/HOLD/MODIFY 결정
+{experience_guidance}
 
 **결정 가이드라인:**
-- BUY: 파이프라인이 BUY 추천일 때
-  * 확신도/리스크에 따라 포지션 규모 결정
-  * 참고: 25%(낮음), 50%(중간), 75%(높음)
-  * 매수 비중은 allocation_pct로만 표현 (기본 자금 대비 비중)
-- SELL: 파이프라인이 SELL이거나 리스크 관리 필요할 때
-  * **전량/부분 청산 선택:**
-    - 전량 청산: allocation_pct = 100
-    - 부분 청산: allocation_pct = 25/50/75 등
+- BUY: allocation_pct로 비중 표현 (가용 현금 cash_available 대비 비중)
+  * 25%(낮음), 50%(중간), 75%(높음)
+- SELL: allocation_pct로 청산 비중 표현 (보유 주식 대비 비중)
+  * 전량 청산: allocation_pct = 100
+  * 부분 청산: allocation_pct = 25/50/75 등
   * 불확실하면 전량 청산 기본
-- HOLD: 현 상태 유지가 합리적일 때
+- HOLD: 현 상태 유지
 - MODIFY: 스탑로스/목표가/다음 행동 조정
-
-**SELL 중요:**
-- 반드시 allocation_pct 지정
-- allocation_pct = 100 → 전량 청산
-- 부분 청산: 100보다 작은 구체적 비중
 
 **응답은 반드시 아래 JSON 형식만 출력하세요. JSON 외에 다른 텍스트를 포함하지 마세요:**
 ```json
 {{{{
   "action": "BUY 또는 SELL 또는 HOLD 또는 MODIFY",
   "allocation_pct": 0~100 정수,
-  "shares": 숫자 (소수 가능, 모르면 0),
-  "rationale": "2~3문장, 분석과 경험 모두 언급 (한국어)",
+  "shares": 0,
+  "rationale": "2~3문장 (한국어)",
   "strategy_update": {{{{
     "stop_loss": 가격_또는_null,
     "target": 가격_또는_null,
     "next_action": "BUY 또는 SELL 또는 HOLD"
   }}}}
-}}}}
-```
-
-예시:
-```json
-{{{{
-  "action": "BUY",
-  "allocation_pct": 25,
-  "shares": 0,
-  "rationale": "파이프라인이 강력한 매수 신호를 보내고 있으며, 펀더멘털 지표가 양호합니다.",
-  "strategy_update": {{{{"stop_loss": 145.0, "target": 180.0, "next_action": "HOLD"}}}}
 }}}}
 ```
 
@@ -341,7 +364,8 @@ class PortfolioAgent:
         self,
         decision_text: str,
         trade_state: Dict[str, Any],
-        current_price: float
+        current_price: float,
+        cash_available: float
     ) -> Dict[str, Any]:
         """Parse LLM JSON decision output.
 
@@ -421,15 +445,17 @@ class PortfolioAgent:
                 allocation_pct,
                 trade_state,
                 current_price,
+                cash_available,
             )
         elif action == "BUY" and shares > 0 and current_price > 0:
-            max_shares = self.initial_capital / current_price
+            max_shares = cash_available / current_price if cash_available > 0 else 0.0
             if shares > max_shares and shares <= 100:
                 shares = self._shares_from_allocation(
                     action,
                     float(shares),
                     trade_state,
                     current_price,
+                    cash_available,
                 )
             elif shares > max_shares:
                 shares = max_shares
@@ -442,6 +468,7 @@ class PortfolioAgent:
                     float(shares),
                     trade_state,
                     current_price,
+                    cash_available,
                 )
 
         # BUY/SELL must have shares > 0
@@ -449,7 +476,7 @@ class PortfolioAgent:
             # Auto-calculate as fallback
             position = trade_state.get("position")
             if action == "BUY" and current_price > 0:
-                shares = (self.initial_capital * 0.5) / current_price
+                shares = (cash_available * 0.5) / current_price if cash_available > 0 else 0.0
             elif action == "SELL" and position:
                 shares = position["shares"]
             else:
@@ -491,13 +518,14 @@ class PortfolioAgent:
         allocation_pct: float,
         trade_state: Dict[str, Any],
         current_price: float,
+        cash_available: float,
     ) -> float:
         pct = max(min(float(allocation_pct), 100.0), 0.0)
 
         if action == "BUY":
             if current_price <= 0:
                 return 0.0
-            cash = self.initial_capital * (pct / 100.0)
+            cash = max(cash_available, 0.0) * (pct / 100.0)
             shares = cash / current_price
             return self._round_shares(shares)
 
@@ -512,6 +540,14 @@ class PortfolioAgent:
             return self._round_shares(shares)
 
         return 0.0
+
+    def _get_cash_available(self, ticker: str, trade_repo) -> float:
+        try:
+            cash = trade_repo.get_cash_balance(ticker, self.initial_capital)
+            return max(float(cash), 0.0)
+        except Exception as e:
+            logger.warning(f"{ticker}: Failed to compute cash balance: {e}")
+            return float(self.initial_capital)
 
     @staticmethod
     def _round_shares(value: float) -> float:

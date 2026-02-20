@@ -27,12 +27,26 @@ Deliverables:
 
 ---
 
-**Analysts Debate History:**  
+**Analysts Debate History:**
 {history}
 
 ---
 
-Focus on actionable insights and continuous improvement. Build on past lessons, critically evaluate all perspectives, and ensure each decision advances better outcomes."""
+Focus on actionable insights and continuous improvement. Build on past lessons, critically evaluate all perspectives, and ensure each decision advances better outcomes.
+
+**IMPORTANT: You MUST end your response with the following structured strategy block.**
+This block will be consumed by downstream systems, so it must be valid JSON inside a fenced code block tagged `strategy_json`.
+
+- action: Your final recommendation — exactly one of "BUY", "SELL", or "HOLD"
+- conviction: Your confidence level — exactly one of "HIGH", "MEDIUM", or "LOW"
+- allocation_pct: Suggested position size as integer 0-100 (0 for HOLD, 25=low, 50=medium, 75=high conviction)
+
+Example:
+```strategy_json
+{{"action": "BUY", "conviction": "MEDIUM", "allocation_pct": 50}}
+```
+
+You MUST include this block at the very end of your response. Do not omit it."""
 
         response = llm.invoke(prompt)
 
