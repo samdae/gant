@@ -1,5 +1,5 @@
 /* ===================================================================
-   TradingAgents — Toss Securities-inspired dark UI
+   TradingAgents ??Toss Securities-inspired dark UI
    =================================================================== */
 
 @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css");
@@ -8,7 +8,7 @@
   --font-display: "Pretendard Variable", "Pretendard", "SUIT", "Noto Sans KR", sans-serif;
   --font-body: "Pretendard Variable", "Pretendard", "SUIT", "Noto Sans KR", sans-serif;
 
-  /* ── Background ── */
+  /* ?? Background ?? */
   --bg: #0d0f13;
   --bg-gradient: linear-gradient(180deg, #0d0f13 0%, #0f1115 48%, #101317 100%);
   --bg-subtle: #1a1a1d;
@@ -20,53 +20,53 @@
   --bg-modal: rgba(6, 8, 12, 0.7);
   --bg-sidebar: #121620;
 
-  /* ── Border ── */
+  /* ?? Border ?? */
   --border: #23262d;
   --border-hover: #2d323c;
   --border-strong: #3a414e;
 
-  /* ── Text ── */
+  /* ?? Text ?? */
   --text: #e8edf5;
   --text-secondary: #c2c9d6;
   --text-dim: #8b96a8;
 
-  /* ── Primary: Blue ── */
+  /* ?? Primary: Blue ?? */
   --primary: #5b8bff;
   --primary-hover: #4b7dff;
   --primary-bg: rgba(91, 139, 255, 0.18);
   --primary-border: rgba(91, 139, 255, 0.32);
   --primary-light: rgba(91, 139, 255, 0.14);
 
-  /* ── Gain: Red ── */
+  /* ?? Gain: Red ?? */
   --gain: #ff5d5d;
   --gain-light: rgba(255, 93, 93, 0.16);
   --gain-bg: rgba(255, 93, 93, 0.18);
   --gain-border: rgba(255, 93, 93, 0.35);
 
-  /* ── Loss: Blue ── */
+  /* ?? Loss: Blue ?? */
   --loss: #4c7dff;
   --loss-light: rgba(76, 125, 255, 0.16);
   --loss-bg: rgba(76, 125, 255, 0.2);
   --loss-border: rgba(76, 125, 255, 0.35);
 
-  /* ── Info: Sky ── */
+  /* ?? Info: Sky ?? */
   --info: #6aa4ff;
   --info-bg: rgba(106, 164, 255, 0.18);
   --info-border: rgba(106, 164, 255, 0.3);
   --info-light: rgba(106, 164, 255, 0.2);
 
-  /* ── Warn: Amber ── */
+  /* ?? Warn: Amber ?? */
   --warn: #f4b24d;
   --warn-bg: rgba(244, 178, 77, 0.16);
   --warn-border: rgba(244, 178, 77, 0.3);
   --warn-light: rgba(244, 178, 77, 0.2);
 
-  /* ── Muted ── */
+  /* ?? Muted ?? */
   --muted: #7e8aa1;
   --muted-bg: rgba(126, 138, 161, 0.16);
   --muted-border: rgba(126, 138, 161, 0.28);
 
-  /* ── Shape ── */
+  /* ?? Shape ?? */
   --radius: 18px;
   --radius-sm: 12px;
   --radius-xs: 8px;
@@ -145,7 +145,7 @@ button {
   color: var(--primary-hover);
 }
 
-/* ===== NAV (Desktop — hidden, mobile-only app) ===== */
+/* ===== NAV (Desktop ??hidden, mobile-only app) ===== */
 .nav-desktop {
   display: none;
 }
@@ -337,7 +337,7 @@ button {
 /* ===== MAIN CONTENT ===== */
 .main-content {
   padding-top: 56px;
-  padding-bottom: 90px;
+  padding-bottom: 60px;
 }
 
 .page {
@@ -887,7 +887,7 @@ button {
   margin-right: 8px;
 }
 
-/* ===== QUICK NAV (hidden — replaced by bottom nav) ===== */
+/* ===== QUICK NAV (hidden ??replaced by bottom nav) ===== */
 .quick-nav {
   display: none;
 }
@@ -1193,7 +1193,7 @@ button {
   margin-top: 10px;
 }
 
-/* ── scrollable chart container ── */
+/* ?? scrollable chart container ?? */
 .chart-container {
   position: relative;
   overflow: hidden;
@@ -1376,7 +1376,7 @@ button {
   letter-spacing: -0.01em;
 }
 
-/* ── chart mode toggle ── */
+/* ?? chart mode toggle ?? */
 .chart-mode-toggle {
   display: inline-flex;
   gap: 2px;
@@ -1457,7 +1457,7 @@ button {
   color: var(--text);
 }
 
-/* ── chart SVG elements (pixel-based coords) ── */
+/* ?? chart SVG elements (pixel-based coords) ?? */
 .chart-line {
   fill: none;
   stroke: var(--chart-line);
@@ -1506,7 +1506,7 @@ button {
   fill: var(--chart-halo);
 }
 
-/* ── candlestick ── */
+/* ?? candlestick ?? */
 .candle-body {
   stroke: none;
 }
@@ -1531,7 +1531,7 @@ button {
   stroke: var(--candle-down);
 }
 
-/* ── volume bars ── */
+/* ?? volume bars ?? */
 .chart-vol-sep {
   stroke: rgba(255, 255, 255, 0.06);
   stroke-width: 0.5;
@@ -1549,7 +1549,7 @@ button {
   fill: var(--candle-down-dim);
 }
 
-/* ── crosshair ── */
+/* ?? crosshair ?? */
 .crosshair-v {
   stroke: rgba(255, 255, 255, 0.3);
   stroke-width: 0.5;
@@ -1587,7 +1587,7 @@ button {
   fill: rgba(255, 255, 255, 0.7);
 }
 
-/* ── trade markers ── */
+/* ?? trade markers ?? */
 .trade-marker {
   filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
 }
@@ -1618,7 +1618,7 @@ button {
   fill: var(--candle-down, #448aff);
 }
 
-/* ── avg cost line ── */
+/* ?? avg cost line ?? */
 .avg-cost-line {
   stroke: rgba(255, 82, 82, 0.5);
   stroke-width: 0.5;
