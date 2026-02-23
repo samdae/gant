@@ -1,13 +1,16 @@
 <script lang="ts">
   import { link, location } from "svelte-spa-router";
+  import { currencyFilter, type CurrencyFilter } from "../stores/currency";
 
   const navItems = [
     { label: "예약", route: "/schedules" },
     { label: "실시간", route: "/live" },
     { label: "홈", route: "/" },
     { label: "투자", route: "/positions" },
-    { label: "검색", route: "/search" },
+    { label: "회고", route: "/reflections" },
   ];
+
+  const currencies: CurrencyFilter[] = ["ALL", "KRW", "USD"];
 
   let currentBaseRoute = "/";
 
@@ -30,10 +33,22 @@
 
   $: currentBaseRoute = getCurrentBaseRoute($location);
   const isActive = (route: string) => currentBaseRoute === route;
+
+  const setCurrency = (c: CurrencyFilter) => { currencyFilter.set(c); };
 </script>
 
 <header class="app-header">
   <a href="#/" class="logo" use:link>GANT</a>
+
+  <div class="currency-selector">
+    {#each currencies as c}
+      <button
+        class="currency-btn"
+        class:active={$currencyFilter === c}
+        on:click={() => setCurrency(c)}
+      >{c}</button>
+    {/each}
+  </div>
 
   <nav class="nav-desktop">
     {#each navItems as item}
@@ -48,3 +63,28 @@
     {/each}
   </nav>
 </header>
+
+<style>
+  .currency-selector {
+    display: flex;
+    gap: 2px;
+    background: var(--surface-2, #1a1a2e);
+    border-radius: 6px;
+    padding: 2px;
+  }
+  .currency-btn {
+    padding: 4px 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-muted, #8892b0);
+    transition: all 0.15s ease;
+  }
+  .currency-btn.active {
+    background: var(--accent, #64ffda);
+    color: var(--surface-1, #0a0a1a);
+  }
+</style>

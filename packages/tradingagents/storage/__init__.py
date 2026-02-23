@@ -1,11 +1,10 @@
-"""Storage module for SQLite-based data persistence.
+"""Storage module for Postgres-based data persistence.
 
 This module provides database connection management and repository classes
 for CRUD operations on trading data.
 """
 
 from .database import Database
-from .schedule_repo import ScheduleRepository
 from .schedule_config_repo import ScheduleConfigRepository
 from .schedule_event_repo import ScheduleEventRepository
 from .position_repo import PositionRepository
@@ -16,7 +15,6 @@ from .schedule_job_repo import ScheduleJobRepository
 
 __all__ = [
     "Database",
-    "ScheduleRepository",
     "ScheduleConfigRepository",
     "ScheduleEventRepository",
     "PositionRepository",

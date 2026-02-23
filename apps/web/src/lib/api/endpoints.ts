@@ -9,6 +9,7 @@ export type ScheduleRequest = {
 export const fetchMetrics = () => getJson("/metrics");
 export const fetchHealth = () => getJson("/health");
 export const fetchPositionsMarket = () => getJson("/positions/market");
+export const fetchPositionsClosed = () => getJson("/positions/closed");
 export const fetchPositions = (status?: string) =>
   getJson(status ? `/positions?status=${encodeURIComponent(status)}` : "/positions");
 export const fetchQueue = () => getJson("/queue");
@@ -48,3 +49,10 @@ export const fetchPositionGraph = (id: number, days = 7) =>
 
 export const searchTickers = (q: string) =>
   getJson(`/search/tickers?q=${encodeURIComponent(q)}`);
+
+export const fetchReflections = (limit = 15, outcome?: string, cursor?: number) => {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (outcome) params.set("outcome", outcome);
+  if (cursor) params.set("cursor", String(cursor));
+  return getJson(`/reflections?${params.toString()}`);
+};

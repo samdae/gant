@@ -18,6 +18,10 @@
     losses: number;
     total_unrealized_pnl: number;
     total_unrealized_return_pct: number;
+    total_realized_pnl: number;
+    total_realized_return_pct: number;
+    total_pnl: number;
+    total_return_pct: number;
   };
 
   type Health = {
@@ -215,11 +219,11 @@
           </svg>
         </div>
         <div class="metric-label">총손익</div>
-        <div class="metric-value text-gain">
-          {metrics ? formatMoney(metrics.total_unrealized_pnl) : "-"}
+        <div class="metric-value" class:text-gain={metrics && metrics.total_return_pct >= 0} class:text-loss={metrics && metrics.total_return_pct < 0}>
+          {metrics ? formatPercent(metrics.total_return_pct) : "-"}
         </div>
         <div class="metric-sub">
-          수익률 {metrics ? formatPercent(metrics.total_unrealized_return_pct) : "-"}
+          실현 {metrics ? formatPercent(metrics.total_realized_return_pct) : "-"} · 미실현 {metrics ? formatPercent(metrics.total_unrealized_return_pct) : "-"}
         </div>
       </div>
       <div class="metric-segment">

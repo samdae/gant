@@ -845,7 +845,7 @@
                   <div class="history-top">
                     <span class="history-no">{getReportTitle(report)}</span>
                     <span class="history-date">{formatDateTime(report.created_at)}</span>
-                    <span class="badge badge-gain">{mapDecision(getReportDecision(report))}</span>
+                    <span class={getDecisionClass(getReportDecision(report))}>{mapDecision(getReportDecision(report))}</span>
                   </div>
                 </button>
                 {#if selectedHistoryId === String(report.id)}

@@ -1239,6 +1239,25 @@ button {
   box-shadow: none;
 }
 
+.tab-count {
+  display: inline-block;
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.6875rem;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.tab-btn.active .tab-count {
+  background: var(--accent);
+  color: #fff;
+}
+
 .tab-content {
   display: block;
 }

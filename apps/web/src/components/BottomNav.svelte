@@ -27,6 +27,11 @@
       route: "/reports",
       icon: "M12 3v4m0 10v4m-9-9h4m10 0h4M7 7l2.5 2.5M14.5 14.5 17 17M7 17l2.5-2.5M14.5 9.5 17 7",
     },
+    {
+      label: "회고",
+      route: "/reflections",
+      icon: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z",
+    },
   ];
 
   let currentBaseRoute = "/";

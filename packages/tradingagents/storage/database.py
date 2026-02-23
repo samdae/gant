@@ -91,23 +91,31 @@ class Database:
                 ddl_conn = self.conn
 
         schema_sql = """
-        CREATE TABLE IF NOT EXISTS schedules (
+        CREATE TABLE IF NOT EXISTS schedule_configs (
             id              BIGSERIAL PRIMARY KEY,
-            ticker          TEXT    NOT NULL,
+            ticker          TEXT    NOT NULL UNIQUE,
             interval_days   INTEGER NOT NULL DEFAULT 1,
-            scheduled_cycle INTEGER NOT NULL,
+            current_cycle   INTEGER NOT NULL DEFAULT 0,
+            currency        TEXT    NOT NULL DEFAULT 'USD',
+            initial_capital DOUBLE PRECISION NOT NULL DEFAULT 5000,
+            market          TEXT    NOT NULL DEFAULT 'us',
+            display_name    TEXT,
+            last_data_date  DATE,
             created_at      TIMESTAMPTZ NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_schedules_ticker ON schedules(ticker);
-
-        CREATE TABLE IF NOT EXISTS schedule_configs (
-            id            BIGSERIAL PRIMARY KEY,
-            ticker        TEXT    NOT NULL UNIQUE,
-            interval_days INTEGER NOT NULL DEFAULT 1,
-            last_data_date DATE,
-            created_at    TIMESTAMPTZ NOT NULL
-        );
         CREATE INDEX IF NOT EXISTS idx_schedule_configs_ticker ON schedule_configs(ticker);
+
+        CREATE TABLE IF NOT EXISTS schedule_jobs (
+            id                 BIGSERIAL PRIMARY KEY,
+            schedule_config_id BIGINT  NOT NULL REFERENCES schedule_configs(id),
+            scheduled_cycle    INTEGER NOT NULL,
+            status             TEXT    NOT NULL,
+            error_type         TEXT,
+            error_message      TEXT,
+            error_detail       TEXT,
+            created_at         TIMESTAMPTZ NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_schedule_jobs_config ON schedule_jobs(schedule_config_id);
 
         CREATE TABLE IF NOT EXISTS positions (
             id          BIGSERIAL PRIMARY KEY,
@@ -115,6 +123,9 @@ class Database:
             status      TEXT    NOT NULL DEFAULT 'active',
             shares      DOUBLE PRECISION NOT NULL DEFAULT 0,
             avg_cost    DOUBLE PRECISION,
+            currency    TEXT    NOT NULL DEFAULT 'USD',
+            stop_loss   DOUBLE PRECISION,
+            target      DOUBLE PRECISION,
             return_pct  DOUBLE PRECISION,
             opened_at   TIMESTAMPTZ NOT NULL,
             closed_at   TIMESTAMPTZ,
@@ -124,7 +135,7 @@ class Database:
 
         CREATE TABLE IF NOT EXISTS reports (
             id                                BIGSERIAL PRIMARY KEY,
-            schedule_id                       BIGINT NOT NULL REFERENCES schedules(id),
+            schedule_job_id                   BIGINT NOT NULL REFERENCES schedule_jobs(id),
             position_id                       BIGINT REFERENCES positions(id),
             market_report                     TEXT,
             fundamentals_report               TEXT,
@@ -138,7 +149,7 @@ class Database:
             trader_investment_decision        TEXT,
             investment_plan                   TEXT,
             final_trade_decision              TEXT,
-            decision_position                  TEXT,
+            decision_position                 TEXT,
             portfolio_action                  TEXT,
             portfolio_shares                  DOUBLE PRECISION,
             portfolio_rationale               TEXT,
@@ -146,7 +157,7 @@ class Database:
             pipeline_strategy                 TEXT,
             created_at                        TIMESTAMPTZ NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_reports_schedule ON reports(schedule_id);
+        CREATE INDEX IF NOT EXISTS idx_reports_job ON reports(schedule_job_id);
         CREATE INDEX IF NOT EXISTS idx_reports_position ON reports(position_id);
 
         CREATE TABLE IF NOT EXISTS trades (
@@ -156,6 +167,7 @@ class Database:
             action      TEXT    NOT NULL,
             shares      DOUBLE PRECISION NOT NULL,
             price       DOUBLE PRECISION NOT NULL,
+            currency    TEXT    NOT NULL DEFAULT 'USD',
             executed_at TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_trades_position ON trades(position_id);
@@ -175,21 +187,9 @@ class Database:
         );
         CREATE INDEX IF NOT EXISTS idx_reflections_position ON reflections(position_id);
 
-        CREATE TABLE IF NOT EXISTS schedule_jobs (
-            id            BIGSERIAL PRIMARY KEY,
-            schedule_id   BIGINT NOT NULL REFERENCES schedules(id),
-            status        TEXT    NOT NULL,
-            error_type    TEXT,
-            error_message TEXT,
-            error_detail  TEXT,
-            created_at    TIMESTAMPTZ NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_schedule_jobs_schedule ON schedule_jobs(schedule_id);
-
         CREATE TABLE IF NOT EXISTS schedule_job_events (
             id              BIGSERIAL PRIMARY KEY,
             schedule_job_id BIGINT REFERENCES schedule_jobs(id),
-            schedule_id     BIGINT REFERENCES schedules(id),
             ticker          TEXT,
             agent           TEXT,
             status          TEXT,
@@ -199,7 +199,6 @@ class Database:
             created_at      TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_schedule_job_events_job ON schedule_job_events(schedule_job_id);
-        CREATE INDEX IF NOT EXISTS idx_schedule_job_events_schedule ON schedule_job_events(schedule_id);
         CREATE INDEX IF NOT EXISTS idx_schedule_job_events_ticker ON schedule_job_events(ticker);
         CREATE INDEX IF NOT EXISTS idx_schedule_job_events_created_at ON schedule_job_events(created_at);
 
@@ -217,18 +216,6 @@ class Database:
         if ddl_conn_created:
             ddl_conn.close()
 
-        self._ensure_column("schedules", "interval_days", "INTEGER NOT NULL DEFAULT 1")
-        self._ensure_column("reports", "decision_position", "TEXT")
-        self._ensure_column("reports", "portfolio_action", "TEXT")
-        self._ensure_column("reports", "portfolio_shares", "DOUBLE PRECISION")
-        self._ensure_column("reports", "portfolio_rationale", "TEXT")
-        self._ensure_column("schedule_configs", "last_data_date", "DATE")
-        self._ensure_column("schedule_configs", "display_name", "TEXT")
-        self._ensure_column("reflections", "market", "TEXT")
-        self._ensure_column("reflections", "sector", "TEXT")
-        self._ensure_column("reflections", "industry", "TEXT")
-        self._ensure_column_type("positions", "shares", "double precision")
-        self._ensure_column_type("trades", "shares", "double precision")
         self._ensure_schedule_event_unique_index()
 
         logger.info("Schema initialization complete")

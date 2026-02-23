@@ -149,7 +149,8 @@ class PortfolioAgent:
                 logger.warning(f"{ticker}: RAG search failed: {e}")
                 rag_context = ""
 
-        cash_available = self._get_cash_available(ticker, trade_repo)
+        ctx_capital = context.get("initial_capital") if context else None
+        cash_available = self._get_cash_available(ticker, trade_repo, ctx_capital)
 
         # Build prompt
         prompt = self._build_prompt(
@@ -484,9 +485,25 @@ class PortfolioAgent:
 
         rationale = str(parsed.get("rationale", decision_text[:200]))
 
+        raw_strategy = parsed.get("strategy_update") or {}
+        if isinstance(raw_strategy, str):
+            try:
+                raw_strategy = json.loads(raw_strategy)
+            except Exception:
+                raw_strategy = {}
+
+        def _parse_price(val):
+            if val is None:
+                return None
+            try:
+                v = float(str(val).replace("$", "").replace(",", "").strip())
+                return v if v > 0 else None
+            except (ValueError, TypeError):
+                return None
+
         strategy_update = {
-            "stop_loss": None,
-            "target": None,
+            "stop_loss": _parse_price(raw_strategy.get("stop_loss")),
+            "target": _parse_price(raw_strategy.get("target")),
             "next_action": action,
         }
 
@@ -541,13 +558,16 @@ class PortfolioAgent:
 
         return 0.0
 
-    def _get_cash_available(self, ticker: str, trade_repo) -> float:
+    def _get_cash_available(
+        self, ticker: str, trade_repo, initial_capital: float = None
+    ) -> float:
+        capital = float(initial_capital) if initial_capital else float(self.initial_capital)
         try:
-            cash = trade_repo.get_cash_balance(ticker, self.initial_capital)
+            cash = trade_repo.get_cash_balance(ticker, capital)
             return max(float(cash), 0.0)
         except Exception as e:
             logger.warning(f"{ticker}: Failed to compute cash balance: {e}")
-            return float(self.initial_capital)
+            return capital
 
     @staticmethod
     def _round_shares(value: float) -> float:

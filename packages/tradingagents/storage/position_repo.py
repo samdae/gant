@@ -21,11 +21,18 @@ class PositionRepository:
         self.db = db
         self.conn = db.get_connection()
 
-    def create(self, ticker: str, commit: bool = True, conn=None) -> int:
+    def create(
+        self,
+        ticker: str,
+        currency: str = "USD",
+        commit: bool = True,
+        conn=None,
+    ) -> int:
         """Create a new active position.
 
         Args:
             ticker: Ticker symbol
+            currency: Position currency (USD or KRW)
 
         Returns:
             Position ID
@@ -35,18 +42,18 @@ class PositionRepository:
         connection = conn or self.db.get_connection()
         cursor = connection.execute(
             """
-            INSERT INTO positions (ticker, status, shares, opened_at, created_at)
-            VALUES (%s, 'active', 0, %s, %s)
+            INSERT INTO positions (ticker, status, shares, currency, opened_at, created_at)
+            VALUES (%s, 'active', 0, %s, %s, %s)
             RETURNING id
             """,
-            (ticker, now, now)
+            (ticker, currency, now, now),
         )
         if commit:
             connection.commit()
 
         row = cursor.fetchone()
         position_id = row["id"] if row else 0
-        logger.info(f"Created position {position_id} for {ticker}")
+        logger.info(f"Created position {position_id} for {ticker} ({currency})")
         return position_id
 
     def get_active(self, ticker: str) -> Optional[Dict[str, Any]]:
@@ -60,14 +67,15 @@ class PositionRepository:
         """
         cursor = self.db.get_connection().execute(
             """
-            SELECT id, ticker, status, shares, avg_cost, return_pct,
+            SELECT id, ticker, status, shares, avg_cost, currency,
+                   stop_loss, target, return_pct,
                    opened_at, closed_at, created_at
             FROM positions
             WHERE ticker = %s AND status = 'active'
             ORDER BY created_at DESC
             LIMIT 1
             """,
-            (ticker,)
+            (ticker,),
         )
 
         row = cursor.fetchone()
@@ -84,12 +92,13 @@ class PositionRepository:
         """
         cursor = self.db.get_connection().execute(
             """
-            SELECT id, ticker, status, shares, avg_cost, return_pct,
+            SELECT id, ticker, status, shares, avg_cost, currency,
+                   stop_loss, target, return_pct,
                    opened_at, closed_at, created_at
             FROM positions
             WHERE id = %s
             """,
-            (position_id,)
+            (position_id,),
         )
 
         row = cursor.fetchone()
@@ -124,6 +133,29 @@ class PositionRepository:
 
         logger.info(
             f"Updated position {position_id}: shares={shares:.2f}, avg_cost=${avg_cost:.2f}"
+        )
+
+    def update_stop_loss_target(
+        self,
+        position_id: int,
+        stop_loss: Optional[float],
+        target: Optional[float],
+        commit: bool = True,
+        conn=None,
+    ) -> None:
+        connection = conn or self.db.get_connection()
+        connection.execute(
+            """
+            UPDATE positions
+            SET stop_loss = %s, target = %s
+            WHERE id = %s
+            """,
+            (stop_loss, target, position_id),
+        )
+        if commit:
+            connection.commit()
+        logger.info(
+            f"Updated position {position_id}: stop_loss={stop_loss}, target={target}"
         )
 
     def close_position(

@@ -73,6 +73,7 @@ class TradeManager:
         shares: float,
         price: float,
         date: str,
+        currency: str = "USD",
         commit: bool = True,
         conn=None,
     ) -> Dict[str, Any]:
@@ -130,8 +131,9 @@ class TradeManager:
                 f"total {self._format_shares(new_shares)} shares @ ${new_avg_cost:.2f}"
             )
         else:
-            # Create new position
-            position_id = self.position_repo.create(ticker, commit=commit, conn=conn)
+            position_id = self.position_repo.create(
+                ticker, currency=currency, commit=commit, conn=conn,
+            )
 
             # Update with initial shares and cost
             self.position_repo.update_shares(

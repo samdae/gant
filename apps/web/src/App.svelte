@@ -10,6 +10,7 @@
   import Reports from "./routes/Reports.svelte";
   import ReportDetail from "./routes/ReportDetail.svelte";
   import Live from "./routes/Live.svelte";
+  import Reflections from "./routes/Reflections.svelte";
   import Auth from "./routes/Auth.svelte";
   import NotFoundRedirect from "./routes/NotFoundRedirect.svelte";
   import { loadTickerNames } from "./stores/tickerNames";
@@ -23,6 +24,7 @@
     "/reports": Reports,
     "/reports/:ticker": ReportDetail,
     "/live": Live,
+    "/reflections": Reflections,
     "/auth": Auth,
     "*": NotFoundRedirect,
   };

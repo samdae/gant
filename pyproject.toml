@@ -33,6 +33,7 @@ dependencies = [
     "uvicorn>=0.34.0",
     "python-json-logger>=3.3.0",
     "psycopg[binary]>=3.3.2",
+    "oauth-codex>=2.3.0",
 ]
 
 [tool.setuptools]

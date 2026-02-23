@@ -92,7 +92,6 @@ def broadcast_status(
     agent: str,
     status: str,
     message: str,
-    schedule_id: Optional[int] = None,
     schedule_job_id: Optional[int] = None,
 ):
     """Thread-safe broadcast to WebSocket subscribers.
@@ -113,14 +112,9 @@ def broadcast_status(
         msg["total_steps"] = _TOTAL_STEPS
 
     try:
-        from tradingagents.runtime_context import (
-            get_current_schedule_id,
-            get_current_schedule_job_id,
-        )
+        from tradingagents.runtime_context import get_current_schedule_job_id
         from tradingagents.storage import ScheduleEventRepository
 
-        if schedule_id is None:
-            schedule_id = get_current_schedule_id()
         if schedule_job_id is None:
             schedule_job_id = get_current_schedule_job_id()
 
@@ -129,7 +123,6 @@ def broadcast_status(
             agent=agent,
             status=status,
             message=message,
-            schedule_id=schedule_id,
             schedule_job_id=schedule_job_id,
             step=msg.get("step"),
             phase=msg.get("phase"),
@@ -187,11 +180,9 @@ async def _queue_worker():
             item = await analysis_queue.get()
             if isinstance(item, dict):
                 ticker = item.get("ticker")
-                schedule_id = item.get("schedule_id")
-                job_id = item.get("job_id")
+                job_id = item.get("schedule_job_id")
             else:
                 ticker = item
-                schedule_id = None
                 job_id = None
 
             if not ticker:
@@ -212,11 +203,9 @@ async def _queue_worker():
                 "system",
                 "running",
                 f"Starting analysis for {ticker}",
-                schedule_id=schedule_id,
                 schedule_job_id=job_id,
             )
 
-            # Set status callback on graph for step-level WS updates
             if graph:
                 graph.set_status_callback(
                     lambda agent, status, msg, t=ticker: broadcast_status(
@@ -224,12 +213,10 @@ async def _queue_worker():
                     )
                 )
 
-            # Run analysis in thread (blocking I/O)
             try:
                 await asyncio.to_thread(
                     scheduler._run_analysis_cycle,
                     ticker,
-                    schedule_id,
                     job_id,
                 )
                 broadcast_status(
@@ -237,7 +224,6 @@ async def _queue_worker():
                     "system",
                     "completed",
                     f"Analysis complete for {ticker}",
-                    schedule_id=schedule_id,
                     schedule_job_id=job_id,
                 )
                 if graph:
@@ -248,7 +234,6 @@ async def _queue_worker():
                     "system",
                     "error",
                     f"Analysis failed: {str(e)}",
-                    schedule_id=schedule_id,
                     schedule_job_id=job_id,
                 )
                 if graph:
@@ -314,7 +299,9 @@ async def lifespan(app: FastAPI):
     # Load schedules from DB into scheduler
     try:
         for cfg in schedule_config_repo.get_all():
-            scheduler.add_ticker(cfg["ticker"], cfg["interval_days"])
+            scheduler.add_ticker(
+                cfg["ticker"], cfg["interval_days"], market=cfg.get("market", "us"),
+            )
     except Exception as e:
         logger.warning(f"Failed to load schedules from DB: {e}")
 
