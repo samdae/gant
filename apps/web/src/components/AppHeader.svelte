@@ -68,23 +68,29 @@
   .currency-selector {
     display: flex;
     gap: 2px;
-    background: var(--surface-2, #1a1a2e);
-    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 8px;
     padding: 2px;
   }
   .currency-btn {
-    padding: 4px 10px;
+    padding: 4px 12px;
     font-size: 0.7rem;
     font-weight: 600;
-    border: none;
-    border-radius: 4px;
+    border: 1px solid transparent;
+    border-radius: 6px;
     cursor: pointer;
     background: transparent;
-    color: var(--text-muted, #8892b0);
+    color: var(--text-dim);
     transition: all 0.15s ease;
   }
+  .currency-btn:hover:not(.active) {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+  }
   .currency-btn.active {
-    background: var(--accent, #64ffda);
-    color: var(--surface-1, #0a0a1a);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    border-color: var(--border);
   }
 </style>
