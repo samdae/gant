@@ -275,7 +275,7 @@ def _extract_decision(text: Optional[str]) -> Optional[str]:
 @router.get("/schedules", response_model=List[ScheduleResponse], tags=["Schedules"])
 async def get_schedules(
     cursor: Optional[int] = Query(None, ge=0, description="Offset cursor"),
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=100),
 ):
     """Get all active schedules (PUBLIC)."""
     scheduler = app_module.scheduler
@@ -393,7 +393,7 @@ async def delete_schedule(ticker: str, _: bool = Depends(check_admin_token)):
 async def get_positions(
     status: Optional[str] = Query(None, description="Filter by status: active|closed"),
     cursor: Optional[int] = Query(None, ge=1, description="Last position id"),
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=100),
 ):
     """Get all positions with optional status filter (PUBLIC).
     
@@ -853,7 +853,7 @@ async def get_reports(
     ticker: Optional[str] = Query(None, description="Filter by ticker"),
     position_id: Optional[int] = Query(None, description="Filter by position id"),
     cursor: Optional[int] = Query(None, ge=1, description="Last report id"),
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=100),
 ):
     """Get reports with optional ticker/position filter (PUBLIC)."""
     scheduler = app_module.scheduler
@@ -1008,7 +1008,7 @@ async def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
 async def get_ticker_cycles(
     ticker: str,
     cursor: Optional[int] = Query(None, ge=1, description="Last schedule id"),
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=100),
 ):
     """Get analysis cycle history for a ticker (PUBLIC).
 
@@ -1065,7 +1065,7 @@ async def get_cycle_events(
 # FR-025: Reflections endpoint
 @router.get("/reflections", response_model=List[dict], tags=["Reflections"])
 async def get_reflections(
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=100),
     outcome: Optional[str] = Query(None, description="Filter by outcome: win|loss"),
     cursor: Optional[int] = Query(None, ge=1, description="Last reflection id"),
 ):
