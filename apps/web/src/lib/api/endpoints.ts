@@ -17,7 +17,7 @@ export const fetchScheduleSummary = () => getJson("/schedules/summary");
 export const fetchLiveEvents = (ticker: string, limit = 50) =>
   getJson(`/live/${encodeURIComponent(ticker)}/events?limit=${limit}`);
 export const fetchActivity = () => getJson("/activity");
-export const fetchSchedules = () => getJson("/schedules");
+export const fetchSchedules = () => getJson("/schedules?limit=100");
 export const fetchScheduleCycles = (ticker: string, limit = 1, cursor?: number) => {
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", String(cursor));
