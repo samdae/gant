@@ -19,7 +19,9 @@ def _get_codex_access_token() -> str:
     from oauth_codex import Client
 
     client = Client(authenticate_on_init=True)
-    return client.get_access_token()
+    client.refresh_if_needed()
+    tokens = client._engine._load_tokens_sync()
+    return tokens.access_token
 
 
 class CodexClient(BaseLLMClient):
@@ -33,7 +35,6 @@ class CodexClient(BaseLLMClient):
         return ChatOpenAI(
             model=self.model or _DEFAULT_MODEL,
             api_key=token,
-            **self.kwargs,
         )
 
     def validate_model(self) -> bool:
