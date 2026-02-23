@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Router, { location } from "svelte-spa-router";
+  import AppHeader from "./components/AppHeader.svelte";
   import BottomNav from "./components/BottomNav.svelte";
   import Dashboard from "./routes/Dashboard.svelte";
   import Positions from "./routes/Positions.svelte";
@@ -45,6 +46,8 @@
   }
 
 </script>
+
+<AppHeader />
 
 <main class="main-content">
   <Router {routes} />

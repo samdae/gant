@@ -3,6 +3,7 @@
   import { fetchPositionsMarket, fetchPositionsClosed, fetchMetrics } from "../lib/api/endpoints";
   import { formatMoney, formatMoneyPlain, formatPercent, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
+  import { currencyFilter, showAmount, matchesCurrency, tickerCurrency } from "../stores/currency";
 
   type PositionMarket = {
     position_id: number;
@@ -63,6 +64,16 @@
   const getTotalAmount = (pos: PositionMarket) =>
     pos.avg_cost ? pos.avg_cost * pos.shares : null;
 
+  $: filteredPositions = positions.filter((p) => matchesCurrency(p.ticker, $currencyFilter));
+  $: filteredClosed = closedPositions.filter((p) => matchesCurrency(p.ticker, $currencyFilter));
+
+  const formatAmount = (value: number, ticker: string) => {
+    const cur = tickerCurrency(ticker);
+    const sym = cur === "KRW" ? "₩" : "$";
+    const digits = cur === "KRW" ? 0 : 2;
+    return `${sym}${value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  };
+
   const formatDate = (iso: string | null) => {
     if (!iso) return "-";
     try {
@@ -90,10 +101,10 @@
 
     <div class="tab-bar" style="margin-bottom:16px">
       <button class={`tab-btn ${tab === "active" ? "active" : ""}`} on:click={() => (tab = "active")}>
-        보유중 <span class="tab-count">{positions.length}</span>
+        보유중 <span class="tab-count">{filteredPositions.length}</span>
       </button>
       <button class={`tab-btn ${tab === "closed" ? "active" : ""}`} on:click={() => (tab = "closed")}>
-        이전 투자 <span class="tab-count">{closedPositions.length}</span>
+        이전 투자 <span class="tab-count">{filteredClosed.length}</span>
       </button>
     </div>
 
@@ -114,10 +125,10 @@
               <tr><td colspan="5">불러오는 중...</td></tr>
             {:else if error}
               <tr><td colspan="5" class="error-text">{error}</td></tr>
-            {:else if positions.length === 0}
+            {:else if filteredPositions.length === 0}
               <tr><td colspan="5">보유중인 투자가 없습니다.</td></tr>
             {:else}
-              {#each positions as pos}
+              {#each filteredPositions as pos}
                 {@const totalAmount = getTotalAmount(pos)}
                 <tr on:click={() => goTrade(pos.ticker)}>
                   <td>
@@ -127,7 +138,7 @@
                     {/if}
                   </td>
                   <td>{pos.shares}</td>
-                  <td>{pos.avg_cost ? `$${pos.avg_cost.toFixed(2)}` : "-"}</td>
+                  <td>{pos.avg_cost ? formatAmount(pos.avg_cost, pos.ticker) : "-"}</td>
                   <td>
                     {#if totalAmount !== null}
                       <span>{formatMoneyPlain(totalAmount)}</span>
@@ -151,10 +162,10 @@
           <div class="pos-card list-row"><div class="pos-card-details">불러오는 중...</div></div>
         {:else if error}
           <div class="pos-card list-row"><div class="pos-card-details error-text">{error}</div></div>
-        {:else if positions.length === 0}
+        {:else if filteredPositions.length === 0}
           <div class="pos-card list-row"><div class="pos-card-details">보유중인 투자가 없습니다.</div></div>
         {:else}
-          {#each positions as pos}
+          {#each filteredPositions as pos}
             {@const totalAmount = getTotalAmount(pos)}
             <div class="pos-card list-row" on:click={() => goTrade(pos.ticker)}>
               <div class="pos-card-top">
@@ -169,7 +180,7 @@
                 </span>
               </div>
               <div class="pos-card-details">
-                <span>보유 {pos.shares} · 1주 평균 {pos.avg_cost ? `$${pos.avg_cost.toFixed(2)}` : "-"}</span>
+                <span>보유 {pos.shares} · 1주 평균 {pos.avg_cost ? formatAmount(pos.avg_cost, pos.ticker) : "-"}</span>
                 <span>
                   총 금액 {totalAmount !== null ? formatMoneyPlain(totalAmount) : "-"}
                   <span class={pos.pnl >= 0 ? "text-gain" : "text-loss"} style="margin-left:2px">
@@ -185,10 +196,10 @@
       <div class="pos-card-list list-grid">
         {#if loading}
           <div class="pos-card list-row"><div class="pos-card-details">불러오는 중...</div></div>
-        {:else if closedPositions.length === 0}
+        {:else if filteredClosed.length === 0}
           <div class="pos-card list-row"><div class="pos-card-details">이전 투자가 없습니다.</div></div>
         {:else}
-          {#each closedPositions as cp}
+          {#each filteredClosed as cp}
             {@const days = holdingDays(cp.opened_at, cp.closed_at)}
             <div class="pos-card list-row" on:click={() => goTrade(cp.ticker)}>
               <div class="pos-card-top">
@@ -209,7 +220,7 @@
               </div>
               <div class="pos-card-details">
                 <span>
-                  {cp.shares}주 · 평균 {cp.avg_cost ? `${cp.currency === "KRW" ? "₩" : "$"}${cp.avg_cost.toFixed(cp.currency === "KRW" ? 0 : 2)}` : "-"}
+                  {cp.shares}주 · 평균 {cp.avg_cost ? formatAmount(cp.avg_cost, cp.ticker) : "-"}
                 </span>
                 <span style="color:var(--text-dim)">
                   {formatDate(cp.opened_at)} ~ {formatDate(cp.closed_at)}{days ? ` (${days}일)` : ""}

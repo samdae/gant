@@ -10,6 +10,7 @@
   } from "../lib/api/endpoints";
   import { formatMoney, formatMoneyPlain, formatPercent, formatAgo, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
+  import { currencyFilter, showAmount, matchesCurrency, tickerCurrency } from "../stores/currency";
 
   type Metrics = {
     active_positions: number;
@@ -150,6 +151,15 @@
   $: todayRunsTotal = scheduleSummary
     ? scheduleSummary.done + scheduleSummary.failed + scheduleSummary.skipped + scheduleSummary.running
     : null;
+
+  $: filteredPositions = positions.filter((p) => matchesCurrency(p.ticker, $currencyFilter));
+
+  const formatAmount = (value: number, ticker: string) => {
+    const cur = tickerCurrency(ticker);
+    const sym = cur === "KRW" ? "₩" : "$";
+    const digits = cur === "KRW" ? 0 : 2;
+    return `${sym}${value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  };
 </script>
 
 <section class="page" id="page-dashboard">
@@ -254,23 +264,25 @@
                 <tr>
                   <td colspan="2">불러오는 중...</td>
                 </tr>
-              {:else if positions.length === 0}
+              {:else if filteredPositions.length === 0}
                 <tr>
                   <td colspan="2" class="empty-state">내 투자가 없습니다.</td>
                 </tr>
               {:else}
-                {#each positions as pos}
+                {#each filteredPositions as pos}
                   {@const totalAmount = getTotalAmount(pos)}
                   <tr on:click={() => goTrade(pos.ticker)}>
                     <td><span class="ticker-badge">{pos.ticker}</span>{#if $tickerNames[pos.ticker]} <span class="ticker-tag">{$tickerNames[pos.ticker]}</span>{/if}</td>
                     <td>
-                      {#if totalAmount !== null}
-                        <span>{formatMoneyPlain(totalAmount)}</span>
+                      {#if $showAmount && totalAmount !== null}
+                        <span>{formatAmount(totalAmount, pos.ticker)}</span>
                         <span class={pos.pnl >= 0 ? "text-gain" : "text-loss"} style="margin-left:2px">
-                          ({formatMoney(pos.pnl)})
+                          ({formatAmount(pos.pnl, pos.ticker)})
                         </span>
                       {:else}
-                        -
+                        <span class={pos.return_pct >= 0 ? "text-gain" : "text-loss"}>
+                          {formatPercent(pos.return_pct)}
+                        </span>
                       {/if}
                     </td>
                   </tr>

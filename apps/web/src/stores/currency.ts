@@ -26,3 +26,14 @@ export const currencySymbol = derived(currencyFilter, ($f) => {
 });
 
 export const showAmount = derived(currencyFilter, ($f) => $f !== "ALL");
+
+export function tickerCurrency(ticker: string): "KRW" | "USD" {
+  const upper = ticker.toUpperCase();
+  if (upper.endsWith(".KS") || upper.endsWith(".KQ")) return "KRW";
+  return "USD";
+}
+
+export function matchesCurrency(ticker: string, filter: CurrencyFilter): boolean {
+  if (filter === "ALL") return true;
+  return tickerCurrency(ticker) === filter;
+}
