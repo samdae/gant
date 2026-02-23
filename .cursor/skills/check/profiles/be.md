@@ -1,58 +1,43 @@
 # Backend Check Profile
 
-> This profile is for backend architecture verification.
-> Use when input is `arch-be.md`.
-
-## Input Detection
-
-- Input file: `arch-be.md`
-- Applies automatically when design document is backend-focused
-
----
+> Backend architecture verification. Input: `arch-be.md`.
 
 ## Component Detection Checklist
 
-Scan the design document and detect which components are defined:
-
-| Component | Detection Method | Triggers Additional Checks |
-|-----------|-----------------|---------------------------|
-| **Authentication** | "auth", "OAuth", "JWT", "login" in document | Token refresh, Session management |
-| **Database** | DB schema tables defined | Soft delete, Indexes, Migrations |
-| **REST API** | API endpoints defined | Pagination, Rate limiting, Versioning |
-| **External API calls** | External API list exists | Retry policy, Caching, Fallback |
-| **Async processing** | Celery, Queue, Worker, Job mentioned | Error handling, Retry, DLQ |
-| **Real-time** | SSE, WebSocket mentioned | Connection management, Heartbeat |
-| **File storage** | Upload, S3, file mentioned | Size limits, Cleanup policy |
-| **Caching** | Redis, Cache mentioned | TTL policy, Invalidation |
-| **K8s/Docker** | Deployment config exists | Health check, Resource limits |
-| **LLM/AI** | LLM, OpenAI, Claude mentioned | Cost control, Token limits |
-
----
+| Component | Detection Method | Triggers |
+|-----------|------------------|----------|
+| Auth | "auth", "OAuth", "JWT", "login" | Token refresh, Session management |
+| DB | DB schema tables defined | Soft delete, Indexes, Migrations |
+| REST API | API endpoints defined | Pagination, Rate limiting, Versioning |
+| External API | External API list exists | Retry policy, Caching, Fallback |
+| Async | Celery, Queue, Worker, Job | Error handling, Retry, DLQ |
+| Real-time | SSE, WebSocket | Connection management, Heartbeat |
+| File storage | Upload, S3, file | Size limits, Cleanup policy |
+| Caching | Redis, Cache | TTL policy, Invalidation |
+| K8s/Docker | Deployment config exists | Health check, Resource limits |
+| LLM/AI | LLM, OpenAI, Claude | Cost control, Token limits |
 
 ## Gap Analysis Checklists
 
-### Authentication Gaps
-
+### Auth Gaps
 | Required Detail | Check | If Missing |
 |-----------------|-------|------------|
 | Token refresh logic | Is refresh token flow defined? | Ask user |
-| Token expiration time | Is expiry duration specified? | Ask user |
+| Token expiration | Is expiry duration specified? | Ask user |
 | Session invalidation | How to logout/revoke? | Ask user |
 | Password policy | Is password requirements defined? | Suggest |
-| Multi-factor auth | Is MFA mentioned if needed? | Ask user |
+| MFA | Is MFA mentioned if needed? | Ask user |
 
-### Database Gaps
-
+### DB Gaps
 | Required Detail | Check | If Missing |
 |-----------------|-------|------------|
-| Soft delete vs Hard delete | Is deletion strategy defined? | Ask user |
+| Soft vs Hard delete | Is deletion strategy defined? | Ask user |
 | Index strategy | Are indexes defined for query patterns? | Suggest based on API |
 | Migration strategy | Is migration tool mentioned? | Suggest |
 | Backup/Recovery | Is backup strategy defined? | Ask user |
 | Connection pooling | Is pool size defined? | Suggest default |
 
 ### REST API Gaps
-
 | Required Detail | Check | If Missing |
 |-----------------|-------|------------|
 | Pagination | Is pagination defined for list APIs? | Ask user |
@@ -63,7 +48,6 @@ Scan the design document and detect which components are defined:
 | CORS policy | Is CORS configuration defined? | Ask if needed |
 
 ### External API Gaps
-
 | Required Detail | Check | If Missing |
 |-----------------|-------|------------|
 | Retry policy | Is retry count/backoff defined? | Ask user |
@@ -73,17 +57,15 @@ Scan the design document and detect which components are defined:
 | Circuit breaker | Is circuit breaker pattern used? | Suggest |
 
 ### Async Processing Gaps
-
 | Required Detail | Check | If Missing |
 |-----------------|-------|------------|
 | Error handling | What if task fails? | Ask user |
 | Retry policy | Is retry count defined? | Ask user |
-| Dead letter queue | Is DLQ/failed task handling defined? | Suggest |
+| DLQ | Is DLQ/failed task handling defined? | Suggest |
 | Idempotency | Can task be safely retried? | Ask user |
 | Priority levels | Are task priorities defined? | Ask if needed |
 
 ### Real-time Gaps
-
 | Required Detail | Check | If Missing |
 |-----------------|-------|------------|
 | Connection timeout | Is SSE/WS timeout defined? | Suggest default |
@@ -93,7 +75,6 @@ Scan the design document and detect which components are defined:
 | Scaling strategy | How to scale WebSocket servers? | Ask if needed |
 
 ### File Storage Gaps
-
 | Required Detail | Check | If Missing |
 |-----------------|-------|------------|
 | Size limits | Is max file size defined? | Ask user |
@@ -103,7 +84,6 @@ Scan the design document and detect which components are defined:
 | Virus scanning | Is malware check needed? | Ask if sensitive |
 
 ### Caching Gaps
-
 | Required Detail | Check | If Missing |
 |-----------------|-------|------------|
 | TTL policy | Is cache expiration defined? | Ask user |
@@ -112,7 +92,6 @@ Scan the design document and detect which components are defined:
 | Cache warming | Is preloading needed? | Ask if needed |
 
 ### Infrastructure Gaps
-
 | Required Detail | Check | If Missing |
 |-----------------|-------|------------|
 | Health check endpoint | Is /health or probe defined? | Suggest |
@@ -123,7 +102,6 @@ Scan the design document and detect which components are defined:
 | Resource limits | Are CPU/memory limits defined? | Suggest if K8s |
 
 ### LLM/AI Gaps
-
 | Required Detail | Check | If Missing |
 |-----------------|-------|------------|
 | Cost tracking | Is token/cost logging defined? | Suggest |
@@ -133,98 +111,51 @@ Scan the design document and detect which components are defined:
 | Response validation | Is LLM output validated? | Suggest |
 | Timeout handling | Is LLM timeout defined? | Suggest default |
 
----
-
-## Q&A Templates
-
-### Choice-based Question
+## Q&A Template
 
 ```json
 {
   "title": "Missing Detail: {Topic}",
-  "questions": [
-    {
-      "id": "{topic_id}",
-      "prompt": "{Description of missing item}. How should this be handled?",
-      "options": [
-        {"id": "option_a", "label": "{Option A} (recommended)"},
-        {"id": "option_b", "label": "{Option B}"},
-        {"id": "option_c", "label": "{Option C}"},
-        {"id": "skip", "label": "Skip for now (decide during implementation)"}
-      ]
-    }
-  ]
+  "questions": [{
+    "id": "{topic_id}",
+    "prompt": "{Description of missing item}. How should this be handled?",
+    "options": [
+      {"id": "option_a", "label": "{Option A} (recommended)"},
+      {"id": "option_b", "label": "{Option B}"},
+      {"id": "option_c", "label": "{Option C}"},
+      {"id": "skip", "label": "Skip for now (decide during implementation)"}
+    ]
+  }]
 }
 ```
 
-### Skip Handling
+Skip: Mark as `TBD` in document, continue to next gap, list all skipped at end.
 
-If user selects "Skip for now":
-- Mark as `⚠️ TBD` in document
-- Continue to next gap
-- List all skipped items at the end
-
----
-
-## Document Update Location
-
-Add new section or update existing sections in `arch-be.md`:
+## Document Update (Section 12 in arch-be.md)
 
 ```markdown
 ## 12. Additional Design Details (from Review)
-
-### Authentication Details
-- Token expiration: {value}
-- Refresh token expiration: {value}
-- Refresh flow: {description}
-
-### API Details
-- Pagination: {value} items default, {max} max
-- Rate limiting: {value} requests/minute per user
-
-### Database Details
-- Deletion strategy: {soft delete | hard delete}
-- Index strategy: {description}
-
-### Infrastructure Details
-- Health check: {endpoint}
-- Graceful shutdown: {timeout}
-
-### ⚠️ TBD (Skipped)
-- {skipped item 1}
-- {skipped item 2}
+### Authentication - Token expiration: {value}, Refresh: {value}/{description}
+### API - Pagination: {value} default/{max} max, Rate limit: {value} req/min/user
+### Database - Deletion: {soft|hard delete}, Index: {description}
+### Infrastructure - Health check: {endpoint}, Graceful shutdown: {timeout}
+### TBD (Skipped) - {skipped item list}
 ```
 
----
-
-## Summary Report Template
+## Summary Report
 
 ```markdown
 ## Backend Architecture Review Complete
-
 ### Components Detected
-- ✅ Authentication ({type})
-- ✅ Database ({type}, {table count} tables)
-- ✅ REST API ({endpoint count} endpoints)
-- ✅ Async Processing ({type})
-- ⬜ Real-time (not detected)
-- ✅ External APIs ({count} services)
-- ✅ LLM ({provider})
-
+- [x] Auth ({type}), [x] Database ({type}, {N} tables), [x] REST API ({N} endpoints)
+- [x] Async ({type}), [ ] Real-time (not detected), [x] External APIs ({N} services)
+(Mark [x] detected, [ ] not detected)
 ### Gaps Filled: {N}
 | Item | Decision |
 |------|----------|
 | Token refresh | {decision} |
 | Pagination | {decision} |
-| Health check | {decision} |
-
-### Skipped (TBD): {M}
-- {skipped item 1}
-- {skipped item 2}
-
-### Document Updated
-`docs/{serviceName}/arch-be.md` - Section 12 added
-
-### Next Step
-Run `/build` to start implementation.
+### Skipped (TBD): {M} - {list}
+### Document Updated - docs/{serviceName}/arch-be.md Section 12 added
+### Next Step - Run `/build`
 ```
