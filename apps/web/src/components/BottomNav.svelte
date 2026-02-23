@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, onDestroy } from "svelte";
   import { link, location } from "svelte-spa-router";
 
   const navItems = [
@@ -35,6 +36,9 @@
   ];
 
   let currentBaseRoute = "/";
+  let hidden = false;
+  let lastScrollY = 0;
+  const SCROLL_THRESHOLD = 8;
 
   const normalizeRoute = (value: string) => {
     const cleaned = value.split("?")[0].replace(/^#/, "");
@@ -53,10 +57,29 @@
     return getBaseRoute(value || fallback || "#/");
   };
 
+  const onScroll = () => {
+    const y = window.scrollY;
+    const delta = y - lastScrollY;
+    if (delta > SCROLL_THRESHOLD) hidden = true;
+    else if (delta < -SCROLL_THRESHOLD) hidden = false;
+    lastScrollY = y;
+  };
+
+  onMount(() => {
+    lastScrollY = window.scrollY;
+    window.addEventListener("scroll", onScroll, { passive: true });
+  });
+
+  onDestroy(() => {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("scroll", onScroll);
+    }
+  });
+
   $: currentBaseRoute = getCurrentBaseRoute($location);
 </script>
 
-<nav class="bottom-nav" id="bottomNav">
+<nav class="bottom-nav" class:bottom-nav-hidden={hidden} id="bottomNav">
   {#each navItems as item}
     <a
       href={`#${item.route}`}
