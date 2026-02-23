@@ -497,10 +497,10 @@ async def get_positions_closed():
     cursor_obj = conn.execute(
         """
         SELECT id, ticker, shares, avg_cost, return_pct, currency,
-               created_at, updated_at
+               opened_at, closed_at
         FROM positions
         WHERE status = 'closed'
-        ORDER BY updated_at DESC
+        ORDER BY closed_at DESC
         """
     )
     rows = [dict(row) for row in cursor_obj.fetchall()]
@@ -516,8 +516,8 @@ async def get_positions_closed():
             return_pct=rp,
             currency=row.get("currency") or "USD",
             outcome="win" if rp >= 0 else "loss",
-            opened_at=row.get("created_at"),
-            closed_at=row.get("updated_at"),
+            opened_at=row.get("opened_at"),
+            closed_at=row.get("closed_at"),
         ))
 
     return results
