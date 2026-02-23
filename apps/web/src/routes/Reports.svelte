@@ -102,8 +102,7 @@
       </div>
         <div class="report-ticker-list list-grid">
           {#each tickers as item}
-          {@const portfolioOk = item.portfolio_action ? (item.portfolio_action === "HOLD" || (item.portfolio_shares != null && item.portfolio_shares > 0)) : false}
-          {@const actionRaw = item.trade_action || (portfolioOk ? item.portfolio_action : "") || (!item.portfolio_action ? item.decision_position : "") || ""}
+          {@const actionRaw = item.decision_position || item.portfolio_action || item.trade_action || ""}
           {@const action = actionRaw ? normalizeDecision(actionRaw) : ""}
           <a href={`#/reports/${item.ticker.toLowerCase()}`} class="report-ticker-card list-row {action ? 'action-bar-' + action.toLowerCase() : ''}">
             <div class="report-ticker-left">
