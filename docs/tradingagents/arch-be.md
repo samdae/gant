@@ -419,11 +419,11 @@ scripts/
 | 26 | ~~FR-030~~ | ~~ScheduleRepository~~ | ~~`storage/schedule_repo.py`~~ | — | — | **삭제 (FR-039)**: schedule_config_repo + schedule_job_repo로 이관 | [x] |
 | 27 | FR-030 | ScheduleConfigRepository | `storage/schedule_config_repo.py` | `ScheduleConfigRepository` | `create`, `upsert`, `get_all`, `get_by_ticker`, `delete`, `update_last_data_date`, `get_all_display_names`, `update_display_name`, `increment_cycle`, `get_current_cycle` | schedule_configs CRUD + UPSERT + cycle 관리 (FR-039) | [x] |
 | 28 | FR-030 | PositionRepository | `storage/position_repo.py` | `PositionRepository` | `create`, `get_active`, `update_shares`, `close_position`, `get_by_id` | positions CRUD + status 전환 | [x] |
-| 29 | FR-030 | ReportRepository | `storage/report_repo.py` | `ReportRepository` | `create`, `get_by_position`, `get_by_schedule` | reports INSERT (pipeline_strategy JSON 직렬화 포함) | [x] |
+| 29 | FR-030 | ReportRepository | `storage/report_repo.py` | `ReportRepository` | `create`, `get_by_position`, `get_by_job` | reports INSERT (pipeline_strategy JSON 직렬화 포함) | [x] |
 | 30 | FR-030 | TradeRepository | `storage/trade_repo.py` | `TradeRepository` | `create`, `get_by_position`, `get_history`, `get_cash_balance` | trades CRUD + 가용 현금 계산 | [x] |
 | 31 | FR-030 | ReflectionRepository | `storage/reflection_repo.py` | `ReflectionRepository` | `create`, `get_by_id`, `get_by_position`, `search_fts` | reflections + Postgres FTS 검색 (`ts_rank_cd`) | [x] |
 | 32 | FR-030 | ScheduleJobRepository | `storage/schedule_job_repo.py` | `ScheduleJobRepository` | `create`, `update_status`, `get_latest_by_config`, `get_latest_by_ticker`, `list_by_config`, `update_latest_by_config`, `has_done_today_for_ticker` | schedule_jobs 상태 관리 + 재시도 (FR-039: schedule_config_id 기반) | [x] |
-| 33 | FR-037 | ScheduleEventRepository | `storage/schedule_event_repo.py` | `ScheduleEventRepository` | `create`, `list_by_ticker`, `list_latest_by_ticker`, `list_by_schedule_id` | schedule_job_events UPSERT (agent 기준 유니크) | [x] |
+| 33 | FR-037 | ScheduleEventRepository | `storage/schedule_event_repo.py` | `ScheduleEventRepository` | `create`, `list_by_ticker`, `list_latest_by_ticker`, `list_by_job_id` | schedule_job_events UPSERT (agent 기준 유니크) | [x] |
 | 34 | FR-031 | 반성 집중화 | `graph/reflection.py` | `Reflector` | `reflect_on_position` | 레거시 7개 메서드 완전 삭제 (`reflect_bull_researcher` 등). 1개 메서드만 존재. DB에서 reports+trades 조회 → 반성문 작성 | [x] |
 | 35 | FR-031 | reflect_and_remember 변경 | `graph/trading_graph.py` | `TradingAgentsGraph` | `reflect_and_remember` | 5개 에이전트별 반성 → Reflector.reflect_on_position(position_id) 1회 호출 | [x] |
 | 36 | FR-032 | 요약에이전트 | `agents/summary_agent.py` | `SummaryAgent` | `__init__`, `summarize`, `_summarize_component` | 12에이전트 raw + PA 의견 → 13개 요약 생성. quick_think_llm 사용 | [x] |
@@ -442,7 +442,7 @@ scripts/
 | 49 | FR-030 | report_store.py 삭제 | ~~`virtual_trade/report_store.py`~~ | — | — | 파일 삭제 (SummaryAgent + DB로 대체) | [x] |
 | 50 | FR-006 | strategy_json 파싱 | `graph/signal_processing.py` | `SignalProcessor` | `process_signal`, `_extract_strategy_json` | ```strategy_json 코드블록 파싱 + LLM fallback | [x] |
 | 51 | FR-036 | 중복 실행 방지 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_run_analysis_cycle` | last_data_date 비교, 새 데이터 없으면 스킵 | [x] |
-| 52 | — | 런타임 컨텍스트 | `runtime_context.py` | — | `set_schedule_context`, `get_current_schedule_id`, `log_schedule_error` | contextvars로 스케줄 ID/Job ID 전파 | [x] |
+| 52 | — | 런타임 컨텍스트 | `runtime_context.py` | — | `set_schedule_context`, `reset_schedule_context`, `get_current_schedule_job_id`, `get_current_schedule_id` (alias), `log_schedule_error` | contextvars로 스케줄 Job ID 전파 | [x] |
 | 53 | — | 커스텀 예외 | `errors.py` | `DataVendorError`, `DecisionParseError`, `AgentExecutionError` | — | 에러 유형별 처리 분기 지원 | [x] |
 | 54 | FR-035 | Frontend SPA | `apps/web/` | — | — | Svelte 4 + TypeScript + Vite + svelte-spa-router | [x] |
 | 55 | FR-037 | 이벤트 영속화 broadcast | `api/app.py` | — | `broadcast_status` | WS 송신 + schedule_job_events DB 저장 동시 수행 | [x] |

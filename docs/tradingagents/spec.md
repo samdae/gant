@@ -397,16 +397,16 @@ schedule_configs ─── 1:N ─── schedule_jobs ─── 1:N ─── s
 
 ```python
 DEFAULT_CONFIG = {
-    "project_dir": os.path.abspath("."),
+    "project_dir": os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),  # 패키지 위치 기준
     "data_cache_dir": "<project_dir>/dataflows/data_cache",
-    # Data cache window
-    "stock_download_days": 330,
-    "stock_download_buffer_days": 300,
-    "stock_cache_stale_days": 3,
+    # Data cache window (환경변수 오버라이드 가능)
+    "stock_download_days": int(os.getenv("TRADINGAGENTS_STOCK_DOWNLOAD_DAYS", "330")),
+    "stock_download_buffer_days": int(os.getenv("TRADINGAGENTS_STOCK_DOWNLOAD_BUFFER_DAYS", "300")),
+    "stock_cache_stale_days": int(os.getenv("TRADINGAGENTS_STOCK_CACHE_STALE_DAYS", "3")),
     # LLM settings (Google OAuth, no API keys)
     "llm_provider": os.getenv("LLM_PROVIDER", "gemini-cli"),  # "gemini-cli" / "antigravity" / "codex" (FR-050)
-    "deep_think_llm": "gpt-5.3-codex" if LLM_PROVIDER == "codex" else "gemini-3-pro-high",  # (FR-050)
-    "quick_think_llm": "gpt-5.3-codex" if LLM_PROVIDER == "codex" else "gemini-3-flash",    # (FR-050)
+    "deep_think_llm": "gpt-5.3-codex" if os.getenv("LLM_PROVIDER", "").lower() == "codex" else "gemini-3-pro-high",
+    "quick_think_llm": "gpt-5.3-codex" if os.getenv("LLM_PROVIDER", "").lower() == "codex" else "gemini-3-flash",
     "backend_url": None,
     # Debate and discussion settings
     "max_debate_rounds": 1,
@@ -421,13 +421,13 @@ DEFAULT_CONFIG = {
     },
     "tool_vendors": {},  # Tool-level override (takes precedence over data_vendors)
     # FR-030: Database URL (Postgres)
-    "database_path": _get_database_url(),  # SUPABASE_DB_URL / POSTGRES_* env vars
-    # FR-030: ChromaDB path (Vector store)
-    "chroma_path": "<project_dir>/memory/chroma",
+    "database_path": _get_database_url(),  # SUPABASE_DB_URL / TRADINGAGENTS_DB_URL / DATABASE_URL / POSTGRES_* env vars
+    # FR-030: ChromaDB path (Vector store, 환경변수 오버라이드 가능)
+    "chroma_path": os.getenv("TRADINGAGENTS_CHROMA_PATH", "<project_dir>/memory/chroma"),
     "default_initial_capital": 5000.0,
     # FR-016: Scheduler
     "schedules": [],  # List[{"ticker": str, "interval_days": int}]
-    "scheduler_enabled": False,  # TRADINGAGENTS_SCHEDULER_ENABLED env var
+    "scheduler_enabled": _get_env_bool("TRADINGAGENTS_SCHEDULER_ENABLED", False),
 }
 ```
 
