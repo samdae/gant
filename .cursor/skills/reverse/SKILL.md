@@ -2,8 +2,8 @@
 id: reverse
 name: reverse
 description: |
- Reverse-engineer spec.md and arch.md from existing code.
- Triggers: reverse, reverse engineer, legacy documentation
+  Reverse-engineer spec.md and arch.md from existing code.
+  Triggers: reverse, reverse engineer, legacy documentation
 user-invocable: true
 version: 2.0.0
 triggers: ["reverse", "reverse engineer", "code to document", "legacy documentation"]

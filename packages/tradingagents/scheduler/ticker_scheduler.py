@@ -48,7 +48,6 @@ class TickerScheduler:
 
         self.scheduler = BackgroundScheduler()
         self._ticker_locks: Dict[str, threading.Lock] = {}
-        self._ticker_intervals: Dict[str, int] = {}
 
         self._analysis_queue: Optional[asyncio.Queue] = analysis_queue
         self._queue_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -208,8 +207,6 @@ class TickerScheduler:
         if ticker not in self._ticker_locks:
             self._ticker_locks[ticker] = threading.Lock()
 
-        self._ticker_intervals[ticker] = interval_days
-
         job_id = f"ticker_{ticker}"
         existing_job = self.scheduler.get_job(job_id)
         if existing_job:
@@ -241,7 +238,6 @@ class TickerScheduler:
         if self.scheduler.get_job(job_id):
             self.scheduler.remove_job(job_id)
             logger.info(f"Removed ticker {ticker} from schedule")
-            self._ticker_intervals.pop(ticker, None)
         else:
             logger.warning(f"Ticker {ticker} not found in schedule")
 
@@ -423,6 +419,8 @@ class TickerScheduler:
         except Exception as e:
             logger.error(f"Analysis cycle failed for {ticker}: {e}")
         finally:
+            if schedule_job_id is not None:
+                self._requeued_job_ids.discard(schedule_job_id)
             lock.release()
 
     def _run_analysis_cycle_impl(
@@ -581,6 +579,12 @@ class TickerScheduler:
             pa_strategy = portfolio_decision.get("strategy_update") or {}
             pa_sl = pa_strategy.get("stop_loss")
             pa_tgt = pa_strategy.get("target")
+            if pa_sl is not None and pa_tgt is not None and pa_sl >= pa_tgt:
+                logger.warning(
+                    f"{ticker}: stop_loss ({pa_sl}) >= target ({pa_tgt}), "
+                    "ignoring invalid PA strategy values"
+                )
+                pa_sl, pa_tgt = None, None
             if position_id and (pa_sl is not None or pa_tgt is not None):
                 position_repo.update_stop_loss_target(position_id, pa_sl, pa_tgt)
 
@@ -844,7 +848,14 @@ class TickerScheduler:
         retries: int = 2,
         retry_delay: int = 30,
     ) -> tuple[float, str]:
-        """Return (close_price, data_date_iso) from yfinance."""
+        """Return (close_price, data_date_iso) from yfinance.
+
+        Always uses the latest available bar. The scheduler runs after
+        market close (CronTrigger), so the latest bar is the confirmed
+        daily close. The previous 'today guard' that skipped to the
+        prior day has been removed — it caused all scheduled analyses
+        to use stale (T-1) prices.
+        """
         errors = []
         total_attempts = retries + 1
 
@@ -858,33 +869,20 @@ class TickerScheduler:
                 if history.empty:
                     raise ValueError("No price data returned")
 
+                price = float(history["Close"].iloc[-1])
+
                 latest_index = history.index[-1]
                 try:
-                    latest_date = latest_index.tz_convert(None).date()
+                    data_date = latest_index.tz_convert(None).date()
                 except Exception:
                     try:
-                        latest_date = latest_index.tz_localize(None).date()
+                        data_date = latest_index.tz_localize(None).date()
                     except Exception:
-                        latest_date = (
+                        data_date = (
                             latest_index.date()
                             if hasattr(latest_index, "date")
                             else datetime.now().date()
                         )
-
-                today = datetime.now().date()
-                if latest_date == today and len(history) > 1:
-                    price = float(history["Close"].iloc[-2])
-                    idx = history.index[-2]
-                    try:
-                        data_date = idx.tz_convert(None).date()
-                    except Exception:
-                        try:
-                            data_date = idx.tz_localize(None).date()
-                        except Exception:
-                            data_date = idx.date() if hasattr(idx, "date") else today
-                else:
-                    price = float(history["Close"].iloc[-1])
-                    data_date = latest_date
 
                 return price, data_date.isoformat()
 
@@ -906,17 +904,6 @@ class TickerScheduler:
             f"Failed to fetch current price for {ticker}",
             details=errors,
         )
-
-    def _get_current_price(
-        self,
-        ticker: str,
-        schedule_job_id: int,
-        retries: int = 2,
-        retry_delay: int = 30,
-    ) -> float:
-        """Backward-compatible wrapper returning price only."""
-        price, _ = self._get_latest_close(ticker, schedule_job_id, retries, retry_delay)
-        return price
 
     def _get_latest_market_date(self, ticker: str) -> Optional[str]:
         try:

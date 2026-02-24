@@ -1,7 +1,7 @@
 # Frontend Design Doc: TradingAgents UI (GANT)
 
 > Created: 2026-02-15
-> Updated: 2026-02-20 (code-based reverse sync)
+> Updated: 2026-02-24 (코드 전수 검증)
 > Service: tradingagents
 > Type: Frontend
 > Requirements: docs/tradingagents/spec.md
@@ -28,10 +28,14 @@ Svelte 기반 SPA로 AI 트레이딩 분석 대시보드 구현. REST API + WebS
 ## 1. Scope
 
 ### In scope
-- Dashboard, Positions, Schedules, ScheduleDetail, TradeDetail, Reports, ReportDetail, Live, Auth (9 페이지)
+- Dashboard, Positions, Schedules, ScheduleDetail, TradeDetail, Reports, ReportDetail, Reflections, Live, Auth (10 페이지)
 - SPA 라우팅 + Bearer token gating
 - PWA (manifest + service worker + autoUpdate)
 - 모바일 최적화 다크 테마 UI
+- 통화 셀렉터 (ALL/KRW/USD) — 공통 헤더 (FR-040)
+- Closed 포지션 active/closed 탭 분리 (FR-046)
+- Reflections 목록 페이지 — win/loss 필터, cursor 페이지네이션 (FR-049)
+- TradeDetail History 뱃지 동적 색상 (FR-048)
 
 ### Out of scope
 - SvelteKit / SSR
@@ -159,6 +163,10 @@ component_structure:
       component: "ReportDetail"
       file: "src/routes/ReportDetail.svelte"
       description: "13개 섹션별 리포트 상세 (마크다운)"
+    - path: "/reflections"
+      component: "Reflections"
+      file: "src/routes/Reflections.svelte"
+      description: "회고/반성 목록 — win/loss 필터, cursor 페이지네이션 (FR-049)"
     - path: "/live"
       component: "Live"
       file: "src/routes/Live.svelte"
@@ -175,10 +183,10 @@ component_structure:
   shared:
     - name: "AppHeader"
       path: "src/components/AppHeader.svelte"
-      description: "상단 로고 + 데스크톱 네비게이션"
+      description: "상단 로고 + 통화 셀렉터(ALL/KRW/USD) 인라인 구현 (FR-040). currencyFilter store 연동"
     - name: "BottomNav"
       path: "src/components/BottomNav.svelte"
-      description: "모바일 하단 5탭 네비게이션"
+      description: "모바일 하단 6탭 네비게이션 (예약/실시간/홈/투자/AI분석/회고)"
     - name: "SelectMenu"
       path: "src/components/SelectMenu.svelte"
       props: "value, options, placeholder, disabled"
@@ -188,11 +196,11 @@ component_structure:
     - name: "api/client.ts"
       description: "Fetch wrapper (BASE_URL, auth header, localStorage 캐싱, 401 리다이렉트)"
     - name: "api/endpoints.ts"
-      description: "API 호출 함수 (fetchMetrics, fetchSchedules, createSchedule 등 20개)"
+      description: "API 호출 함수 20개 (fetchMetrics, fetchPositionsMarket, fetchPositionsClosed, fetchSchedules, fetchReflections, createSchedule 등)"
     - name: "ws/liveStream.ts"
       description: "WebSocket 연결 (http→ws URL 변환, onMessage/onError)"
     - name: "utils/format.ts"
-      description: "포맷 유틸 (formatMoney, formatPercent, formatAgo, formatErrorMessage)"
+      description: "포맷 유틸 (formatMoney, formatMoneyPlain, formatPercent, formatDateTime, formatAgo, formatErrorMessage, formatAmount(value, ticker), formatSignedAmount(value, ticker))"
 
   stores:
     - name: "auth.ts"
@@ -216,12 +224,13 @@ apps/web/
 │   │   ├── TradeDetail.svelte
 │   │   ├── Reports.svelte
 │   │   ├── ReportDetail.svelte
+│   │   ├── Reflections.svelte      # [NEW] FR-049
 │   │   ├── Live.svelte
 │   │   ├── Auth.svelte
 │   │   └── NotFoundRedirect.svelte
 │   ├── components/
-│   │   ├── AppHeader.svelte
-│   │   ├── BottomNav.svelte
+│   │   ├── AppHeader.svelte         # 통화 셀렉터 인라인 (FR-040)
+│   │   ├── BottomNav.svelte         # 6탭 (회고 추가)
 │   │   └── SelectMenu.svelte
 │   ├── lib/
 │   │   ├── api/
@@ -234,7 +243,8 @@ apps/web/
 │   ├── stores/
 │   │   ├── auth.ts
 │   │   ├── tickerNames.ts
-│   │   └── ui.ts
+│   │   ├── ui.ts
+│   │   └── currency.ts              # [NEW] FR-040
 │   ├── styles/
 │   │   ├── base.css          (→ imports prototype.css)
 │   │   ├── prototype.css     (전체 스타일, ~3000줄)
@@ -280,6 +290,19 @@ state_management:
       file: "src/stores/ui.ts"
       type: "writable<string | null>"
       initial: "null"
+
+    - name: "currencyFilter"
+      file: "src/stores/currency.ts"
+      type: "writable<CurrencyFilter>"  # CurrencyFilter = "ALL" | "KRW" | "USD"
+      initial: "localStorage.getItem('gant_currency') ?? 'ALL'"
+      sync: "subscribe → localStorage('gant_currency') 자동 동기화"
+      exports:
+        - "currencyFilter: writable<CurrencyFilter>"
+        - "currencySymbol: derived (ALL→'', KRW→'₩', USD→'$')"
+        - "showAmount: derived ($f !== 'ALL')"
+        - "tickerCurrency(ticker): 'KRW' | 'USD' (.KS/.KQ→KRW, else USD)"
+        - "matchesCurrency(ticker, filter): boolean"
+      note: "FR-040. ALL=전체 티커(showAmount=false→퍼센트만), KRW/USD=해당 통화 금액 표시"
 
   server_state:
     description: "fetch 기반 (SWR/React Query 없음). localStorage 캐시 5분 TTL."
@@ -348,6 +371,10 @@ routes:
         type: "string"
     auth_required: false
 
+  - path: "/reflections"
+    component: "Reflections"
+    auth_required: false
+
   - path: "/live"
     component: "Live"
     auth_required: false
@@ -404,6 +431,11 @@ api_integration:
   - endpoint: "GET /positions/market"
     function: "fetchPositionsMarket"
     used_by: ["Dashboard", "Positions", "TradeDetail"]
+
+  - endpoint: "GET /positions/closed"
+    function: "fetchPositionsClosed"
+    used_by: ["Positions"]
+    note: "FR-046. 청산 포지션 목록 (outcome, return_pct, currency)"
 
   - endpoint: "GET /positions?status="
     function: "fetchPositions"
@@ -467,6 +499,11 @@ api_integration:
     function: "fetchLiveEvents"
     used_by: ["Live"]
 
+  - endpoint: "GET /reflections"
+    function: "fetchReflections"
+    used_by: ["Reflections"]
+    note: "FR-049. ?outcome=win|loss 필터, ?cursor, ?limit"
+
   - endpoint: "GET /tickers/names"
     function: "(via stores/tickerNames.ts)"
     used_by: ["전체 (앱 시작 시 로드)"]
@@ -483,7 +520,7 @@ api_integration:
 
 | # | Spec Ref | Feature | File | Component/Function | Action | Impl |
 |---|----------|---------|------|----------------|--------|------|
-| 1 | FR-035 | SPA 라우팅 | src/App.svelte | Router | 10개 라우트 매핑 | [x] |
+| 1 | FR-035 | SPA 라우팅 | src/App.svelte | Router | 11개 라우트 매핑 (10 페이지 + NotFoundRedirect) | [x] |
 | 2 | FR-034 | 대시보드 메트릭 | src/routes/Dashboard.svelte | fetchMetrics, fetchScheduleSummary | KPI + 오늘 실행 렌더링 | [x] |
 | 3 | FR-025 | 큐 상태 | src/routes/Dashboard.svelte | fetchQueue | 실행중/대기중 표시 | [x] |
 | 4 | FR-034 | 포지션 현재가 | src/routes/Positions.svelte | fetchPositionsMarket | 테이블/카드 + PnL 렌더링 | [x] |
@@ -500,11 +537,21 @@ api_integration:
 | 15 | FR-035 | PWA | vite.config.ts | VitePWA | manifest + SW (autoUpdate) | [x] |
 | 16 | FR-025 | API 클라이언트 | src/lib/api/client.ts | request, getJson, postJson, deleteJson | localStorage 캐싱 + 401 처리 | [x] |
 | 17 | FR-025 | WS 클라이언트 | src/lib/ws/liveStream.ts | connectLiveStream | http→ws 변환 + JSON 파싱 | [x] |
-| 18 | FR-035 | 하단 네비게이션 | src/components/BottomNav.svelte | BottomNav | 5탭 (예약/실시간/홈/투자/AI분석) | [x] |
-| 19 | FR-035 | 상단 헤더 | src/components/AppHeader.svelte | AppHeader | 로고 + 데스크톱 네비 | [x] |
+| 18 | FR-035 | 하단 네비게이션 | src/components/BottomNav.svelte | BottomNav | 6탭 (예약/실시간/홈/투자/AI분석/회고) + 스크롤 자동 숨김 | [x] |
+| 19 | FR-035/040 | 상단 헤더 | src/components/AppHeader.svelte | AppHeader | 로고 + 통화 셀렉터(ALL/KRW/USD) 인라인 | [x] |
 | 20 | FR-035 | 셀렉트 메뉴 | src/components/SelectMenu.svelte | SelectMenu | 커스텀 드롭다운 | [x] |
 | 21 | FR-035 | 글로벌 스토어 | src/stores/auth.ts, tickerNames.ts, ui.ts | tokenStore, tickerNames, liveTickerStore | localStorage 동기화 + API 로드 | [x] |
-| 22 | FR-035 | 포맷 유틸 | src/lib/utils/format.ts | formatMoney, formatPercent 등 | 통화/퍼센트/시간 포맷 | [x] |
+| 22 | FR-035 | 포맷 유틸 | src/lib/utils/format.ts | `formatMoney`, `formatMoneyPlain`, `formatPercent`, `formatDateTime`, `formatAgo`, `formatErrorMessage`, `formatAmount(value, ticker)`, `formatSignedAmount(value, ticker)` | 통화/퍼센트/시간 포맷. `formatAmount`/`formatSignedAmount`는 ticker 접미사(.KS/.KQ)로 KRW/USD 자동 판단 | [x] |
+| 23 | FR-040 | 통화 셀렉터 | src/components/AppHeader.svelte | AppHeader (인라인) | ALL/KRW/USD 버튼 그룹, `currencyFilter.set(c)`. 별도 CurrencySelector.svelte 없음 | [x] |
+| 24 | FR-040 | 통화 스토어 | src/stores/currency.ts | `currencyFilter`, `currencySymbol`, `showAmount`, `tickerCurrency`, `matchesCurrency` | localStorage(`gant_currency`) 동기화, derived stores로 심볼/표시여부 계산 | [x] |
+| 25 | FR-040 | 통화 기반 포맷 | src/lib/utils/format.ts | `formatAmount(value, ticker)`, `formatSignedAmount(value, ticker)` | ticker 접미사로 KRW(₩, 소수점 0)/USD($, 소수점 2) 자동 판단. Dashboard/Positions/TradeDetail 전체 적용. 로컬 `formatAmount` 중복 제거 | [x] |
+| 26 | FR-045 | 대시보드 총손익 | src/routes/Dashboard.svelte | fetchMetrics | `total_realized_pnl` + `total_unrealized_pnl` 표시, `showAmount` 기반 금액/퍼센트 전환 | [x] |
+| 27 | FR-046 | Closed 포지션 탭 | src/routes/Positions.svelte | `tab: "active" \| "closed"` | active/closed 탭 분리, `ClosedPosition` 타입(outcome, currency, opened_at, closed_at) | [x] |
+| 28 | FR-046 | Closed 포지션 API | src/lib/api/endpoints.ts | `fetchPositionsClosed` | `GET /positions/closed` 호출 (별도 엔드포인트) | [x] |
+| 29 | FR-048 | History 뱃지 동적 색상 | src/routes/TradeDetail.svelte | `getDecisionClass(value)` | BUY/매수→`badge-gain`, SELL/매도→`badge-loss`, HOLD/관망→`badge-muted` | [x] |
+| 30 | FR-049 | 회고 페이지 | src/routes/Reflections.svelte | Reflections | win/loss 필터(`setFilter` — 전환 시 배열+cursor 초기화), cursor 페이지네이션(`hasMore`+더보기), `marked`+`DOMPurify` 마크다운 렌더링, 아코디언 확장 | [x] |
+| 31 | FR-049 | 회고 API | src/lib/api/endpoints.ts | `fetchReflections(limit, outcome?, cursor?)` | `GET /reflections?limit=&outcome=&cursor=` | [x] |
+| 32 | FR-049 | 네비게이션 업데이트 | src/components/BottomNav.svelte | navItems 배열 | "회고" 탭 추가 (`route: "/reflections"`, SVG 아이콘) — 6탭 완성 | [x] |
 
 ---
 
@@ -526,7 +573,7 @@ api_integration:
 1. **Scaffold**: Vite + Svelte + TypeScript + vite-plugin-pwa
 2. **Styles**: prototype.css 이식 (다크 테마, Pretendard)
 3. **API Client + Stores**: client.ts (캐싱/인증) + auth/tickerNames/ui stores
-4. **Routes + Pages**: 10개 라우트 + svelte-spa-router
+4. **Routes + Pages**: 11개 라우트 (10 페이지 + NotFoundRedirect) + svelte-spa-router
 5. **Dashboard**: 6개 API 병렬 호출 + KPI + 큐 + 활동
 6. **Schedules CRUD**: 자동완성 + 모달 + 스와이프 삭제
 7. **TradeDetail**: Canvas OHLC 차트 + 마크다운 리포트
@@ -634,8 +681,8 @@ styling_convention:
 - marked + DOMPurify로 마크다운 리포트 안전 렌더링
 
 ### Known Issues
-- AppHeader 네비게이션의 "검색" 링크(`/search`)가 라우트 미등록 → NotFound → `/` 리다이렉트
-- Dashboard ScheduleSummaryBanner 클릭(`/archive`)도 라우트 미등록 → NotFound → `/` 리다이렉트
+- ~~AppHeader 네비게이션의 "검색" 링크~~ → **해결됨**: AppHeader는 로고 + 통화 셀렉터만 표시 (FR-040)
+- Dashboard ScheduleSummaryBanner 클릭(`/archive`)이 라우트 미등록 → NotFound → `/` 리다이렉트
 
 ### Assumptions
 - **Confirmed**: 백엔드 API가 안정적이고 arch-be.md와 일치
@@ -681,5 +728,5 @@ styling_convention:
 | Item           | Content                                      |
 | -------------- | -------------------------------------------- |
 | Generated      | 2026-02-15                                   |
-| Last synced    | 2026-02-20 (reverse — code-based full sync)  |
-| Analysis scope | `apps/web/src/` (10 routes, 3 components, 6 lib/store files) |
+| Last synced    | 2026-02-24 (코드 전수 검증 + 버그 수정 반영 — formatAmount/formatSignedAmount 공용화, KRW 통화 전체 적용, Reflections 필터 리셋, console.log 삭제) |
+| Analysis scope | `apps/web/src/` (11 routes, 3 components, 8 lib/store files) |

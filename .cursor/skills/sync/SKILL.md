@@ -2,9 +2,9 @@
 id: sync
 name: sync
 description: |
- Synchronize trace/enhancement results to arch document.
- Filters design-impacting changes and updates arch.md.
- Triggers: sync, synchronize
+  Synchronize trace/enhancement results to arch document.
+  Filters design-impacting changes and updates arch.md.
+  Triggers: sync, synchronize
 user-invocable: true
 version: 2.0.0
 triggers: ["sync", "synchronize", "design sync"]

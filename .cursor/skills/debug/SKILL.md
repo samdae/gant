@@ -2,9 +2,9 @@
 id: debug
 name: debug
 description: |
- Systematic bug fixing with direct code execution.
- Cross-references error with design flow to find root cause.
- Triggers: debug, fix, bugfix
+  Systematic bug fixing with direct code execution.
+  Cross-references error with design flow to find root cause.
+  Triggers: debug, fix, bugfix
 user-invocable: true
 version: 2.0.0
 triggers: ["debug", "fix", "bugfix", "error fix"]

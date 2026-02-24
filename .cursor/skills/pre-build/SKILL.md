@@ -2,9 +2,9 @@
 id: pre-build
 name: pre-build
 description: |
- Verify implementation readiness before build.
- Checks external services, infrastructure, business logic, mock data.
- Triggers: pre-build, prepare, ready check
+  Verify implementation readiness before build.
+  Checks external services, infrastructure, business logic, mock data.
+  Triggers: pre-build, prepare, ready check
 user-invocable: true
 version: 1.0.0
 triggers: ["pre-build", "prepare", "ready"]

@@ -1,7 +1,7 @@
-# Backend Design Doc: TradingAgents Features (FR-013~037)
+# Backend Design Doc: TradingAgents Features (FR-013~050)
 
 > Created: 2026-02-11
-> Updated: 2026-02-20
+> Updated: 2026-02-24
 > Service: tradingagents
 > Type: Backend
 > Requirements document: docs/tradingagents/spec.md
@@ -11,7 +11,7 @@
 
 ### Goal
 
-기존 TradingAgents 멀티에이전트 분석 파이프라인에 **영속 메모리(Hybrid RAG)**, **가상 매매 검증**, **스케줄 기반 자동화**를 추가하고, **Postgres 기반 데이터 저장**, **반성 집중화(반성에이전트 1곳)**, **요약에이전트**를 도입하여, AI 분석의 정확도를 정량적으로 추적·학습하는 자기 개선 시스템으로 진화시킨다.
+기존 TradingAgents 멀티에이전트 분석 파이프라인에 **영속 메모리(Hybrid RAG)**, **가상 매매 검증**, **스케줄 기반 자동화**를 추가하고, **Postgres 기반 데이터 저장**, **반성 집중화(반성에이전트 1곳)**, **요약에이전트**를 도입하여, AI 분석의 정확도를 정량적으로 추적·학습하는 자기 개선 시스템으로 진화시킨다. 추가로 **스케줄 테이블 재설계(7테이블)**, **통화 지원(KRW/USD)**, **자동 청산 메커니즘**, **시장별 스케줄링**, **Codex LLM 프로바이더**를 도입한다.
 
 ### Non-goals
 
@@ -51,13 +51,23 @@
 - ~~FR-027: 파일명 변경~~ → Superseded by FR-030
 - ~~FR-028: 저장 경로 명칭 변경~~ → Superseded by FR-030
 - FR-029: 기억 오염 방지 + 메타데이터 강화 — outcome/market/sector/industry 태깅
-- **FR-030: Postgres 전환 — 파일 기반 저장 전면 폐기, 8테이블 + GIN FTS**
+- **FR-030: Postgres 전환 — 파일 기반 저장 전면 폐기, 7테이블 + GIN FTS**
 - **FR-031: 반성 집중화 — 반성에이전트 1곳, 청산 시에만**
 - **FR-032: 요약에이전트 — 개별 요약 컬럼**
 - **FR-033: BM25 엔진 교체 — rank_bm25 → Postgres FTS (GIN)**
 - **FR-035: Svelte SPA 프론트엔드**
 - **FR-036: 시장 데이터 중복 실행 방지**
 - **FR-037: 에이전트 이벤트 영속화**
+- **FR-038: DB 리셋/마이그레이션 스크립트**
+- **FR-039: 스케줄 테이블 재설계 — schedules 제거, 7테이블**
+- **FR-040: 통화(Currency) 전면 지원**
+- **FR-041: 포지션별 독립 자금**
+- **FR-042: 자동 청산 메커니즘 — stop_loss/target + ±30% 폴백**
+- **FR-043: 매매 시점/가격 보정 — yfinance 데이터 기준일**
+- **FR-044: 스케줄러 시장별 실행 시간 — CronTrigger**
+- **FR-045: 총손익 = 실현 + 미실현**
+- **FR-047: Win/Loss 판정 기준 통일**
+- **FR-050: Codex(GPT-5.3) LLM Provider**
 
 ### Out of scope
 
@@ -152,6 +162,12 @@ dependencies:
     purpose: "JSON 구조화 로깅 포매터"
     status: "approved"
 
+  # NEW — FR-050: Codex LLM Provider
+  - name: "oauth-codex"
+    version: "latest"
+    purpose: "OpenAI Codex OAuth PKCE 인증 + LLM 호출"
+    status: "approved"
+
   # REMOVED
   # - rank-bm25: Postgres FTS로 교체 (FR-033)
   # - sqlite3: Postgres로 교체 (FR-030)
@@ -165,7 +181,7 @@ dependencies:
 
 | Service / Module | Responsibility | Change type |
 |---|---|---|
-| `tradingagents/storage/` | Postgres DB 연결, Repository 패턴 CRUD (8 repos) | **new** (FR-030) |
+| `tradingagents/storage/` | Postgres DB 연결, Repository 패턴 CRUD (7 repos) | **new** (FR-030, FR-039) |
 | `tradingagents/agents/summary_agent.py` | 12에이전트 raw → 개별 요약 컬럼 생성 | **new** (FR-032) |
 | `tradingagents/memory/` | Hybrid RAG (Postgres FTS + ChromaDB), RRF | modify (FR-033) |
 | `tradingagents/graph/reflection.py` | 반성 집중화: 5개 → 1개 메서드 | modify (FR-031) |
@@ -184,42 +200,59 @@ dependencies:
 | `apps/web/` | Svelte SPA 프론트엔드 | **new** (FR-035) |
 | `pyproject.toml` | chromadb, apscheduler, fastapi, uvicorn, psycopg | modify |
 | ~~`tradingagents/virtual_trade/report_store.py`~~ | ~~JSON array append~~ | **삭제** (FR-032로 대체) |
+| `tradingagents/llm_clients/codex_client.py` | ChatCodex(BaseChatModel) LangChain 래퍼 — OAuth PKCE | **new** (FR-050) |
+| `tradingagents/llm_clients/factory.py` | LLM 팩토리에 `"codex"` 프로바이더 추가 | modify (FR-050) |
+| `scripts/reset_db.py` | PostgreSQL FK 역순 DROP + ChromaDB 컬렉션 삭제 + init_schema() | **new** (FR-038) |
+| ~~`tradingagents/storage/schedule_repo.py`~~ | ~~ScheduleRepository~~ | **삭제** (FR-039, schedule_config_repo+schedule_job_repo로 이관) |
 
 ### Data
 
-#### Postgres Schema — FR-030
+#### Postgres Schema — FR-030, FR-039~044
 
 > 전체 DDL은 `tradingagents/storage/database.py` 참조
+> **FR-039**: `schedules` 테이블 제거, 8→7테이블. `schedule_configs` 확장, `schedule_jobs` FK 통합
 
 ```sql
--- ① schedules: 분석 실행 단위
-CREATE TABLE schedules (
-    id              BIGSERIAL PRIMARY KEY,
-    ticker          TEXT    NOT NULL,
-    interval_days   INTEGER NOT NULL DEFAULT 1,
-    scheduled_cycle INTEGER NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX idx_schedules_ticker ON schedules(ticker);
-
--- ② schedule_configs: 스케줄 설정 영속화
+-- ① schedule_configs: 티커별 설정 (기존 + 확장)
 CREATE TABLE schedule_configs (
-    id            BIGSERIAL PRIMARY KEY,
-    ticker        TEXT    NOT NULL UNIQUE,
-    interval_days INTEGER NOT NULL DEFAULT 1,
-    last_data_date DATE,
-    display_name  TEXT,
-    created_at    TIMESTAMPTZ NOT NULL
+    id              BIGSERIAL PRIMARY KEY,
+    ticker          TEXT    NOT NULL UNIQUE,
+    interval_days   INTEGER NOT NULL DEFAULT 1,
+    current_cycle   INTEGER NOT NULL DEFAULT 0,        -- [NEW] 원자적 사이클 관리
+    currency        TEXT    NOT NULL DEFAULT 'USD',     -- [NEW] KRW | USD
+    initial_capital DOUBLE PRECISION NOT NULL DEFAULT 5000, -- [NEW] KRW=5000000, USD=5000
+    market          TEXT    NOT NULL DEFAULT 'us',      -- [NEW] us | kr | crypto
+    display_name    TEXT,
+    last_data_date  DATE,
+    created_at      TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX idx_schedule_configs_ticker ON schedule_configs(ticker);
 
--- ③ positions: 매매 사이클 (진입 → 청산)
+-- [REMOVED] schedules 테이블 — schedule_jobs가 흡수
+
+-- ② schedule_jobs: 사이클별 실행 기록 (schedules + schedule_jobs 통합)
+CREATE TABLE schedule_jobs (
+    id                 BIGSERIAL PRIMARY KEY,
+    schedule_config_id BIGINT  NOT NULL REFERENCES schedule_configs(id), -- [CHANGED]
+    scheduled_cycle    INTEGER NOT NULL,               -- [NEW] schedules에서 흡수
+    status             TEXT    NOT NULL,
+    error_type         TEXT,
+    error_message      TEXT,
+    error_detail       TEXT,
+    created_at         TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_schedule_jobs_config ON schedule_jobs(schedule_config_id);
+
+-- ③ positions: 포지션 (기존 + 통화/청산 전략)
 CREATE TABLE positions (
     id          BIGSERIAL PRIMARY KEY,
     ticker      TEXT    NOT NULL,
     status      TEXT    NOT NULL DEFAULT 'active',
     shares      DOUBLE PRECISION NOT NULL DEFAULT 0,
     avg_cost    DOUBLE PRECISION,
+    currency    TEXT    NOT NULL DEFAULT 'USD',         -- [NEW] FR-040
+    stop_loss   DOUBLE PRECISION,                      -- [NEW] FR-042
+    target      DOUBLE PRECISION,                      -- [NEW] FR-042
     return_pct  DOUBLE PRECISION,
     opened_at   TIMESTAMPTZ NOT NULL,
     closed_at   TIMESTAMPTZ,
@@ -227,10 +260,10 @@ CREATE TABLE positions (
 );
 CREATE INDEX idx_positions_ticker_status ON positions(ticker, status);
 
--- ④ reports: 에이전트별 요약 (스케줄마다 1건) — FR-032
+-- ④ reports: 분석 리포트 (FK 변경)
 CREATE TABLE reports (
     id                                BIGSERIAL PRIMARY KEY,
-    schedule_id                       BIGINT NOT NULL REFERENCES schedules(id),
+    schedule_job_id                   BIGINT NOT NULL REFERENCES schedule_jobs(id), -- [CHANGED]
     position_id                       BIGINT REFERENCES positions(id),
     market_report                     TEXT,
     fundamentals_report               TEXT,
@@ -252,10 +285,10 @@ CREATE TABLE reports (
     pipeline_strategy                 TEXT,
     created_at                        TIMESTAMPTZ NOT NULL
 );
-CREATE INDEX idx_reports_schedule ON reports(schedule_id);
+CREATE INDEX idx_reports_job ON reports(schedule_job_id);
 CREATE INDEX idx_reports_position ON reports(position_id);
 
--- ⑤ trades: 개별 BUY/SELL 액션
+-- ⑤ trades: 매매 기록 (기존 + 통화)
 CREATE TABLE trades (
     id          BIGSERIAL PRIMARY KEY,
     position_id BIGINT NOT NULL REFERENCES positions(id),
@@ -263,12 +296,13 @@ CREATE TABLE trades (
     action      TEXT    NOT NULL,
     shares      DOUBLE PRECISION NOT NULL,
     price       DOUBLE PRECISION NOT NULL,
-    executed_at TIMESTAMPTZ NOT NULL
+    currency    TEXT    NOT NULL DEFAULT 'USD',         -- [NEW] FR-040
+    executed_at TIMESTAMPTZ NOT NULL                   -- [CHANGED] → yfinance 데이터 기준일
 );
 CREATE INDEX idx_trades_position ON trades(position_id);
 CREATE INDEX idx_trades_report ON trades(report_id);
 
--- ⑥ reflections: 청산 시 반성에이전트 산출물 — FR-031
+-- ⑥ reflections: 회고 (변경 없음)
 CREATE TABLE reflections (
     id          BIGSERIAL PRIMARY KEY,
     position_id BIGINT NOT NULL REFERENCES positions(id),
@@ -283,23 +317,10 @@ CREATE TABLE reflections (
 );
 CREATE INDEX idx_reflections_position ON reflections(position_id);
 
--- ⑦ schedule_jobs: 스케줄 실행 이력 (상태 + 에러)
-CREATE TABLE schedule_jobs (
-    id            BIGSERIAL PRIMARY KEY,
-    schedule_id   BIGINT NOT NULL REFERENCES schedules(id),
-    status        TEXT    NOT NULL,
-    error_type    TEXT,
-    error_message TEXT,
-    error_detail  TEXT,
-    created_at    TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX idx_schedule_jobs_schedule ON schedule_jobs(schedule_id);
-
--- ⑧ schedule_job_events: 에이전트 진행 이벤트 — FR-037
+-- ⑦ schedule_job_events: 에이전트 활동 로그 (FK 정리)
 CREATE TABLE schedule_job_events (
     id              BIGSERIAL PRIMARY KEY,
     schedule_job_id BIGINT REFERENCES schedule_jobs(id),
-    schedule_id     BIGINT REFERENCES schedules(id),
     ticker          TEXT,
     agent           TEXT,
     status          TEXT,
@@ -309,12 +330,11 @@ CREATE TABLE schedule_job_events (
     created_at      TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX idx_schedule_job_events_job ON schedule_job_events(schedule_job_id);
-CREATE INDEX idx_schedule_job_events_schedule ON schedule_job_events(schedule_id);
 CREATE INDEX idx_schedule_job_events_ticker ON schedule_job_events(ticker);
 CREATE INDEX idx_schedule_job_events_created_at ON schedule_job_events(created_at);
 CREATE UNIQUE INDEX idx_schedule_job_events_unique ON schedule_job_events(schedule_job_id, agent);
 
--- ⑨ FTS: Postgres GIN 인덱스 (BM25 검색용) — FR-033
+-- ⑧ FTS: Postgres GIN 인덱스 (BM25 검색용) — FR-033
 CREATE INDEX idx_reflections_search
     ON reflections
     USING GIN (to_tsvector('simple', coalesce(reflection, '') || ' ' || coalesce(key_lessons, '')));
@@ -323,18 +343,17 @@ CREATE INDEX idx_reflections_search
 > 제외 컬럼: `sentiment_report` (시의성), `news_report` (bull/bear 논거에 반영)
 > 각 요약 컬럼 목표: 200~400 토큰
 
-#### 테이블 관계
+#### 테이블 관계 (FR-039 이후)
 
 ```
-schedule_configs ──── (ticker 기준 1:N) ──── schedules
-schedules 1──N schedule_jobs 1──N schedule_job_events
-schedules 1──1 reports N──1 positions 1──N trades
-                │                        │
-                └── report_id ←──────── trades
-                                positions 1──0..1 reflections
+schedule_configs ─── 1:N ─── schedule_jobs ─── 1:N ─── schedule_job_events
+                             schedule_jobs ─── 1:1 ─── reports
+                                                       reports ──N:1── positions ─── 1:N ─── trades
+                                                                        positions ─── 1:0..1 ── reflections
+                                                       reports ──1:N── trades (report_id FK)
 ```
 
-#### 폐기 대상 (FR-030)
+#### 폐기 대상 (FR-030, FR-039)
 
 | 기존 | 대체 |
 |------|------|
@@ -345,14 +364,18 @@ schedules 1──1 reports N──1 positions 1──N trades
 | `memory/trade/{TICKER}/report.json` | Postgres `reports` |
 | `memory/archive/{TICKER}/{n}/` | `positions.status = 'closed'` |
 | `rank_bm25` 라이브러리 | Postgres GIN FTS |
+| `schedules` 테이블 | `schedule_jobs`가 흡수 (FR-039) |
+| `schedule_repo.py` | `schedule_config_repo.py` + `schedule_job_repo.py`로 이관 (FR-039) |
 
 #### Directory Structure (Runtime)
 
 ```
-Postgres DB (Supabase / Docker)  ← 전체 데이터
+Postgres DB (Supabase / Docker)  ← 7 테이블 (FR-039: schedules 제거)
 apps/web/dist/                   ← Svelte SPA 빌드 결과
 packages/tradingagents/
   └── memory/chroma/             ← ChromaDB vector index
+scripts/
+  └── reset_db.py                ← DB 리셋 스크립트 (FR-038)
 ```
 
 ---
@@ -393,15 +416,15 @@ packages/tradingagents/
 |---|----------|---------|------|-------|--------|--------|------|
 | 24 | FR-030 | Storage 모듈 init | `storage/__init__.py` | — | — | 새 모듈 생성 | [x] |
 | 25 | FR-030 | Database 연결 관리 | `storage/database.py` | `Database` | `__init__`, `init_schema`, `get_connection`, `execute_in_transaction`, `close` | Postgres 연결 + per-thread pool + schema 초기화 | [x] |
-| 26 | FR-030 | ScheduleRepository | `storage/schedule_repo.py` | `ScheduleRepository` | `create`, `get_by_ticker`, `get_latest_cycle` | schedules CRUD | [x] |
-| 27 | FR-030 | ScheduleConfigRepository | `storage/schedule_config_repo.py` | `ScheduleConfigRepository` | `create`, `upsert`, `get_all`, `get_by_ticker`, `delete`, `update_last_data_date`, `get_all_display_names` | schedule_configs CRUD + UPSERT | [x] |
+| 26 | ~~FR-030~~ | ~~ScheduleRepository~~ | ~~`storage/schedule_repo.py`~~ | — | — | **삭제 (FR-039)**: schedule_config_repo + schedule_job_repo로 이관 | [x] |
+| 27 | FR-030 | ScheduleConfigRepository | `storage/schedule_config_repo.py` | `ScheduleConfigRepository` | `create`, `upsert`, `get_all`, `get_by_ticker`, `delete`, `update_last_data_date`, `get_all_display_names`, `update_display_name`, `increment_cycle`, `get_current_cycle` | schedule_configs CRUD + UPSERT + cycle 관리 (FR-039) | [x] |
 | 28 | FR-030 | PositionRepository | `storage/position_repo.py` | `PositionRepository` | `create`, `get_active`, `update_shares`, `close_position`, `get_by_id` | positions CRUD + status 전환 | [x] |
 | 29 | FR-030 | ReportRepository | `storage/report_repo.py` | `ReportRepository` | `create`, `get_by_position`, `get_by_schedule` | reports INSERT (pipeline_strategy JSON 직렬화 포함) | [x] |
 | 30 | FR-030 | TradeRepository | `storage/trade_repo.py` | `TradeRepository` | `create`, `get_by_position`, `get_history`, `get_cash_balance` | trades CRUD + 가용 현금 계산 | [x] |
 | 31 | FR-030 | ReflectionRepository | `storage/reflection_repo.py` | `ReflectionRepository` | `create`, `get_by_id`, `get_by_position`, `search_fts` | reflections + Postgres FTS 검색 (`ts_rank_cd`) | [x] |
-| 32 | FR-030 | ScheduleJobRepository | `storage/schedule_job_repo.py` | `ScheduleJobRepository` | `create`, `update_status`, `get_latest_by_schedule`, `get_latest_by_ticker`, `has_done_today_for_ticker` | schedule_jobs 상태 관리 + 재시도 | [x] |
+| 32 | FR-030 | ScheduleJobRepository | `storage/schedule_job_repo.py` | `ScheduleJobRepository` | `create`, `update_status`, `get_latest_by_config`, `get_latest_by_ticker`, `list_by_config`, `update_latest_by_config`, `has_done_today_for_ticker` | schedule_jobs 상태 관리 + 재시도 (FR-039: schedule_config_id 기반) | [x] |
 | 33 | FR-037 | ScheduleEventRepository | `storage/schedule_event_repo.py` | `ScheduleEventRepository` | `create`, `list_by_ticker`, `list_latest_by_ticker`, `list_by_schedule_id` | schedule_job_events UPSERT (agent 기준 유니크) | [x] |
-| 34 | FR-031 | 반성 집중화 | `graph/reflection.py` | `Reflector` | `reflect_on_position` | 5개 `reflect_on_*` 제거 → 1개 메서드. DB에서 reports+trades 조회 → 반성문 작성 | [x] |
+| 34 | FR-031 | 반성 집중화 | `graph/reflection.py` | `Reflector` | `reflect_on_position` | 레거시 7개 메서드 완전 삭제 (`reflect_bull_researcher` 등). 1개 메서드만 존재. DB에서 reports+trades 조회 → 반성문 작성 | [x] |
 | 35 | FR-031 | reflect_and_remember 변경 | `graph/trading_graph.py` | `TradingAgentsGraph` | `reflect_and_remember` | 5개 에이전트별 반성 → Reflector.reflect_on_position(position_id) 1회 호출 | [x] |
 | 36 | FR-032 | 요약에이전트 | `agents/summary_agent.py` | `SummaryAgent` | `__init__`, `summarize`, `_summarize_component` | 12에이전트 raw + PA 의견 → 13개 요약 생성. quick_think_llm 사용 | [x] |
 | 37 | FR-033 | Postgres FTS 교체 | `memory/hybrid_memory.py` | `HybridMemory` | `get_memories`, `add_situations`, `_fts_retrieve` | rank_bm25 제거, Postgres FTS 쿼리로 교체. JSONL 제거 | [x] |
@@ -424,8 +447,39 @@ packages/tradingagents/
 | 54 | FR-035 | Frontend SPA | `apps/web/` | — | — | Svelte 4 + TypeScript + Vite + svelte-spa-router | [x] |
 | 55 | FR-037 | 이벤트 영속화 broadcast | `api/app.py` | — | `broadcast_status` | WS 송신 + schedule_job_events DB 저장 동시 수행 | [x] |
 
-> **경로 접두사**: # 1~53 파일 경로는 `tradingagents/` 하위
-> **Impl**: `[ ]` = 미구현, `[x]` = 구현 완료
+### Phase 3: 구현 완료 (FR-038~050)
+
+| # | Spec Ref | Feature | File | Class | Method | Action | Impl |
+|---|----------|---------|------|-------|--------|--------|------|
+| 56 | FR-038 | DB 리셋 스크립트 | `scripts/reset_db.py` | — | `main()`, `reset_postgres()`, `reset_chromadb()` | FK 역순 DROP(`DROP_ORDER` 8테이블) + ChromaDB `shutil.rmtree` + `Database.init_schema()`. `--confirm` 필수, `--keep-chroma` 옵션 | [x] |
+| 57 | FR-039 | schedules 테이블 제거 | `storage/database.py` | `Database` | `init_schema` | CREATE TABLE schedules 제거, schedule_configs에 `current_cycle`/`currency`/`initial_capital`/`market` 추가 | [x] |
+| 58 | FR-039 | schedule_repo 삭제 | ~~`storage/schedule_repo.py`~~ | — | — | 파일 삭제, 로직을 config_repo + job_repo로 이관 | [x] |
+| 59 | FR-039 | schedule_config_repo 확장 | `storage/schedule_config_repo.py` | `ScheduleConfigRepository` | `increment_cycle`, `get_current_cycle` | `current_cycle` 원자적 증가 (`UPDATE ... RETURNING`), MAX() 쿼리 제거 | [x] |
+| 60 | FR-039 | schedule_job_repo 확장 | `storage/schedule_job_repo.py` | `ScheduleJobRepository` | `create`, `get_latest_by_config`, `list_by_config`, `update_latest_by_config` | `schedule_config_id` + `scheduled_cycle` 파라미터, config 기반 조회 메서드 | [x] |
+| 61 | FR-039 | FK 변경 — reports | `storage/report_repo.py` | `ReportRepository` | `create` | `schedule_id` → `schedule_job_id` FK 파라미터 | [x] |
+| 62 | FR-039 | FK 변경 — events | `storage/schedule_event_repo.py` | `ScheduleEventRepository` | `create` | `schedule_id` 컬럼 제거, `schedule_job_id`만 사용 | [x] |
+| 63 | FR-039 | Scheduler 리팩토링 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `enqueue_schedule`, `_run_analysis_cycle` | `config_repo.increment_cycle(ticker)` → `job_repo.create(config_id, cycle, ...)`, 트랜잭션 내 schedule_job_id 기반 | [x] |
+| 64 | FR-039 | Routes 리팩토링 | `api/routes.py` | — | 전체 | `schedule_id` 참조를 `schedule_job_id`/`schedule_config_id`로 변경, JOIN 쿼리 수정 | [x] |
+| 65 | FR-040 | 통화 자동 감지 | `storage/schedule_config_repo.py` | — | `detect_ticker_defaults(ticker)` | 티커 접미사 기반 `(currency, initial_capital, market)` 튜플 반환. `.KS`/`.KQ` → `("KRW", 5_000_000, "kr")`, 기본 → `("USD", 5_000, "us")` | [x] |
+| 66 | FR-040/041 | 통화별 cash 계산 | `storage/trade_repo.py` | `TradeRepository` | `get_cash_balance(ticker, initial_capital)` | `WHERE p.ticker = %s AND p.status = 'active'` — active position의 BUY/SELL 합산으로 가용 현금 계산 | [x] |
+| 67 | FR-040 | PA 통화 인식 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_run_analysis_cycle_impl` | `cfg.get("currency")`, `cfg.get("initial_capital")` → PA context에 전달, `trade_repo.create(currency=ticker_currency)` | [x] |
+| 68 | FR-041 | 독립 자금 모델 | `virtual_trade/portfolio_agent.py` | `PortfolioAgent` | `_get_cash_available` | `trade_repo.get_cash_balance(ticker, initial_capital)` — active position 기준 격리, 이전 포지션 trades 미포함 | [x] |
+| 69 | FR-042 | 자동 청산 로직 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_run_analysis_cycle_impl` (인라인) | `return_pct` vs `sl_pct`/`tgt_pct` (±30% 폴백) 체크 → `trade_manager.close_all_positions` + `reflector.reflect_on_position` | [x] |
+| 70 | FR-042 | PA stop_loss/target 파싱 | `virtual_trade/portfolio_agent.py` | `PortfolioAgent` | `_parse_decision` | `strategy_update.stop_loss`/`target` 파싱 ($ 제거, float 변환). 스케줄러에서 `position_repo.update_stop_loss_target()` 호출. stop_loss ≥ target 역전 시 무시 (스케줄러 검증). PA 프롬프트에서 MODIFY 액션 제거 (BUY/SELL/HOLD만) | [x] |
+| 71 | FR-042 | positions stop_loss/target | `storage/position_repo.py` | `PositionRepository` | `update_stop_loss_target(position_id, stop_loss, target)` | positions 테이블 stop_loss/target 업데이트 | [x] |
+| 72 | FR-043 | 매매 가격 보정 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_get_latest_close(ticker, job_id, retries=2, retry_delay=30)` | `(price, data_date_iso)` 튜플 반환. 항상 최신 확정 종가(`history["Close"].iloc[-1]`) 사용. 2회 재시도. `_get_current_price()` 레거시 래퍼 삭제됨 | [x] |
+| 73 | FR-043 | executed_at 주입 | `storage/trade_repo.py` | `TradeRepository` | `create(..., executed_at=trade_date)` | `executed_at` 파라미터로 yfinance 데이터 기준일 주입. None이면 `datetime.now()` 폴백 | [x] |
+| 73-1 | FR-043 | opened_at 주입 | `storage/position_repo.py` | `PositionRepository` | `create(..., opened_at=date)` | `opened_at` 파라미터로 yfinance 데이터 기준일 주입. None이면 `datetime.now()` 폴백. `trade_manager.open_position()`에서 `date` 전달 | [x] |
+| 74 | FR-044 | CronTrigger 변경 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_make_cron_trigger(market)` (staticmethod) | `kr` → `CronTrigger(hour=16, minute=30, timezone="Asia/Seoul")`, `us/기타` → `CronTrigger(hour=17, minute=0, timezone="US/Eastern")` | [x] |
+| 75 | FR-045 | 총손익 API | `api/routes.py` | — | `get_metrics` | `total_realized_pnl` = closed positions의 `SELL합-BUY합`, `total_unrealized_pnl` = active positions의 `(current_price-avg_cost)*shares`, `total_pnl` = 합산. 통화 필터 없음(FE에서 처리) | [x] |
+| 76 | FR-046 | Closed positions API | `api/routes.py` | — | `get_positions_closed` | `GET /positions/closed` — `positions WHERE status='closed'` + `outcome` 계산 (`return_pct >= 0` → win) | [x] |
+| 77 | FR-047 | Win/Loss 판정 통일 | `graph/reflection.py:112`, `api/routes.py:518` | — | — | `return_pct >= 0` → `"win"`, `< 0` → `"loss"` 양쪽 일원화 | [x] |
+| 78 | FR-050 | Codex LLM 클라이언트 | `llm_clients/codex_client.py` | `ChatCodex(BaseChatModel)`, `CodexClient(BaseLLMClient)` | `_generate`, `bind_tools`, `_convert_messages` | `oauth_codex.Client` → `_engine.responses.create()`. Responses API + tool calling 지원. `gpt-5.3-codex` 단일 모델 | [x] |
+| 79 | FR-050 | Factory 확장 | `llm_clients/factory.py` | — | `create_llm_client` | `provider == "codex"` → `CodexClient(model, ...)` 분기 | [x] |
+| 80 | FR-050 | Config 확장 | `default_config.py` | — | — | `LLM_PROVIDER=codex` → `deep_think_llm`/`quick_think_llm` 모두 `"gpt-5.3-codex"`로 설정 | [x] |
+
+> **경로 접두사**: # 1~55, 56~80 파일 경로는 `tradingagents/` 하위 (scripts/ 제외)
+> **Impl**: `[x]` = 구현 완료
 
 ---
 
@@ -479,7 +533,7 @@ packages/tradingagents/
    - broadcast_status: WS + schedule_job_events DB 동시 저장
 
 9. **Step 9: Frontend SPA (FR-035)**
-   - Svelte 4 + svelte-spa-router + 9개 페이지
+   - Svelte 4 + svelte-spa-router + 11개 라우트 (10개 페이지 + NotFoundRedirect)
 
 10. **Step 10: 중복 실행 방지 (FR-036)**
     - schedule_configs.last_data_date vs yfinance 최신 거래일 비교
@@ -493,12 +547,18 @@ packages/tradingagents/
 ```
 ┌─ 스케줄 트리거 ──────────────────────────────────────────────────────────┐
 │                                                                            │
-│  ScheduleRepository.create(ticker, cycle)                                  │
-│  ScheduleJobRepository.create(schedule_id, 'pending')                      │
+│  schedule_configs.current_cycle += 1 (원자적 증가, FR-039)                │
+│  ScheduleJobRepository.create(schedule_config_id, cycle, 'pending')        │
 │                                                                            │
 │  0. 중복 실행 방지 (FR-036)                                               │
 │     schedule_configs.last_data_date vs yfinance 최신 거래일                │
 │     → 동일하면 'skipped' 처리, 종료                                       │
+│                                                                            │
+│  0.5. 자동 청산 체크 (FR-042)                                             │
+│     _get_latest_close(ticker) → (price, date) (FR-043)                    │
+│     active position의 return_pct 계산                                     │
+│     → stop_loss/target 또는 ±30% 초과 시 PA 거치지 않고 즉시 전량 청산   │
+│     → 청산 처리 후 반성에이전트 실행, 분석 파이프라인은 스킵              │
 │                                                                            │
 │  1. G-ANT 분석 (12에이전트 파이프라인, 기존 그대로)                       │
 │     Market → Social → News → Fundamentals                                  │
@@ -511,9 +571,11 @@ packages/tradingagents/
 │  2. PA 판단 (deep_think_llm)                                              │
 │     ← final_state 읽기                                                     │
 │     ← PositionRepository.get_active(ticker) → current position            │
-│     ← TradeRepository.get_cash_balance(ticker) → 가용 현금                │
+│     ← TradeRepository.get_cash_balance(ticker, initial_capital) → 가용 현금│
 │     ← HybridMemory.get_memories(query) → RAG 검색 (있을 때만)            │
 │     → allocation_pct 기반 수량 계산 + 매매 결정                           │
+│     → strategy_update: stop_loss/target 파싱 (역전 시 무시)               │
+│     → PositionRepository.update_stop_loss_target() (트랜잭션 밖)         │
 │                                                                            │
 │  3. SummaryAgent.summarize(final_state, pa_opinion)                        │
 │     → 13개 요약 dict + decision_position/portfolio_action/pipeline_strategy│
@@ -526,8 +588,9 @@ packages/tradingagents/
 │  ═══ BEGIN TRANSACTION ═══                                                  │
 │  5. ScheduleJobRepository.update_status('done')                            │
 │  6. TradeManager.open_position / close_positions (매매가 있을 때만)        │
-│  7. ReportRepository.create(schedule_id, position_id, summaries)           │
-│  8. TradeRepository.create(position_id, report_id, action, shares, price) │
+│  7. ReportRepository.create(schedule_job_id, position_id, summaries)       │
+│  8. TradeRepository.create(position_id, report_id, action, shares, price, │
+│     currency=ticker_currency, executed_at=trade_date)                      │
 │  ═══ COMMIT ═══                                                            │
 │                                                                            │
 │  9. (청산 시, 트랜잭션 외부)                                              │
@@ -604,7 +667,7 @@ Reflector.reflect_on_position(position_id, db, ticker)
 |--------|------|------|-------------|
 | GET | `/health` | — | 헬스체크 (status, scheduler_running, queue_length, schedules_count, uptime) |
 | GET | `/queue` | — | 분석 큐 상태 (running, pending, total) |
-| GET | `/metrics` | — | 대시보드 지표 (positions, wins, losses, total_unrealized_pnl/return_pct) |
+| GET | `/metrics` | — | 대시보드 지표 (active/closed/wins/losses + total_realized_pnl + total_unrealized_pnl + total_pnl). 통화 필터 없음 — FE 클라이언트 사이드 필터링 (FR-045) |
 | GET | `/activity` | — | 최근 활동 피드 (?limit, ?since_hours, ?ticker) |
 | GET | `/schedules` | — | 스케줄 목록 (?cursor, ?limit) |
 | GET | `/schedules/summary` | — | 오늘 스케줄 실행 요약 (done/failed/skipped/running/pending) |
@@ -613,13 +676,14 @@ Reflector.reflect_on_position(position_id, db, ticker)
 | POST | `/schedules/{ticker}/retry` | Bearer | 실패 스케줄 재시도 |
 | GET | `/schedules/{ticker}/cycles` | — | 분석 사이클 이력 (?cursor, ?limit) |
 | GET | `/schedules/{ticker}/cycles/{id}/events` | — | 사이클별 에이전트 이벤트 |
-| GET | `/positions` | — | 포지션 목록 (?status, ?cursor, ?limit) |
+| GET | `/positions` | — | 포지션 목록 (?status 필터) |
 | GET | `/positions/{id}` | — | 포지션 상세 (trades + reports) |
 | GET | `/positions/market` | — | 활성 포지션 + yfinance 현재가 + PnL |
+| GET | `/positions/closed` | — | 청산 포지션 목록 (outcome, return_pct, currency 포함) (FR-046) |
 | GET | `/position/{id}/graph` | — | OHLC 일봉 차트 (?days, 인메모리 캐시: 당일 24h TTL / 과거 7d TTL) |
 | GET | `/reports` | — | 보고서 목록 (?ticker, ?position_id, ?cursor, ?limit) |
 | GET | `/reports/tickers` | — | 티커별 보고서 요약 |
-| GET | `/reflections` | — | 반성문 목록 (?outcome, ?cursor, ?limit) |
+| GET | `/reflections` | — | 반성문 목록 (?outcome, ?cursor, ?limit). FR-049 FE에서 사용 |
 | GET | `/search` | — | Hybrid RAG 검색 (?query, ?limit) |
 | GET | `/search/tickers` | — | Yahoo Finance 티커 검색 (?q) |
 | GET | `/tickers/names` | — | 티커 display_name 맵 |
@@ -649,7 +713,7 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 |----------|-------------|---------|
 | `TRADINGAGENTS_ADMIN_TOKEN` | WRITE 인증 토큰 (필수, 미설정 시 시작 차단) | — |
 | `TRADINGAGENTS_CORS_ORIGINS` | CORS 허용 도메인 (쉼표 구분, 비어있으면 `*`) | `""` |
-| `LLM_PROVIDER` | LLM 제공자 (`gemini-cli` / `antigravity`) | `gemini-cli` |
+| `LLM_PROVIDER` | LLM 제공자 (`gemini-cli` / `antigravity` / `codex`) | `gemini-cli` |
 | `SUPABASE_DB_URL` | Supabase Postgres 연결 URL | — |
 | `SUPABASE_DIRECT_URL` | DDL 실행용 Direct 연결 URL | — |
 | `POSTGRES_USER` / `PASSWORD` / `DB` / `HOST` / `PORT` | 로컬 Postgres 개별 설정 | — |
@@ -670,7 +734,7 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | 결정 | 선택 | 대안 (기각) | 근거 |
 |------|------|------------|------|
 | DB 엔진 | Postgres (Supabase 호환) | SQLite | 운영 환경 안정성, 동시 접근, 인프라 일원화 |
-| DB 접근 패턴 | Repository 패턴 (테이블별 클래스, 8개) | 단일 Database 래퍼 | SRP, 테스트 용이성, 향후 확장 |
+| DB 접근 패턴 | Repository 패턴 (테이블별 클래스, 7개) | 단일 Database 래퍼 | SRP, 테스트 용이성, 향후 확장 |
 | SQL 레이어 | Raw SQL (psycopg) | SQLAlchemy Core | 의존성 최소, 쿼리 단순 (<10 테이블) |
 | 반성 구조 | PA 1곳 집중 | 5에이전트 개별 반성 | LLM 호출 5→1, 데이터 오염↓, 비용↓ |
 | BM25 엔진 | Postgres GIN FTS | rank_bm25 + JSONL / SQLite FTS5 | 의존성↓, 인덱스 자동관리, DB 일원화 |
@@ -680,6 +744,11 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | ChromaDB 저장 | 트랜잭션 밖 별도 저장 | 트랜잭션 내 포함 | ChromaDB는 Postgres와 별도 엔진, 원자성 불가 |
 | Reflection 저장 | 트랜잭션 밖 실행 | 트랜잭션 내 포함 | 반성 실패가 매매 커밋을 롤백하면 안 됨 |
 | Frontend | Svelte 4 SPA (해시 라우팅) | React / Vue / SSR | 번들 크기 최소, 모바일 최적화, 단일 사용자 |
+| 자금 모델 | 포지션별 독립 자금 | 공유 자금 풀 | 분석 검증 시스템 (자동매매 아님), 포지션 간 간섭 제거 (FR-041) |
+| 자동 청산 | PA stop_loss/target 우선 + ±30% 폴백 | 고정 비율만 | PA의 전략적 판단 반영, 안전장치 이중화 (FR-042) |
+| 스케줄 테이블 | schedules 제거, 7테이블 | 기존 8테이블 유지 | schedules↔schedule_jobs 1:1 중복 제거, FK 단순화 (FR-039) |
+| 통화 처리 | 통화별 분리 (환율 변환 안 함) | 환율 변환 합산 | 환율 변동 리스크 제거, 단순성 (FR-040) |
+| 스케줄 타이밍 | CronTrigger 시장별 | IntervalTrigger 단순 간격 | 장마감 후 종가 확정 데이터 기반 분석 보장 (FR-044) |
 
 ### 리스크
 
@@ -747,7 +816,7 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | schedule_job_events (job_id, agent) UNIQUE | event INSERT 시 | ON CONFLICT DO UPDATE |
 | position.shares ≥ 0 | 매도 시 application-level | ValueError |
 | 큐 중복 방지 | enqueue 시 `_is_ticker_queued` 체크 | 스킵 (로그) |
-| 재큐잉 1회 제한 | `_requeued_schedule_ids` set | 스킵 (로그) |
+| 재큐잉 1회 제한 | `_requeued_job_ids` set (job 완료 시 `discard`) | 스킵 (로그) |
 
 ---
 
@@ -826,6 +895,7 @@ class ScheduleRequest(BaseModel):
 | `gemini-3-flash` | `gemini-2.5-flash` | quick_think_llm (4 Analysts, Researchers, Trader, SummaryAgent) |
 | `gemini-3-pro-low` | (antigravity 전용) | 503 fallback 중간 단계 |
 | `gemini-3-flash-lite` | `gemini-2.5-flash-lite` | 미사용 (품질 부족) |
+| `gpt-5.3-codex` | `gpt-5.3-codex` (codex 프로바이더) | deep_think_llm + quick_think_llm 단일 모델 (FR-050) |
 
 **429 (Rate Limit)**: 30s 대기 → 동일 모델 재시도 (최대 5회)
 **503 (Capacity)**: 모델 다운그레이드 chain 적용 후 다음 모델로 즉시 재시도
@@ -893,3 +963,5 @@ elif ticker.endswith(".KQ"):
 |------|------|
 | DB 백업 자동화 | Supabase 자체 백업 사용 |
 | CORS origins 제한 | Cloudflare 도메인 확보 후 설정 |
+| interval_days 격일 스케줄 | 당분간 1(매일) 고정. 향후 `current_cycle % interval_days != 0` 스킵 방식 |
+| 사용자 initial_capital 설정 UI | 현재 고정값 (USD $5,000 / KRW ₩5,000,000). 향후 확장 대비 DB 저장 |

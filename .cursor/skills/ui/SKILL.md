@@ -2,9 +2,9 @@
 id: ui
 name: ui
 description: |
- Generate UI specification from requirements and backend API design.
- Derives screen list, component hierarchy, and user interactions.
- Triggers: ui, ui spec, screen design
+  Generate UI specification from requirements and backend API design.
+  Derives screen list, component hierarchy, and user interactions.
+  Triggers: ui, ui spec, screen design
 user-invocable: true
 version: 1.0.0
 triggers: ["ui", "ui spec", "screen design"]
@@ -309,13 +309,13 @@ Report: service, screen count, component count, derived-from docs. Next: run `/a
 
 ```
 [spec] → spec.md
- ↓
+        ↓
 [arch] (Backend) → arch-be.md
- ↓
+        ↓
 [ui] → ui.md
- ↓
+        ↓
 [arch] (Frontend) → arch-fe.md
- ↓
+        ↓
 [build] (Frontend) → Implementation
 ```
 

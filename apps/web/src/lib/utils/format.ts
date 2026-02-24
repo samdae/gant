@@ -62,4 +62,18 @@ const formatErrorMessage = (error: unknown, fallback = "Request failed.") => {
   return fallback;
 };
 
-export { formatMoney, formatMoneyPlain, formatPercent, formatDateTime, formatAgo, formatErrorMessage };
+const formatAmount = (value: number | null | undefined, ticker: string) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  const isKRW = ticker.toUpperCase().endsWith(".KS") || ticker.toUpperCase().endsWith(".KQ");
+  const sym = isKRW ? "₩" : "$";
+  const digits = isKRW ? 0 : 2;
+  return `${sym}${Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+};
+
+const formatSignedAmount = (value: number | null | undefined, ticker: string) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  const sign = value >= 0 ? "+" : "-";
+  return `${sign}${formatAmount(Math.abs(value), ticker)}`;
+};
+
+export { formatMoney, formatMoneyPlain, formatPercent, formatDateTime, formatAgo, formatErrorMessage, formatAmount, formatSignedAmount };

@@ -2,8 +2,8 @@
 id: check
 name: check
 description: |
- Verify design document completeness before implementation.
- Triggers: check, verify, validate design
+  Verify design document completeness before implementation.
+  Triggers: check, verify, validate design
 user-invocable: true
 version: 1.0.0
 triggers: ["check", "verify", "validate", "design review"]

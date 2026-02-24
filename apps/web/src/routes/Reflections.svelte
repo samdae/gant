@@ -60,6 +60,9 @@
 
   const setFilter = (f: "all" | "win" | "loss") => {
     filter = f;
+    reflections = [];
+    cursor = null;
+    hasMore = true;
     loadData();
   };
 

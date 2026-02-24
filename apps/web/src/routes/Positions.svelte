@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fetchPositionsMarket, fetchPositionsClosed, fetchMetrics } from "../lib/api/endpoints";
-  import { formatMoney, formatMoneyPlain, formatPercent, formatErrorMessage } from "../lib/utils/format";
+  import { formatAmount, formatSignedAmount, formatMoneyPlain, formatPercent, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
   import { currencyFilter, showAmount, matchesCurrency, tickerCurrency } from "../stores/currency";
 
@@ -67,13 +67,6 @@
   $: filteredPositions = positions.filter((p) => matchesCurrency(p.ticker, $currencyFilter));
   $: filteredClosed = closedPositions.filter((p) => matchesCurrency(p.ticker, $currencyFilter));
 
-  const formatAmount = (value: number, ticker: string) => {
-    const cur = tickerCurrency(ticker);
-    const sym = cur === "KRW" ? "₩" : "$";
-    const digits = cur === "KRW" ? 0 : 2;
-    return `${sym}${value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
-  };
-
   const formatDate = (iso: string | null) => {
     if (!iso) return "-";
     try {
@@ -95,7 +88,11 @@
     <div class="page-header">
       <h2>투자</h2>
       <span class={`pnl-banner ${totalPnl >= 0 ? "pnl-pos" : "pnl-neg"}`}>
-        손익 {formatMoney(totalPnl)}
+        {#if $showAmount}
+          손익 {formatSignedAmount(totalPnl, $currencyFilter === "KRW" ? ".KS" : "USD")}
+        {:else}
+          손익
+        {/if}
       </span>
     </div>
 
@@ -141,9 +138,9 @@
                   <td>{pos.avg_cost ? formatAmount(pos.avg_cost, pos.ticker) : "-"}</td>
                   <td>
                     {#if totalAmount !== null}
-                      <span>{formatMoneyPlain(totalAmount)}</span>
+                      <span>{formatAmount(totalAmount, pos.ticker)}</span>
                       <span class={pos.pnl >= 0 ? "text-gain" : "text-loss"} style="margin-left:2px">
-                        ({formatMoney(pos.pnl)})
+                        ({formatSignedAmount(pos.pnl, pos.ticker)})
                       </span>
                     {:else}
                       -
@@ -182,9 +179,9 @@
               <div class="pos-card-details">
                 <span>보유 {pos.shares} · 1주 평균 {pos.avg_cost ? formatAmount(pos.avg_cost, pos.ticker) : "-"}</span>
                 <span>
-                  총 금액 {totalAmount !== null ? formatMoneyPlain(totalAmount) : "-"}
+                  총 금액 {totalAmount !== null ? formatAmount(totalAmount, pos.ticker) : "-"}
                   <span class={pos.pnl >= 0 ? "text-gain" : "text-loss"} style="margin-left:2px">
-                    ({formatMoney(pos.pnl)})
+                    ({formatSignedAmount(pos.pnl, pos.ticker)})
                   </span>
                 </span>
               </div>

@@ -231,7 +231,7 @@ Ask only what wasn't auto-detected from Tech Stack (0-2.5):
 (Based on project settings)
 
 **When using migration tool:**
-```bash
+\`\`\`bash
 # Alembic
 alembic revision --autogenerate -m "{description}"
 alembic upgrade head
@@ -241,10 +241,10 @@ npx prisma migrate dev --name {description}
 
 # Flyway
 flyway migrate
-```
+\`\`\`
 
 **When manual SQL execution:**
-```sql
+\`\`\`sql
 -- New table: {table name}
 CREATE TABLE {table name} (
   -- Generated based on design doc + {db_type} syntax
@@ -255,7 +255,7 @@ ALTER TABLE {table name} ...;
 
 -- Index
 CREATE INDEX ...;
-```
+\`\`\`
 
 ### Dependency Changes
 - `package_name` -> Record in project config file

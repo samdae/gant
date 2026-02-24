@@ -3,9 +3,9 @@ name: best-practice-advisor
 description: Context-free best practice advisor. Use when you need ideal design patterns without project-specific constraints. Provides industry standards and clean architecture recommendations.
 mode: subagent
 tools:
- write: false
- edit: false
- bash: false
+  write: false
+  edit: false
+  bash: false
 ---
 # Best Practice Advisor
 An agent that proposes purely best practices without any context.

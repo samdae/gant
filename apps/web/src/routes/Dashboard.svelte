@@ -8,7 +8,7 @@
     fetchQueue,
     fetchScheduleSummary,
   } from "../lib/api/endpoints";
-  import { formatMoney, formatMoneyPlain, formatPercent, formatAgo, formatErrorMessage } from "../lib/utils/format";
+  import { formatMoney, formatMoneyPlain, formatPercent, formatAgo, formatErrorMessage, formatAmount, formatSignedAmount } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
   import { currencyFilter, showAmount, matchesCurrency, tickerCurrency } from "../stores/currency";
 
@@ -101,7 +101,7 @@
     if (item.event_type === "trade") {
       const action = item.action === "BUY" ? "매수" : "매도";
       const shares = item.shares ?? 0;
-      const price = item.price ? `$${item.price.toFixed(2)}` : "";
+      const price = item.price ? formatAmount(item.price, item.ticker) : "";
       return `${action} ${shares} @ ${price}`;
     }
     if (item.event_type === "analysis") {
@@ -154,12 +154,6 @@
 
   $: filteredPositions = positions.filter((p) => matchesCurrency(p.ticker, $currencyFilter));
 
-  const formatAmount = (value: number, ticker: string) => {
-    const cur = tickerCurrency(ticker);
-    const sym = cur === "KRW" ? "₩" : "$";
-    const digits = cur === "KRW" ? 0 : 2;
-    return `${sym}${value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
-  };
 </script>
 
 <section class="page" id="page-dashboard">
@@ -277,7 +271,7 @@
                       {#if $showAmount && totalAmount !== null}
                         <span>{formatAmount(totalAmount, pos.ticker)}</span>
                         <span class={pos.pnl >= 0 ? "text-gain" : "text-loss"} style="margin-left:2px">
-                          ({formatAmount(pos.pnl, pos.ticker)})
+                          ({formatSignedAmount(pos.pnl, pos.ticker)})
                         </span>
                       {:else}
                         <span class={pos.return_pct >= 0 ? "text-gain" : "text-loss"}>

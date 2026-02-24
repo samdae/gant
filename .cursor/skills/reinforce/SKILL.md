@@ -2,9 +2,9 @@
 id: reinforce
 name: reinforce
 description: |
- Add new requirements to spec.md or fill gaps in documents.
- Primary: Add features (replaces /enhance). Secondary: Fill gaps after /reverse.
- Triggers: reinforce, add requirements, new feature
+  Add new requirements to spec.md or fill gaps in documents.
+  Primary: Add features (replaces /enhance). Secondary: Fill gaps after /reverse.
+  Triggers: reinforce, add requirements, new feature
 user-invocable: true
 version: 3.0.0
 triggers: ["reinforce", "add requirements", "new feature", "supplement document", "fill gaps"]

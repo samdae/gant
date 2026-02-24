@@ -42,7 +42,7 @@ When user feedback conflicts with existing design/requirements/purpose:
 1. **Detect**: Identify specific contradiction
 2. **Report**: Present "Existing Content" vs "User Feedback"
 3. **Resolve** via AskQuestion with options:
- - **Keep original**: Ignore new feedback and maintain the current state
- - **Accept new**: Revise the original content to match the new feedback
- - **Merge**: Incorporate elements of both (requires explanation of how)
- - **Re-debate / Clarify**: Request further discussion or specific details
+   - **Keep original**: Ignore new feedback and maintain the current state
+   - **Accept new**: Revise the original content to match the new feedback
+   - **Merge**: Incorporate elements of both (requires explanation of how)
+   - **Re-debate / Clarify**: Request further discussion or specific details

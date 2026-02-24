@@ -2,8 +2,8 @@
 id: trace
 name: trace
 description: |
- Record bug fixes, changes, and design impact to trace.md.
- Triggers: trace, log, record, changelog
+  Record bug fixes, changes, and design impact to trace.md.
+  Triggers: trace, log, record, changelog
 user-invocable: true
 version: 2.0.0
 triggers: ["trace", "log", "record", "changelog"]

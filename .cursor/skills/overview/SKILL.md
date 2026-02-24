@@ -2,8 +2,8 @@
 id: overview
 name: overview
 description: |
- Generate a 1-page project overview from requirements and arch documents.
- Triggers: overview, project overview, onboarding
+  Generate a 1-page project overview from requirements and arch documents.
+  Triggers: overview, project overview, onboarding
 user-invocable: true
 version: 1.0.0
 triggers: ["overview", "project overview", "onboarding doc", "quick intro"]

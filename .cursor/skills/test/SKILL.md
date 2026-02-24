@@ -2,10 +2,10 @@
 id: test
 name: test
 description: |
- Generate and/or run tests with scoped targeting.
- Default scope: change-based (git diff vs arch commit).
- Supports BE (API/unit) and FE (Playwright E2E).
- Triggers: test, run tests, qa, verify
+  Generate and/or run tests with scoped targeting.
+  Default scope: change-based (git diff vs arch commit).
+  Supports BE (API/unit) and FE (Playwright E2E).
+  Triggers: test, run tests, qa, verify
 user-invocable: true
 version: 1.0.0
 triggers: ["test", "tests", "run tests", "qa", "verify"]

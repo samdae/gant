@@ -25,6 +25,7 @@ class PositionRepository:
         self,
         ticker: str,
         currency: str = "USD",
+        opened_at: str = None,
         commit: bool = True,
         conn=None,
     ) -> int:
@@ -33,11 +34,13 @@ class PositionRepository:
         Args:
             ticker: Ticker symbol
             currency: Position currency (USD or KRW)
+            opened_at: Position open date (ISO format). Defaults to now.
 
         Returns:
             Position ID
         """
         now = datetime.now().isoformat()
+        opened_at = opened_at or now
 
         connection = conn or self.db.get_connection()
         cursor = connection.execute(
@@ -46,7 +49,7 @@ class PositionRepository:
             VALUES (%s, 'active', 0, %s, %s, %s)
             RETURNING id
             """,
-            (ticker, currency, now, now),
+            (ticker, currency, opened_at, now),
         )
         if commit:
             connection.commit()

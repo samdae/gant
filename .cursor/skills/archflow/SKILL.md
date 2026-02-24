@@ -2,16 +2,16 @@
 id: archflow
 name: archflow
 description: |
- Show all available archflow skills and recommended workflows.
- Use "/archflow" to see the full skills list.
+  Show all available archflow skills and recommended workflows.
+  Use "/archflow" to see the full skills list.
 
- Triggers: archflow, archflow help, archflow skills, 아크플로우
+  Triggers: archflow, archflow help, archflow skills, 아크플로우
 user-invocable: true
 version: 2.0.0
 triggers:
- - "archflow"
- - "archflow help"
- - "archflow skills"
+  - "archflow"
+  - "archflow help"
+  - "archflow skills"
 requires: []
 recommended_model: sonnet
 allowed-tools: []

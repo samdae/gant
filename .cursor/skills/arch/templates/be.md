@@ -120,19 +120,19 @@ migrations:
 
 ## 5. Sequence Diagram
 ### {Flow name}
-```mermaid
+\`\`\`mermaid
 sequenceDiagram
- participant Client
- participant API
- participant Service
- participant DB
- Client->>API: {request}
- API->>Service: {method call}
- Service->>DB: {DB operation}
- DB-->>Service: {result}
- Service-->>API: {return}
- API-->>Client: {response}
-```
+    participant Client
+    participant API
+    participant Service
+    participant DB
+    Client->>API: {request}
+    API->>Service: {method call}
+    Service->>DB: {DB operation}
+    DB-->>Service: {result}
+    Service-->>API: {return}
+    API-->>Client: {response}
+\`\`\`
 
 ## 6. API Specification
 ```yaml

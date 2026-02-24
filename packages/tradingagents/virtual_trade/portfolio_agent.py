@@ -81,7 +81,7 @@ class PortfolioAgent:
 
         Returns:
             Dict with:
-                - action: BUY | SELL | HOLD | MODIFY
+                - action: BUY | SELL | HOLD
                 - shares: float (for BUY action, LLM decides based on cash + price)
                 - rationale: str
                 - strategy_update: dict (stop_loss, target, next_action)
@@ -339,13 +339,12 @@ class PortfolioAgent:
   * 전량 청산: allocation_pct = 100
   * 부분 청산: allocation_pct = 25/50/75 등
   * 불확실하면 전량 청산 기본
-- HOLD: 현 상태 유지
-- MODIFY: 스탑로스/목표가/다음 행동 조정
+- HOLD: 현 상태 유지 (strategy_update로 스탑로스/목표가 조정 가능)
 
 **응답은 반드시 아래 JSON 형식만 출력하세요. JSON 외에 다른 텍스트를 포함하지 마세요:**
 ```json
 {{{{
-  "action": "BUY 또는 SELL 또는 HOLD 또는 MODIFY",
+  "action": "BUY 또는 SELL 또는 HOLD",
   "allocation_pct": 0~100 정수,
   "shares": 0,
   "rationale": "2~3문장 (한국어)",

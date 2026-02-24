@@ -96,11 +96,52 @@ All rows have `Impl = [x]` since code exists:
 
 | Framework | Detection Pattern |
 |-----------|------------------|
-| React Router | `<Route path="..." />`, `createBrowserRouter` |
-| Next.js App | `app/**/page.tsx` file structure |
-| Next.js Pages | `pages/**/*.tsx` file structure |
-| Vue Router | `routes: [{ path, component }]` |
-| Nuxt | `pages/**/*.vue` file structure |
+| React Router | `<Route path=`, `useNavigate()` |
+| Next.js | File-based in `pages/` or `app/` |
+| Vue Router | `createRouter()`, `routes: []` |
+| Nuxt | File-based in `pages/` |
+
+### API Integration Extraction
+
+| Pattern | What to Extract |
+|---------|----------------|
+| `fetch()` calls | Endpoint URLs, methods |
+| Axios instances | Base URL, interceptors |
+| React Query hooks | Query keys, endpoints |
+| API service files | All API functions |
+
+## Inference Items
+
+### Goal Inference
+
+| Signal | Inference |
+|--------|-----------|
+| Dashboard components | "Admin/Management interface" |
+| Form-heavy pages | "Data entry application" |
+| List/Grid views | "Content browsing" |
+| Chat components | "Communication feature" |
+| E-commerce patterns | "Shopping experience" |
+
+### Component Responsibility Inference
+
+| Pattern | Inferred Responsibility |
+|---------|------------------------|
+| `*Page.tsx` | Route-level, data fetching |
+| `*Container.tsx` | Logic, state management |
+| `*View.tsx`, `*UI.tsx` | Pure presentation |
+| `*Form.tsx` | Form handling |
+| `*Modal.tsx` | Dialog/overlay |
+| `*List.tsx`, `*Table.tsx` | Data display |
+
+### Design System Inference
+
+| Pattern | Inference |
+|---------|-----------|
+| Consistent color variables | Design tokens exist |
+| Reusable Button/Input | Component library |
+| Tailwind classes | Utility-first approach |
+| styled-components | CSS-in-JS approach |
+| CSS Modules | Scoped styling |
 
 ## Q&A Items (Cannot Extract)
 
@@ -160,7 +201,8 @@ All rows have `Impl = [x]` since code exists:
 ## 5. API Integration - {extracted from API layer}
 ```
 
-**Component Card Template:**
+## Component Analysis Template
+
 ```markdown
 ### ComponentName
 - File: `src/components/ComponentName.tsx`

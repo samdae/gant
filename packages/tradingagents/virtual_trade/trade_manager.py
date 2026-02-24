@@ -132,7 +132,8 @@ class TradeManager:
             )
         else:
             position_id = self.position_repo.create(
-                ticker, currency=currency, commit=commit, conn=conn,
+                ticker, currency=currency, opened_at=date,
+                commit=commit, conn=conn,
             )
 
             # Update with initial shares and cost

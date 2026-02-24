@@ -2,8 +2,8 @@
 id: runbook
 name: runbook
 description: |
- Collect deployment info via Q&A to generate runbook document.
- Triggers: runbook, deploy, ops
+  Collect deployment info via Q&A to generate runbook document.
+  Triggers: runbook, deploy, ops
 user-invocable: true
 version: 2.0.0
 triggers: ["runbook", "deploy", "ops", "deployment"]

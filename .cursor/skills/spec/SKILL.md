@@ -2,8 +2,8 @@
 id: spec
 name: spec
 description: |
- Transform unstructured materials into refined requirements document.
- Triggers: spec, specification, requirements
+  Transform unstructured materials into refined requirements document.
+  Triggers: spec, specification, requirements
 user-invocable: true
 version: 2.0.0
 triggers: ["spec", "specification", "requirements", "define requirements"]

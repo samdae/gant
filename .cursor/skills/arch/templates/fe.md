@@ -209,22 +209,22 @@ api_integration:
 
 ## 8. User Flow Diagram
 ### {Flow name}
-```mermaid
+\`\`\`mermaid
 flowchart TD
- A[User Action] --> B{Route Guard}
- B -->|Authenticated| C[Page Component]
- B -->|Not Auth| D[Login Page]
- C --> E[Fetch Data]
- E --> F{Loading?}
- F -->|Yes| G[Skeleton/Spinner]
- F -->|No| H[Render Content]
- H --> I[User Interaction]
- I --> J[Update State]
- J --> K[Optimistic Update]
- K --> L[API Call]
- L -->|Success| M[Invalidate Cache]
- L -->|Error| N[Show Error Toast]
-```
+    A[User Action] --> B{Route Guard}
+    B -->|Authenticated| C[Page Component]
+    B -->|Not Auth| D[Login Page]
+    C --> E[Fetch Data]
+    E --> F{Loading?}
+    F -->|Yes| G[Skeleton/Spinner]
+    F -->|No| H[Render Content]
+    H --> I[User Interaction]
+    I --> J[Update State]
+    J --> K[Optimistic Update]
+    K --> L[API Call]
+    L -->|Success| M[Invalidate Cache]
+    L -->|Error| N[Show Error Toast]
+\`\`\`
 
 ## 9. Style Guide
 ### Design Tokens

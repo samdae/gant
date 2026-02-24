@@ -2,9 +2,9 @@
 id: arch
 name: arch
 description: |
- Multi-agent debate to derive optimal design through two perspectives.
- Domain Architect + Best Practice Advisor collaborate in round-based debate.
- Triggers: arch, architecture, blueprint, 설계, 아키텍처
+  Multi-agent debate to derive optimal design through two perspectives.
+  Domain Architect + Best Practice Advisor collaborate in round-based debate.
+  Triggers: arch, architecture, blueprint, 설계, 아키텍처
 user-invocable: true
 version: 2.0.0
 triggers: ["arch", "architecture", "blueprint", "feature design"]
@@ -12,7 +12,7 @@ requires: ["spec"]
 platform: all
 recommended_model: opus
 agents:
- debate: archflow:domain-architect, archflow:best-practice-advisor
+  debate: archflow:domain-architect, archflow:best-practice-advisor
 allowed-tools: [Read, Write, Glob, Grep, LS, Task, AskQuestion]
 ---
 
@@ -97,12 +97,12 @@ docs/{serviceName}/
 
 1. List `docs/` subdirectories
 2. **If 1 found** (e.g., `docs/auth`): auto-select, confirm with user
- **If multiple**: ask user to select. **If none**: manual input.
+   **If multiple**: ask user to select. **If none**: manual input.
 3. Auto-resolve paths:
- - `spec.md` = `docs/{serviceName}/spec.md`
- - `arch-be.md` = `docs/{serviceName}/arch-be.md`
- - `arch-fe.md` = `docs/{serviceName}/arch-fe.md`
- - `ui.md` = `docs/{serviceName}/ui.md`
+   - `spec.md` = `docs/{serviceName}/spec.md`
+   - `arch-be.md` = `docs/{serviceName}/arch-be.md`
+   - `arch-fe.md` = `docs/{serviceName}/arch-fe.md`
+   - `ui.md` = `docs/{serviceName}/ui.md`
 
 ## Phase 0: Skill Entry
 
@@ -148,12 +148,12 @@ Verify `docs/{serviceName}/ui.md` exists:
 
 - `yes` -> Request ui.md path -> Proceed to Phase 1
 - `no` -> Show guidance:
- > **WARNING**: UI specification required for Frontend architecture.
- > Run `/ui` first to generate UI specification from:
- > - `docs/{serviceName}/spec.md`
- > - `docs/{serviceName}/arch-be.md`
- >
- > The ui.md defines screens, components, and interactions needed for arch-fe.
+  > **WARNING**: UI specification required for Frontend architecture.
+  > Run `/ui` first to generate UI specification from:
+  > - `docs/{serviceName}/spec.md`
+  > - `docs/{serviceName}/arch-be.md`
+  >
+  > The ui.md defines screens, components, and interactions needed for arch-fe.
 
 **NOTE**: Frontend arch input = spec.md + ui.md (NOT arch-be.md directly).
 

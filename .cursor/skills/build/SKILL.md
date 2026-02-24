@@ -2,9 +2,9 @@
 id: build
 name: build
 description: |
- Automated implementation based on design document.
- Analyzes arch.md, creates dependency graph, executes step-by-step.
- Triggers: build, compile, implement
+  Automated implementation based on design document.
+  Analyzes arch.md, creates dependency graph, executes step-by-step.
+  Triggers: build, compile, implement
 user-invocable: true
 version: 2.0.0
 triggers: ["build", "compile", "implement", "generate code"]
@@ -391,7 +391,7 @@ For each Code Mapping item:
 
 1. **Grep** for method/class existence in corresponding file
 2. **When exists**: Read 30 lines for validation (existence check). For modification: **200 lines above/below** or entire file (<500 lines)
- **WARNING**: When modifying, do not fix blindly based on only 30 lines -- Must understand style/error handling/DI/util usage approach
+   **WARNING**: When modifying, do not fix blindly based on only 30 lines -- Must understand style/error handling/DI/util usage approach
 3. **When non-existent or misaligned** -> Implement supplement
 
 ### Validation Checklist

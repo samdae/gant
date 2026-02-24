@@ -328,17 +328,17 @@ export const useExampleStore = create<ExampleState>((set) => ({
 
 ### Environment Variables
 (If API endpoints or feature flags added)
-```env
+\`\`\`env
 VITE_API_BASE_URL=https://api.example.com
 VITE_FEATURE_FLAG=true
-```
+\`\`\`
 
 ### Build Verification
-```bash
+\`\`\`bash
 npm run type-check  # or tsc --noEmit
 npm run lint
 npm run build
-```
+\`\`\`
 
 ### Remaining Manual Tasks
 - [ ] Environment variable setup (.env.local)
