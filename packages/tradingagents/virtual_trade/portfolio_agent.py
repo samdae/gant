@@ -124,23 +124,35 @@ class PortfolioAgent:
         # FR-022: RAG search for past experiences (if hybrid_memory available)
         rag_context = ""
         has_experience = False
+        rag_docs = None
         if self.hybrid_memory:
             try:
-                # Build query from pipeline state
                 query = self._build_rag_query(pipeline_state, ticker)
-                
-                # Search for relevant past experiences
                 memories = self.hybrid_memory.get_memories(query, n_matches=3)
-                
+
                 if memories:
                     has_experience = True
                     rag_context = "\n**Past Experiences (from RAG):**\n"
+                    rag_memories = []
                     for i, mem in enumerate(memories, 1):
                         outcome_label = mem["metadata"].get("outcome_label", "")
+                        matched_situation = mem["matched_situation"][:200]
+                        return_pct = mem["metadata"].get("return_pct")
                         rag_context += f"\n{i}. {outcome_label}\n"
-                        rag_context += f"   Lessons: {mem['matched_situation'][:200]}...\n"
-                        rag_context += f"   Return: {mem['metadata'].get('return_pct', 'N/A')}%\n"
-                    
+                        rag_context += f"   Lessons: {matched_situation}...\n"
+                        rag_context += f"   Return: {return_pct if return_pct is not None else 'N/A'}%\n"
+                        rag_memories.append({
+                            "reflection_id": mem["metadata"].get("reflection_id"),
+                            "outcome_label": outcome_label,
+                            "matched_situation": matched_situation,
+                            "return_pct": return_pct,
+                        })
+
+                    import json
+                    rag_docs = json.dumps({
+                        "memories": rag_memories,
+                        "raw_context": rag_context,
+                    }, ensure_ascii=False)
                     logger.info(f"{ticker}: Found {len(memories)} relevant past experiences")
                 else:
                     logger.info(f"{ticker}: No relevant past experiences found")
@@ -148,6 +160,7 @@ class PortfolioAgent:
             except Exception as e:
                 logger.warning(f"{ticker}: RAG search failed: {e}")
                 rag_context = ""
+                rag_docs = None
 
         ctx_capital = context.get("initial_capital") if context else None
         cash_available = self._get_cash_available(ticker, trade_repo, ctx_capital)
@@ -181,6 +194,9 @@ class PortfolioAgent:
                 current_price,
                 cash_available,
             )
+
+            decision["rag_used"] = has_experience
+            decision["rag_docs"] = rag_docs
 
             logger.info(
                 f"Portfolio decision for {ticker}: {decision['action']} "

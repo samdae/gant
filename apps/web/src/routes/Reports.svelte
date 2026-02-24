@@ -4,6 +4,7 @@
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
   import { currencyFilter, matchesCurrency } from "../stores/currency";
+  import AnalysisTabs from "../components/AnalysisTabs.svelte";
 
   type TickerSummary = {
     ticker: string;
@@ -90,6 +91,7 @@
     <div class="page-header">
       <h2>AI분석</h2>
     </div>
+    <AnalysisTabs />
 
     {#if loading}
       <div class="card" style="padding:16px">불러오는 중...</div>

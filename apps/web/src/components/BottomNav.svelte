@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
   import { link, location } from "svelte-spa-router";
 
   const navItems = [
@@ -28,17 +27,9 @@
       route: "/reports",
       icon: "M12 3v4m0 10v4m-9-9h4m10 0h4M7 7l2.5 2.5M14.5 14.5 17 17M7 17l2.5-2.5M14.5 9.5 17 7",
     },
-    {
-      label: "회고",
-      route: "/reflections",
-      icon: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z",
-    },
   ];
 
   let currentBaseRoute = "/";
-  let hidden = false;
-  let lastScrollY = 0;
-  const SCROLL_THRESHOLD = 8;
 
   const normalizeRoute = (value: string) => {
     const cleaned = value.split("?")[0].replace(/^#/, "");
@@ -57,34 +48,24 @@
     return getBaseRoute(value || fallback || "#/");
   };
 
-  const onScroll = () => {
-    const y = window.scrollY;
-    const delta = y - lastScrollY;
-    if (delta > SCROLL_THRESHOLD) hidden = true;
-    else if (delta < -SCROLL_THRESHOLD) hidden = false;
-    lastScrollY = y;
-  };
+  const analysisRoutes = new Set(["/reports", "/reflections", "/retrospective"]);
 
-  onMount(() => {
-    lastScrollY = window.scrollY;
-    window.addEventListener("scroll", onScroll, { passive: true });
-  });
-
-  onDestroy(() => {
-    if (typeof window !== "undefined") {
-      window.removeEventListener("scroll", onScroll);
+  const isActive = (itemRoute: string, current: string): boolean => {
+    if (itemRoute === "/reports") {
+      return analysisRoutes.has(current);
     }
-  });
+    return itemRoute === current;
+  };
 
   $: currentBaseRoute = getCurrentBaseRoute($location);
 </script>
 
-<nav class="bottom-nav" class:bottom-nav-hidden={hidden} id="bottomNav">
+<nav class="bottom-nav" id="bottomNav">
   {#each navItems as item}
     <a
       href={`#${item.route}`}
       class={`bottom-nav-item ${item.route === "/" ? "is-home" : ""}`}
-      class:active={currentBaseRoute === item.route}
+      class:active={isActive(item.route, currentBaseRoute)}
       data-route={item.route}
       use:link
     >

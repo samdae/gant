@@ -546,7 +546,7 @@
 
   const getReportDecision = (report?: PositionDetail["reports"][number] | null) => {
     if (!report) return null;
-    return report.portfolio_action || report.decision_position || report.final_trade_decision || null;
+    return report.portfolio_action || report.decision_position || null;
   };
 
   const getExecutionNote = (report?: PositionDetail["reports"][number] | null) => {

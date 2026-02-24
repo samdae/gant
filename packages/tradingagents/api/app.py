@@ -18,7 +18,7 @@ import asyncio
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Optional, Dict, List
+from typing import Any, Optional, Dict, List
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -157,7 +157,17 @@ async def _queue_worker():
 
     logger.info("Queue worker started")
 
-    def _queue_snapshot(queue: Optional[asyncio.Queue]) -> list[str]:
+    def _extract_ticker(item: Any) -> Optional[str]:
+        if isinstance(item, tuple) and len(item) == 3:
+            _, _, payload = item
+            return _extract_ticker(payload)
+        if isinstance(item, dict):
+            return item.get("ticker")
+        if isinstance(item, str):
+            return item
+        return None
+
+    def _queue_snapshot(queue: Optional[asyncio.PriorityQueue]) -> list[str]:
         if not queue:
             return []
         try:
@@ -167,17 +177,14 @@ async def _queue_worker():
 
         tickers = []
         for item in pending:
-            if isinstance(item, dict):
-                ticker = item.get("ticker")
-            else:
-                ticker = item
+            ticker = _extract_ticker(item)
             if ticker:
                 tickers.append(str(ticker))
         return tickers
 
     while True:
         try:
-            item = await analysis_queue.get()
+            priority, _seq, item = await analysis_queue.get()
             if isinstance(item, dict):
                 ticker = item.get("ticker")
                 job_id = item.get("schedule_job_id")
@@ -213,27 +220,38 @@ async def _queue_worker():
                     )
                 )
 
+            is_retrospective = isinstance(item, dict) and item.get("type") == "retrospective"
+
             try:
-                await asyncio.to_thread(
-                    scheduler._run_analysis_cycle,
-                    ticker,
-                    job_id,
-                )
-                broadcast_status(
-                    ticker,
-                    "system",
-                    "completed",
-                    f"Analysis complete for {ticker}",
-                    schedule_job_id=job_id,
-                )
+                if is_retrospective:
+                    from tradingagents.retrospective.service import run_retrospective_analysis
+                    await asyncio.to_thread(
+                        run_retrospective_analysis,
+                        scheduler.db,
+                        item,
+                        scheduler.config,
+                    )
+                    broadcast_status(
+                        ticker, "system", "completed",
+                        f"Retrospective analysis complete for {ticker}",
+                    )
+                else:
+                    await asyncio.to_thread(
+                        scheduler._run_analysis_cycle,
+                        ticker,
+                        job_id,
+                    )
+                    broadcast_status(
+                        ticker, "system", "completed",
+                        f"Analysis complete for {ticker}",
+                        schedule_job_id=job_id,
+                    )
                 if graph:
                     graph.set_status_callback(None)
             except Exception as e:
                 broadcast_status(
-                    ticker,
-                    "system",
-                    "error",
-                    f"Analysis failed: {str(e)}",
+                    ticker, "system", "error",
+                    f"{'Retrospective a' if is_retrospective else 'A'}nalysis failed: {str(e)}",
                     schedule_job_id=job_id,
                 )
                 if graph:
@@ -274,8 +292,8 @@ async def lifespan(app: FastAPI):
             "Set it before starting the server."
         )
 
-    # P1-A: Initialize global analysis queue
-    ticker_scheduler_module.analysis_queue = asyncio.Queue()
+    # P1-A: Initialize global analysis queue (PriorityQueue for scheduled vs retrospective)
+    ticker_scheduler_module.analysis_queue = asyncio.PriorityQueue()
 
     # Initialize graph
     graph = TradingAgentsGraph(config=DEFAULT_CONFIG)
@@ -305,24 +323,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to load schedules from DB: {e}")
 
-    # Recover schedules into queue (if not done today)
-    try:
-        from tradingagents.storage import ScheduleJobRepository
-
-        schedule_job_repo = ScheduleJobRepository(scheduler.db)
-        tickers = [item["ticker"] for item in schedule_config_repo.get_all()]
-        today = datetime.now().date().isoformat()
-        for ticker in tickers:
-            if not ticker:
-                continue
-            if schedule_job_repo.has_done_today_for_ticker(ticker, today):
-                continue
-            scheduler.enqueue_schedule(ticker)
-
-        logger.info("Recovered schedules into queue")
-    except Exception as e:
-        logger.warning(f"Failed to recover schedules: {e}")
-
     # Start scheduler
     if DEFAULT_CONFIG.get("scheduler_enabled", False):
         scheduler.start()
@@ -333,6 +333,28 @@ async def lifespan(app: FastAPI):
     # Start queue worker
     queue_worker_task = asyncio.create_task(_queue_worker())
     logger.info("Queue worker task started")
+
+    # Re-queue incomplete retrospective analyses from previous run
+    try:
+        from tradingagents.storage.retrospective_repo import RetrospectiveRepository
+        from tradingagents.scheduler.ticker_scheduler import PRIORITY_RETROSPECTIVE
+        retro_repo = RetrospectiveRepository(scheduler.db)
+        incomplete = retro_repo.get_incomplete()
+        for row in incomplete:
+            scheduler._enqueue_item(
+                {
+                    "type": "retrospective",
+                    "ticker": row["ticker"],
+                    "position_id": row["position_id"],
+                    "retro_id": row["id"],
+                },
+                priority=PRIORITY_RETROSPECTIVE,
+                skip_dedup=True,
+            )
+        if incomplete:
+            logger.info(f"Re-queued {len(incomplete)} incomplete retrospective analyses")
+    except Exception as e:
+        logger.warning(f"Failed to re-queue retrospective analyses: {e}")
 
     logger.info("✅ TradingAgents API ready")
 

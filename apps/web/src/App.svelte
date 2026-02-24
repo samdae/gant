@@ -12,6 +12,8 @@
   import ReportDetail from "./routes/ReportDetail.svelte";
   import Live from "./routes/Live.svelte";
   import Reflections from "./routes/Reflections.svelte";
+  import Retrospective from "./routes/Retrospective.svelte";
+  import RetroDetail from "./routes/RetroDetail.svelte";
   import Auth from "./routes/Auth.svelte";
   import NotFoundRedirect from "./routes/NotFoundRedirect.svelte";
   import { loadTickerNames } from "./stores/tickerNames";
@@ -26,6 +28,8 @@
     "/reports/:ticker": ReportDetail,
     "/live": Live,
     "/reflections": Reflections,
+    "/retrospective": Retrospective,
+    "/retrospective/:ticker": RetroDetail,
     "/auth": Auth,
     "*": NotFoundRedirect,
   };

@@ -155,6 +155,8 @@ class Database:
             portfolio_rationale               TEXT,
             pa_opinion                        TEXT,
             pipeline_strategy                 TEXT,
+            rag_used                          BOOLEAN NOT NULL DEFAULT FALSE,
+            rag_docs                          JSONB,
             created_at                        TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_reports_job ON reports(schedule_job_id);
@@ -205,6 +207,25 @@ class Database:
         CREATE INDEX IF NOT EXISTS idx_reflections_search
             ON reflections
             USING GIN (to_tsvector('simple', coalesce(reflection, '') || ' ' || coalesce(key_lessons, '')));
+
+        CREATE TABLE IF NOT EXISTS retrospective_analyses (
+            id                  BIGSERIAL PRIMARY KEY,
+            position_id         BIGINT    NOT NULL UNIQUE REFERENCES positions(id),
+            ticker              TEXT      NOT NULL,
+            position_sequence   INTEGER   NOT NULL,
+            position_status     TEXT      NOT NULL,
+            status              TEXT      NOT NULL DEFAULT 'pending',
+            analysis_content    TEXT,
+            analysis_count      INTEGER   NOT NULL DEFAULT 1,
+            position_open_date  TIMESTAMPTZ,
+            position_close_date TIMESTAMPTZ,
+            error_message       TEXT,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE(ticker, position_sequence)
+        );
+        CREATE INDEX IF NOT EXISTS idx_retro_ticker ON retrospective_analyses(ticker);
+        CREATE INDEX IF NOT EXISTS idx_retro_status ON retrospective_analyses(status);
         """
 
         for statement in (s.strip() for s in schema_sql.split(";")):
@@ -217,6 +238,8 @@ class Database:
             ddl_conn.close()
 
         self._ensure_schedule_event_unique_index()
+        self._ensure_column("reports", "rag_used", "BOOLEAN NOT NULL DEFAULT FALSE")
+        self._ensure_column("reports", "rag_docs", "JSONB")
 
         logger.info("Schema initialization complete")
 
@@ -253,6 +276,10 @@ class Database:
             self.conn.commit()
         except Exception as exc:
             logger.warning(f"Failed to ensure column {table}.{column}: {exc}")
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
 
     def _ensure_column_type(self, table: str, column: str, data_type: str) -> None:
         try:

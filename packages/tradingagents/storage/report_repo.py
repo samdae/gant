@@ -31,6 +31,10 @@ class ReportRepository:
         if isinstance(pipeline_strategy, dict):
             pipeline_strategy = json.dumps(pipeline_strategy, ensure_ascii=False)
 
+        rag_docs_raw = summaries.get("rag_docs")
+        if isinstance(rag_docs_raw, dict):
+            rag_docs_raw = json.dumps(rag_docs_raw, ensure_ascii=False)
+
         connection = conn or self.db.get_connection()
         cursor = connection.execute(
             """
@@ -43,9 +47,10 @@ class ReportRepository:
                 investment_plan, final_trade_decision, decision_position,
                 portfolio_action, portfolio_shares, portfolio_rationale,
                 pa_opinion, pipeline_strategy,
+                rag_used, rag_docs,
                 created_at
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                      %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -69,6 +74,8 @@ class ReportRepository:
                 summaries.get("portfolio_rationale"),
                 summaries.get("pa_opinion"),
                 pipeline_strategy,
+                summaries.get("rag_used", False),
+                rag_docs_raw,
                 created_at,
             ),
         )
@@ -91,6 +98,7 @@ class ReportRepository:
                    r.investment_plan, r.final_trade_decision, r.decision_position,
                    r.portfolio_action, r.portfolio_shares, r.portfolio_rationale,
                    r.pa_opinion, r.pipeline_strategy,
+                   r.rag_used, r.rag_docs,
                    r.created_at,
                    sj.scheduled_cycle
             FROM reports r
@@ -114,6 +122,7 @@ class ReportRepository:
                    investment_plan, final_trade_decision, decision_position,
                    portfolio_action, portfolio_shares, portfolio_rationale,
                    pa_opinion, pipeline_strategy,
+                   rag_used, rag_docs,
                    created_at
             FROM reports
             WHERE schedule_job_id = %s

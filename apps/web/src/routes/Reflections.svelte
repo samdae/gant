@@ -5,6 +5,7 @@
   import { tickerNames } from "../stores/tickerNames";
   import { marked } from "marked";
   import DOMPurify from "dompurify";
+  import AnalysisTabs from "../components/AnalysisTabs.svelte";
 
   type Reflection = {
     id: number;
@@ -95,8 +96,9 @@
 <section class="page" id="page-reflections">
   <div class="page-container">
     <div class="page-header">
-      <h2>회고</h2>
+      <h2>AI분석</h2>
     </div>
+    <AnalysisTabs />
 
     <div class="tab-bar" style="margin-bottom:16px">
       <button class={`tab-btn ${filter === "all" ? "active" : ""}`} on:click={() => setFilter("all")}>전체</button>

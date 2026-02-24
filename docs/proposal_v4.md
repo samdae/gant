@@ -457,3 +457,105 @@ positions ──┬── 1:N  trades
 2. **토큰 제한**: 장기 포지션(20+ 사이클)의 리포트를 LLM에 전부 주입 시 컨텍스트 윈도우 초과 가능 — 요약 압축 또는 최근 N개 사이클만 포함하는 전략 필요
 3. **LLM 응답 구조화**: 분석 결과를 structured output (JSON schema)으로 받아 UI에서 섹션별 렌더링할지 — 현재는 TEXT로 시작, 필요 시 구조화
 4. **프론트엔드 실시간 상태**: 분석중(pending/running) 상태를 WebSocket으로 실시간 반영할지, 폴링으로 할지
+
+---
+
+## 11. 버그픽스 — 스케줄 회차(current_cycle) 비정상 증가
+
+### 증상
+서버를 재시작할 때마다 `schedule_configs.current_cycle`이 증가하여, 실제 분석 횟수와 무관하게 회차가 폭증함. (예: 신규 DB에서 39회 재시작 → 19회차 표시)
+
+### 원인
+1. **서버 기동 시 복구 로직**: `app.py` lifespan에서 모든 티커에 대해 `enqueue_schedule`을 호출했으며, `has_done_today_for_ticker`가 `status='done'`만 확인하고 `'skipped'`를 확인하지 않아 매 재시작마다 새 job + cycle 증가
+2. **`increment_cycle` 호출 시점**: `enqueue_schedule`(큐 삽입 시점)에서 cycle을 증가시켜, 이후 skip되더라도 이미 cycle이 올라간 상태
+
+### 수정 내용
+
+| 파일 | 변경 |
+|------|------|
+| `api/app.py` | 서버 기동 시 스케줄 복구 enqueue 로직 **제거**. 스케줄은 CronTrigger 지정 시간에만 실행 |
+| `scheduler/ticker_scheduler.py` | `enqueue_schedule`에서 job 생성 + `increment_cycle` 제거. 순수하게 큐에 넣기만 함 |
+| `scheduler/ticker_scheduler.py` | `_run_analysis_cycle`에서 skip 체크를 **job 생성 전**으로 이동. 새 시장 데이터가 없으면 job/cycle 없이 즉시 return. 실제 분석 실행 시에만 `increment_cycle` + job 생성 |
+
+### 결과
+- `current_cycle` = 실제 분석이 실행된 횟수만 반영
+- 서버 재시작, 주말/공휴일(시장 데이터 없음) 시 cycle 증가 없음
+
+---
+
+## 12. UI/UX 개선사항
+
+### 12.1 AI분석 탭 통합
+
+기존 하단 네비게이션의 "회고" 탭을 제거하고, "AI분석" 탭 안에서 상단 서브탭으로 통합.
+
+| 서브탭 | 라우트 | 설명 |
+|--------|--------|------|
+| 레포트 | `/reports` | 일정에 등록된 종목의 장 마감 후 분석 결과 |
+| 매매검증 | `/reflections` | 거래 종료 시 자동 생성되는 회고 기록 (RAG 반영) |
+| 회고분석 | `/retrospective` | 사용자 요청 기반 사후 평가 |
+
+- `AnalysisTabs.svelte` 공유 컴포넌트: 탭 바 + 설명 텍스트 + `action` 슬롯
+- 회고분석 탭에서만 "요청" 버튼이 탭 바 우측에 표시됨
+
+### 12.2 용어 정리
+
+| 이전 | 변경 | 이유 |
+|------|------|------|
+| 회고 | 매매검증 | "회고"가 모호함 |
+| 회귀분석 | 회고분석 | "회귀분석"은 통계 용어와 혼동 |
+| 청산 | 거래 종료 | "청산"은 부정적 뉘앙스 |
+
+### 12.3 회고분석 페이지 — 리스트-디테일 패턴
+
+기존 단일 페이지 트리거/결과 뷰를 레포트 탭과 동일한 패턴으로 변경:
+
+1. **요약 리스트** (`/retrospective`): 티커별 완료 건수 + 최신 날짜
+2. **상세 페이지** (`/retrospective/:ticker`): 셀렉트박스로 회차 선택 → 분석 결과 마크다운 렌더링
+3. **분석 요청 모달**: "요청" 버튼 클릭 → 모달에서 티커/포지션 선택
+
+### 12.4 분석 요청 모달
+
+| 항목 | 설명 |
+|------|------|
+| 탭 | "티커" 단일 탭 (라벨용) |
+| 티커 선택 | display_name 칩으로 표시, 클릭 시 포지션 자동 체크 |
+| 포지션 | 분석 가능 항목 자동 체크, 커스텀 체크박스 |
+| 버튼 | "선택티커" (체크된 포지션만) + "전체티커" (모든 분석 가능 포지션) |
+| 레이아웃 | 헤더/푸터 고정, 바디 스크롤 |
+
+### 12.5 홈 화면
+
+- 최근활동 섹션 제거 (레포트 탭에서 확인 가능)
+- 총손익 실현/미실현, 투자 승/패를 줄바꿈 + 그리드 정렬
+
+### 12.6 하단 네비게이션
+
+- 스크롤 시 숨김/표시 동작 제거 → 항상 고정
+- full-width 솔리드 배경 (`rgb(11, 13, 17)`)으로 변경
+- 라운드 코너, 블러, 그림자 제거
+- 하단 safe area와 경계 없이 동일 색상
+
+### 12.7 투자 상세 — 결정 뱃지 색상 수정
+
+`getReportDecision`에서 `final_trade_decision` (전체 분석 텍스트) fallback을 제거.
+이전에는 텍스트에 "BUY" 단어가 포함되면 모든 뱃지가 빨간색(매수)으로 표시되는 버그 존재.
+
+---
+
+## 13. 서버 기동 시 회고분석 복구
+
+### 배경
+서버 재시작 시 `status='pending'` 또는 `status='running'` 상태의 회고분석이 큐에서 유실됨.
+
+### 구현
+
+| 파일 | 변경 |
+|------|------|
+| `storage/retrospective_repo.py` | `get_incomplete()` 메서드 추가 — `status IN ('pending', 'running')` 조회 |
+| `api/app.py` lifespan | startup 시 `get_incomplete()` 호출 → `PRIORITY_RETROSPECTIVE`로 큐 재삽입 |
+
+### 동작
+- 스케줄 분석 복구와 달리 cycle 증가나 job 생성 없음
+- 기존 `retrospective_analyses` 행을 그대로 재처리
+- 실패 시 `status='failed'`로 업데이트되어 사용자가 재요청 가능

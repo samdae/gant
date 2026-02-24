@@ -56,3 +56,24 @@ export const fetchReflections = (limit = 15, outcome?: string, cursor?: number) 
   if (cursor) params.set("cursor", String(cursor));
   return getJson(`/reflections?${params.toString()}`);
 };
+
+export const fetchRetroTickers = () => getJson("/retrospective/tickers");
+
+export const fetchRetroSummary = () => getJson("/retrospective/summary");
+
+export const fetchRetroByTicker = (ticker: string) =>
+  getJson(`/retrospective/detail/${encodeURIComponent(ticker)}`);
+
+export const fetchRetroPositions = (ticker: string) =>
+  getJson(`/retrospective/positions/${encodeURIComponent(ticker)}`);
+
+export const requestRetroAnalysis = (payload: {
+  mode: string;
+  position_ids?: number[];
+  tickers?: string[];
+  date_from?: string;
+  date_to?: string;
+}) => postJson("/retrospective/analyze", payload);
+
+export const fetchRetroResult = (retroId: number) =>
+  getJson(`/retrospective/${retroId}`);

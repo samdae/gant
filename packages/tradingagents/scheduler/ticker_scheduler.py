@@ -36,7 +36,11 @@ from tradingagents.runtime_context import set_schedule_context, reset_schedule_c
 
 logger = logging.getLogger(__name__)
 
-analysis_queue: Optional[asyncio.Queue] = None
+analysis_queue: Optional[asyncio.PriorityQueue] = None
+
+PRIORITY_SCHEDULED = 0
+PRIORITY_RETROSPECTIVE = 1
+_enqueue_seq: int = 0
 
 
 class TickerScheduler:
@@ -49,7 +53,7 @@ class TickerScheduler:
         self.scheduler = BackgroundScheduler()
         self._ticker_locks: Dict[str, threading.Lock] = {}
 
-        self._analysis_queue: Optional[asyncio.Queue] = analysis_queue
+        self._analysis_queue: Optional[asyncio.PriorityQueue] = analysis_queue
         self._queue_loop: Optional[asyncio.AbstractEventLoop] = None
         self._requeued_job_ids: set[int] = set()
 
@@ -77,11 +81,14 @@ class TickerScheduler:
 
     # ── queue helpers ──
 
-    def set_queue(self, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop) -> None:
+    def set_queue(self, queue: asyncio.PriorityQueue, loop: asyncio.AbstractEventLoop) -> None:
         self._analysis_queue = queue
         self._queue_loop = loop
 
     def _queue_item_ticker(self, item: Any) -> Optional[str]:
+        if isinstance(item, tuple) and len(item) == 3:
+            _, _, payload = item
+            return self._queue_item_ticker(payload)
         if isinstance(item, dict):
             return item.get("ticker")
         if isinstance(item, str):
@@ -111,7 +118,10 @@ class TickerScheduler:
         except Exception:
             return False
 
-    def _enqueue_item(self, item: Dict[str, Any]) -> None:
+    def _enqueue_item(
+        self, item: Dict[str, Any], priority: int = PRIORITY_SCHEDULED, skip_dedup: bool = False,
+    ) -> None:
+        global _enqueue_seq
         if not self._analysis_queue or not self._queue_loop:
             logger.error(
                 f"Analysis queue not initialized; cannot enqueue {item.get('ticker')}"
@@ -124,16 +134,19 @@ class TickerScheduler:
             return
 
         ticker = item.get("ticker")
-        if ticker and self._is_ticker_queued(ticker):
+        if not skip_dedup and ticker and self._is_ticker_queued(ticker):
             logger.info(f"{ticker} already queued; skipping enqueue")
             return
 
+        _enqueue_seq += 1
         asyncio.run_coroutine_threadsafe(
-            self._analysis_queue.put(item), self._queue_loop
+            self._analysis_queue.put((priority, _enqueue_seq, item)),
+            self._queue_loop,
         )
         logger.info(
-            "Queue enqueue: ticker=%s pending=%s",
+            "Queue enqueue: ticker=%s priority=%s pending=%s",
             ticker,
+            priority,
             self._queue_snapshot(),
         )
 
@@ -146,42 +159,16 @@ class TickerScheduler:
         error_type: Optional[str] = None,
         error_message: Optional[str] = None,
     ) -> Optional[int]:
-        """Create schedule_job and enqueue for analysis.
+        """Enqueue ticker for analysis.
+
+        Job creation and cycle increment happen in _run_analysis_cycle,
+        after skip checks pass, so that skipped runs don't inflate the cycle count.
 
         Returns schedule_job_id or None if already queued.
         """
         if self._is_ticker_queued(ticker):
             logger.info(f"{ticker} already queued; skipping enqueue")
             return None
-
-        from tradingagents.storage import ScheduleConfigRepository, ScheduleJobRepository
-
-        config_repo = ScheduleConfigRepository(self.db)
-        job_repo = ScheduleJobRepository(self.db)
-
-        cfg = config_repo.get_by_ticker(ticker)
-        if not cfg:
-            logger.error(f"No schedule_config for {ticker}")
-            return None
-        config_id = cfg["id"]
-
-        if schedule_job_id is None:
-            latest_job = job_repo.get_latest_by_ticker(ticker)
-            if latest_job and latest_job.get("status") not in ("done", "skipped", None):
-                schedule_job_id = latest_job["id"]
-                logger.info(
-                    f"Reusing existing job {schedule_job_id} for {ticker} "
-                    f"(status={latest_job.get('status')})"
-                )
-            else:
-                cycle = config_repo.increment_cycle(ticker)
-                schedule_job_id = job_repo.create(
-                    config_id,
-                    cycle,
-                    "pending",
-                    error_type=error_type,
-                    error_message=error_message,
-                )
 
         logger.info(
             "Schedule queued: ticker=%s job_id=%s",
@@ -350,6 +337,42 @@ class TickerScheduler:
                 return
             config_id = cfg["id"]
 
+            latest_market_date = self._get_latest_market_date(ticker)
+            if latest_market_date is None:
+                if schedule_job_id is not None:
+                    job_repo.update_status(
+                        schedule_job_id, "skipped",
+                        error_type="no_data",
+                        error_message="No market data available",
+                    )
+                if self.graph.status_callback:
+                    self.graph.status_callback(
+                        "system", "skipped", "No market data available",
+                    )
+                logger.info(f"{ticker}: Skipped (no market data)")
+                return
+
+            last_data_date = cfg.get("last_data_date")
+            if hasattr(last_data_date, "isoformat"):
+                last_data_date = last_data_date.isoformat()
+
+            if last_data_date == latest_market_date:
+                if schedule_job_id is not None:
+                    job_repo.update_status(
+                        schedule_job_id, "skipped",
+                        error_type="no_update",
+                        error_message=f"No new market data since {latest_market_date}",
+                    )
+                if self.graph.status_callback:
+                    self.graph.status_callback(
+                        "system", "skipped",
+                        f"No new market data since {latest_market_date}",
+                    )
+                logger.info(
+                    f"{ticker}: Skipped (no new data since {latest_market_date})"
+                )
+                return
+
             if schedule_job_id is None:
                 cycle = config_repo.increment_cycle(ticker)
                 schedule_job_id = job_repo.create(config_id, cycle, "running")
@@ -368,45 +391,6 @@ class TickerScheduler:
                 self._log_schedule_job,
             )
             try:
-                latest_market_date = self._get_latest_market_date(ticker)
-                if latest_market_date is None:
-                    job_repo.update_status(
-                        schedule_job_id,
-                        "skipped",
-                        error_type="no_data",
-                        error_message="No market data available",
-                        error_detail=None,
-                    )
-                    if self.graph.status_callback:
-                        self.graph.status_callback(
-                            "system", "skipped", "No market data available",
-                        )
-                    logger.info(f"{ticker}: Skipped (no market data)")
-                    return
-
-                last_data_date = cfg.get("last_data_date")
-                if hasattr(last_data_date, "isoformat"):
-                    last_data_date = last_data_date.isoformat()
-
-                if last_data_date == latest_market_date:
-                    job_repo.update_status(
-                        schedule_job_id,
-                        "skipped",
-                        error_type="no_update",
-                        error_message=f"No new market data since {latest_market_date}",
-                        error_detail=None,
-                    )
-                    if self.graph.status_callback:
-                        self.graph.status_callback(
-                            "system",
-                            "skipped",
-                            f"No new market data since {latest_market_date}",
-                        )
-                    logger.info(
-                        f"{ticker}: Skipped (no new data since {latest_market_date})"
-                    )
-                    return
-
                 self._run_analysis_cycle_impl(
                     ticker,
                     schedule_job_id,
@@ -595,6 +579,8 @@ class TickerScheduler:
             summaries["portfolio_shares"] = shares
             summaries["portfolio_rationale"] = pa_opinion
             summaries["pipeline_strategy"] = pipeline_strategy
+            summaries["rag_used"] = portfolio_decision.get("rag_used", False)
+            summaries["rag_docs"] = portfolio_decision.get("rag_docs")
 
             trade_executed = False
             trade_action = None

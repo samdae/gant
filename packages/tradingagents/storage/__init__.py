@@ -12,6 +12,7 @@ from .report_repo import ReportRepository
 from .trade_repo import TradeRepository
 from .reflection_repo import ReflectionRepository
 from .schedule_job_repo import ScheduleJobRepository
+from .retrospective_repo import RetrospectiveRepository
 
 __all__ = [
     "Database",
@@ -22,4 +23,5 @@ __all__ = [
     "TradeRepository",
     "ReflectionRepository",
     "ScheduleJobRepository",
+    "RetrospectiveRepository",
 ]

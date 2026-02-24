@@ -370,19 +370,21 @@ async def delete_schedule(ticker: str, _: bool = Depends(check_admin_token)):
         remaining = []
         while not analysis_queue.empty():
             try:
-                item = analysis_queue.get_nowait()
-                if isinstance(item, dict):
-                    item_ticker = item.get("ticker")
+                entry = analysis_queue.get_nowait()
+                payload = entry
+                if isinstance(entry, tuple) and len(entry) == 3:
+                    _, _, payload = entry
+                if isinstance(payload, dict):
+                    item_ticker = payload.get("ticker")
                 else:
-                    item_ticker = item
-
+                    item_ticker = payload
                 if item_ticker != ticker:
-                    remaining.append(item)
+                    remaining.append(entry)
                 analysis_queue.task_done()
             except Exception:
                 break
-        for item in remaining:
-            analysis_queue.put_nowait(item)
+        for entry in remaining:
+            analysis_queue.put_nowait(entry)
         logger.info(f"Cleaned queue after deleting {ticker} schedule")
 
     return {"message": f"Schedule deleted for {ticker}"}
@@ -1213,10 +1215,12 @@ async def get_queue_status():
     pending = []
 
     if analysis_queue and not analysis_queue.empty():
-        # Peek without removing (approximation)
         queue_any: Any = analysis_queue
         raw_pending = list(getattr(queue_any, "_queue", []))
-        for item in raw_pending:
+        for entry in raw_pending:
+            item = entry
+            if isinstance(entry, tuple) and len(entry) == 3:
+                _, _, item = entry
             if isinstance(item, dict):
                 ticker = item.get("ticker")
             else:
@@ -1286,3 +1290,186 @@ async def health_check():
         schedules_count=schedules_count,
         uptime_seconds=uptime
     )
+
+
+# ── Retrospective Analysis endpoints ──
+
+
+class RetrospectiveAnalyzeRequest(BaseModel):
+    mode: str  # "ticker" | "date" | "all"
+    position_ids: Optional[List[int]] = None
+    tickers: Optional[List[str]] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+
+
+@router.get("/retrospective/tickers", tags=["Retrospective"])
+async def get_retrospective_tickers():
+    """Get tickers available for retrospective analysis (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.storage import RetrospectiveRepository
+    retro_repo = RetrospectiveRepository(scheduler.db)
+    return retro_repo.get_analyzable_tickers()
+
+
+@router.get("/retrospective/positions/{ticker}", tags=["Retrospective"])
+async def get_retrospective_positions(ticker: str):
+    """Get positions for a ticker with retrospective analysis status (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.storage import RetrospectiveRepository
+    retro_repo = RetrospectiveRepository(scheduler.db)
+    return retro_repo.get_positions_with_status(ticker)
+
+
+@router.post("/retrospective/analyze", tags=["Retrospective"])
+async def request_retrospective_analysis(
+    req: RetrospectiveAnalyzeRequest,
+    _: bool = Depends(check_admin_token),
+):
+    """Request retrospective analysis for selected positions (ADMIN)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.storage import RetrospectiveRepository, PositionRepository
+    from tradingagents.scheduler.ticker_scheduler import (
+        analysis_queue, PRIORITY_RETROSPECTIVE,
+    )
+    import tradingagents.scheduler.ticker_scheduler as ts_module
+
+    retro_repo = RetrospectiveRepository(scheduler.db)
+    position_repo = PositionRepository(scheduler.db)
+
+    if req.mode == "ticker":
+        if not req.position_ids:
+            raise HTTPException(status_code=400, detail="position_ids required for ticker mode")
+        positions_to_analyze = []
+        for pid in req.position_ids:
+            pos = position_repo.get_by_id(pid)
+            if pos:
+                positions_to_analyze.append(pos)
+    elif req.mode == "date":
+        if not req.date_from or not req.date_to:
+            raise HTTPException(status_code=400, detail="date_from and date_to required for date mode")
+        positions_to_analyze_raw = retro_repo.get_analyzable_positions(
+            date_from=req.date_from, date_to=req.date_to
+        )
+        positions_to_analyze = []
+        for row in positions_to_analyze_raw:
+            pos = position_repo.get_by_id(row["position_id"])
+            if pos:
+                positions_to_analyze.append(pos)
+    elif req.mode == "all":
+        positions_to_analyze_raw = retro_repo.get_analyzable_positions()
+        positions_to_analyze = []
+        for row in positions_to_analyze_raw:
+            pos = position_repo.get_by_id(row["position_id"])
+            if pos:
+                positions_to_analyze.append(pos)
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid mode: {req.mode}")
+
+    if not positions_to_analyze:
+        return {"enqueued": [], "message": "No eligible positions found"}
+
+    enqueued_ids = []
+    conn = scheduler.db.get_connection()
+
+    ticker_sequences = {}
+    for pos in positions_to_analyze:
+        tk = pos["ticker"]
+        if tk not in ticker_sequences:
+            all_positions = conn.execute(
+                """
+                SELECT id, ROW_NUMBER() OVER (ORDER BY opened_at) AS seq
+                FROM positions WHERE ticker = %s ORDER BY opened_at
+                """,
+                (tk,),
+            ).fetchall()
+            ticker_sequences[tk] = {row["id"]: int(row["seq"]) for row in all_positions}
+
+    for pos in positions_to_analyze:
+        position_id = pos["id"]
+        ticker = pos["ticker"]
+        pos_status = "closed" if pos["status"] == "closed" else "open"
+        seq = ticker_sequences.get(ticker, {}).get(position_id, 1)
+
+        existing = retro_repo.get_by_position_id(position_id)
+        if existing:
+            if existing["status"] in ("pending", "running"):
+                continue
+            if existing["status"] == "completed" and existing["position_status"] == "closed":
+                continue
+
+        retro_id = retro_repo.upsert(
+            position_id=position_id,
+            ticker=ticker,
+            position_sequence=seq,
+            position_status=pos_status,
+            position_open_date=str(pos.get("opened_at", "")),
+            position_close_date=str(pos.get("closed_at", "")) if pos.get("closed_at") else None,
+        )
+
+        if analysis_queue and scheduler:
+            scheduler._enqueue_item(
+                {
+                    "type": "retrospective",
+                    "ticker": ticker,
+                    "position_id": position_id,
+                    "retro_id": retro_id,
+                },
+                priority=PRIORITY_RETROSPECTIVE,
+                skip_dedup=True,
+            )
+
+        enqueued_ids.append(position_id)
+
+    return {
+        "enqueued": enqueued_ids,
+        "message": f"Enqueued {len(enqueued_ids)} position(s) for retrospective analysis",
+    }
+
+
+@router.get("/retrospective/summary", tags=["Retrospective"])
+async def get_retrospective_summary():
+    """Get tickers with completed retrospective analyses (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.storage import RetrospectiveRepository
+    retro_repo = RetrospectiveRepository(scheduler.db)
+    return retro_repo.get_ticker_summary()
+
+
+@router.get("/retrospective/detail/{ticker}", tags=["Retrospective"])
+async def get_retrospective_by_ticker(ticker: str):
+    """Get all retrospective analyses for a ticker (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.storage import RetrospectiveRepository
+    retro_repo = RetrospectiveRepository(scheduler.db)
+    return retro_repo.list_by_ticker(ticker)
+
+
+@router.get("/retrospective/{retro_id}", tags=["Retrospective"])
+async def get_retrospective_result(retro_id: int):
+    """Get a specific retrospective analysis result (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.storage import RetrospectiveRepository
+    retro_repo = RetrospectiveRepository(scheduler.db)
+    result = retro_repo.get_by_id(retro_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Retrospective analysis not found")
+    return result

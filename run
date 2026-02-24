@@ -1,0 +1,11 @@
+# 전체 한번에
+.\scripts\dev\start-all.ps1
+
+# 또는 개별 실행 (각각 별도 터미널)
+.\scripts\dev\start-db.ps1      # 터미널 1
+.\scripts\dev\init-db.ps1       # 최초 1회
+.\scripts\dev\start-be.ps1      # 터미널 2
+.\scripts\dev\start-fe.ps1      # 터미널 3
+
+# DB 리셋 필요 시
+.\scripts\dev\reset-db.ps1

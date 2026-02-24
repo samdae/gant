@@ -158,40 +158,17 @@ button {
 .bottom-nav {
   position: fixed;
   bottom: 0;
-  left: 10px;
-  right: 10px;
+  left: 0;
+  right: 0;
   z-index: 100;
   display: flex;
   align-items: stretch;
-  background: rgba(11, 13, 17, 0.94);
+  background: rgb(11, 13, 17);
   border-top: 1px solid var(--border);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   padding: 10px 10px 12px;
   padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   min-height: 64px;
   gap: 6px;
-  border-top-left-radius: 18px;
-  border-top-right-radius: 18px;
-  box-shadow: 0 -8px 20px rgba(5, 8, 14, 0.5);
-  transform: translateY(0);
-  transition: transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
-}
-
-.bottom-nav-hidden {
-  transform: translateY(calc(100% + 10px));
-}
-
-/* fill safe-area below the nav with tab color */
-.bottom-nav::before {
-  content: "";
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: env(safe-area-inset-bottom, 0px);
-  background: rgb(11, 13, 17);
-  z-index: 99;
 }
 
 .bottom-nav-item {
@@ -674,6 +651,11 @@ button {
   font-size: 0.75rem;
   color: var(--text-dim);
   margin-top: 2px;
+}
+.metric-sub-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 6px;
 }
 
 /* ===== BADGES ===== */
