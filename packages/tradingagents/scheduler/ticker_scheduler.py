@@ -233,9 +233,12 @@ class TickerScheduler:
         self._self_heal()
         self.scheduler.start()
         logger.info("TickerScheduler started")
+        import pytz
+        kst = pytz.timezone("Asia/Seoul")
         for job in self.scheduler.get_jobs():
             nft = job.trigger.get_next_fire_time(None, datetime.now(job.trigger.timezone))
-            logger.info(f"  Job '{job.id}': next_fire_time={nft}")
+            nft_kst = nft.astimezone(kst) if nft else None
+            logger.info(f"  Job '{job.id}': next={nft_kst:%Y-%m-%d %H:%M KST}" if nft_kst else f"  Job '{job.id}': next=None")
 
     def stop(self):
         self.scheduler.shutdown(wait=False)
