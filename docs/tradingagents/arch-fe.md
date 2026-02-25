@@ -1,7 +1,7 @@
 # Frontend Design Doc: TradingAgents UI (GANT)
 
 > Created: 2026-02-15
-> Updated: 2026-02-24 (코드 전수 검증)
+> Updated: 2026-02-25 (v5 동기화 — 스케줄 next_run_time, 회고분석 페이지, AnalysisTabs)
 > Service: tradingagents
 > Type: Frontend
 > Requirements: docs/tradingagents/spec.md
@@ -36,6 +36,9 @@ Svelte 기반 SPA로 AI 트레이딩 분석 대시보드 구현. REST API + WebS
 - Closed 포지션 active/closed 탭 분리 (FR-046)
 - Reflections 목록 페이지 — win/loss 필터, cursor 페이지네이션 (FR-049)
 - TradeDetail History 뱃지 동적 색상 (FR-048)
+- 회고분석 페이지 — 리스트-디테일 패턴, 분석 요청 모달 (v4)
+- AnalysisTabs 컴포넌트 — 레포트/매매검증/회고분석 서브탭 (v4)
+- 스케줄 next_run_time 표시 — "매일 · 2/26 07:00 예정" 형식
 
 ### Out of scope
 - SvelteKit / SSR
@@ -167,6 +170,14 @@ component_structure:
       component: "Reflections"
       file: "src/routes/Reflections.svelte"
       description: "회고/반성 목록 — win/loss 필터, cursor 페이지네이션 (FR-049)"
+    - path: "/retrospective"
+      component: "Retrospective"
+      file: "src/routes/Retrospective.svelte"
+      description: "회고분석 리스트 — 티커별 완료 건수, 요약 (v4)"
+    - path: "/retrospective/:ticker"
+      component: "RetroDetail"
+      file: "src/routes/RetroDetail.svelte"
+      description: "회고분석 상세 — 회차 선택, 분석 결과 마크다운 렌더링 (v4)"
     - path: "/live"
       component: "Live"
       file: "src/routes/Live.svelte"
@@ -191,6 +202,9 @@ component_structure:
       path: "src/components/SelectMenu.svelte"
       props: "value, options, placeholder, disabled"
       description: "커스텀 드롭다운 (사이클 선택 등)"
+    - name: "AnalysisTabs"
+      path: "src/components/AnalysisTabs.svelte"
+      description: "AI분석 서브탭 바 (레포트/매매검증/회고분석) + 설명 텍스트 + action 슬롯 (v4)"
 
   lib:
     - name: "api/client.ts"
@@ -225,12 +239,15 @@ apps/web/
 │   │   ├── Reports.svelte
 │   │   ├── ReportDetail.svelte
 │   │   ├── Reflections.svelte      # [NEW] FR-049
+│   │   ├── Retrospective.svelte   # [NEW] v4 회고분석 리스트
+│   │   ├── RetroDetail.svelte     # [NEW] v4 회고분석 상세
 │   │   ├── Live.svelte
 │   │   ├── Auth.svelte
 │   │   └── NotFoundRedirect.svelte
 │   ├── components/
 │   │   ├── AppHeader.svelte         # 통화 셀렉터 인라인 (FR-040)
-│   │   ├── BottomNav.svelte         # 6탭 (회고 추가)
+│   │   ├── BottomNav.svelte         # 5탭 (예약/실시간/홈/투자/AI분석)
+│   │   ├── AnalysisTabs.svelte      # [NEW] v4 서브탭 (레포트/매매검증/회고분석)
 │   │   └── SelectMenu.svelte
 │   ├── lib/
 │   │   ├── api/
@@ -728,5 +745,5 @@ styling_convention:
 | Item           | Content                                      |
 | -------------- | -------------------------------------------- |
 | Generated      | 2026-02-15                                   |
-| Last synced    | 2026-02-24 (코드 전수 검증 + 버그 수정 반영 — formatAmount/formatSignedAmount 공용화, KRW 통화 전체 적용, Reflections 필터 리셋, console.log 삭제) |
-| Analysis scope | `apps/web/src/` (11 routes, 3 components, 8 lib/store files) |
+| Last synced    | 2026-02-25 (v5 동기화 — Retrospective/RetroDetail 페이지, AnalysisTabs 컴포넌트, 스케줄 next_run_time 표시) |
+| Analysis scope | `apps/web/src/` (13 routes, 4 components, 8 lib/store files) |

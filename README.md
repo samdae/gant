@@ -78,6 +78,15 @@ Risk Judge가 최종 BUY/SELL/HOLD + `strategy_json`(확신도, 비중)을 구�
 - **Postgres FTS**(키워드) + **ChromaDB**(시맨틱) → **RRF Fusion**
 - 경험이 있으면 → 분석 60% + 경험 40% 가중치로 **독립 판단**
 - 경험이 없으면 → 파이프라인 결정을 **그대로 따름**
+- 검색 쿼리에 market/sector 맥락 부착 → 같은 시장/섹터 경험 우선 매칭
+- `usefulness_score` 기반 쓰레기 문서 점진적 필터링 (RAG Validator)
+
+### RAG Validator
+
+- 회고분석 결과를 기반으로 RAG 문서별 유용성 평가
+- PA가 해당 경험을 실제로 반영했는지 문서 단위 판정
+- `usefulness_score` ±1 자동 조정 → 40 미만 시 검색에서 배제
+- 효과 분석 리포트 생성 → 사람이 읽고 판단
 
 ---
 
@@ -121,10 +130,11 @@ Risk Judge가 최종 BUY/SELL/HOLD + `strategy_json`(확신도, 비중)을 구�
 
 | 문서 | 설명 |
 |------|------|
-| [spec.md](docs/tradingagents/spec.md) | 요구사항 정의 (FR-001~037) |
+| [spec.md](docs/tradingagents/spec.md) | 요구사항 정의 (FR-001~054) |
 | [arch-be.md](docs/tradingagents/arch-be.md) | 백엔드 설계 — DB 스키마, API 명세, 에러 처리 |
 | [arch-fe.md](docs/tradingagents/arch-fe.md) | 프론트엔드 설계 — 컴포넌트, 상태 관리, 라우팅 |
 | [ui.md](docs/tradingagents/ui.md) | UI 명세 — 화면별 컴포넌트, 상태, 인터랙션 |
+| [USAGE_GUIDE.md](docs/USAGE_GUIDE.md) | 설치·실행·API 사용 가이드 |
 
 ---
 

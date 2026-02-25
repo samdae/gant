@@ -78,6 +78,9 @@ TRADINGAGENTS_CORS_ORIGINS=http://localhost:5173
 
 # 로그 레벨 (기본: INFO)
 TRADINGAGENTS_LOG_LEVEL=INFO
+
+# RAG 주입 경험 수 (기본: 1, 추후 2~3으로 확장)
+RAG_TOP_K=1
 ```
 
 ### 2.3 PostgreSQL 준비
@@ -203,6 +206,8 @@ curl -X DELETE http://localhost:8000/schedules/NVDA \
 | GET | `/schedules` | 스케줄 목록 |
 | GET | `/reports` | 분석 리포트 목록 |
 | GET | `/reflections` | 반성문 목록 |
+| GET | `/reflections/search` | 매매검증 검색 (?q, ?mode=keyword\|semantic) |
+| GET | `/rag-validator/reports` | RAG 효과 분석 리포트 목록 |
 | GET | `/activity` | 최근 활동 피드 |
 
 ### 인증 필요 WRITE
@@ -212,6 +217,7 @@ curl -X DELETE http://localhost:8000/schedules/NVDA \
 | POST | `/schedules` | 스케줄 등록 |
 | DELETE | `/schedules/{ticker}` | 스케줄 삭제 |
 | POST | `/schedules/{ticker}/retry` | 실패 스케줄 재시도 |
+| POST | `/rag-validator/run` | RAG Validator 실행 |
 
 ### 실시간
 
@@ -219,7 +225,7 @@ curl -X DELETE http://localhost:8000/schedules/NVDA \
 |---|---|---|
 | WebSocket | `/ws/analyze/{ticker}` | 에이전트 진행 상태 실시간 스트리밍 |
 
-전체 23개 REST + 1개 WS 엔드포인트는 `docs/tradingagents/arch-be.md` §6을 참조하십시오.
+전체 REST + WS 엔드포인트는 `docs/tradingagents/arch-be.md` §6을 참조하십시오.
 
 ## 7. 데이터베이스 관리
 
@@ -250,7 +256,9 @@ schedule_job_events — 에이전트별 진행 이벤트
 positions           — 포지션 (active/closed)
 reports             — 분석 리포트 (13개 요약 컬럼)
 trades              — 개별 BUY/SELL 기록
-reflections         — 청산 시 반성문 (Postgres FTS + ChromaDB 벡터)
+reflections             — 청산 시 반성문 (Postgres FTS + ChromaDB 벡터 + usefulness_score)
+retrospective_analyses  — 회고분석 결과 (v4)
+rag_validation_results  — RAG Validator 평가 결과 (v5)
 ```
 
 ## 8. 프로젝트 구조
@@ -265,8 +273,10 @@ reflections         — 청산 시 반성문 (Postgres FTS + ChromaDB 벡터)
 │   ├── agents/                 # 12에이전트 + 요약에이전트
 │   ├── virtual_trade/          # TradeManager + PortfolioAgent
 │   ├── scheduler/              # APScheduler + CronTrigger
-│   ├── storage/                # Postgres 7 Repository
-│   ├── memory/                 # HybridMemory (FTS + ChromaDB)
+│   ├── storage/                # Postgres 8 Repository (rag_validation_results 추가)
+│   ├── memory/                 # HybridMemory (FTS + ChromaDB + usefulness 필터)
+│   ├── rag_validator/          # RAG Validator (usefulness_score ±1 평가)
+│   ├── retrospective/          # 회고분석 서비스
 │   ├── llm_clients/            # gemini-cli, antigravity, codex
 │   ├── dataflows/              # yfinance, Alpha Vantage
 │   ├── default_config.py       # 기본 설정

@@ -1,7 +1,7 @@
 # UI Specification: TradingAgents (GANT)
 
 > Created: 2026-02-13
-> Updated: 2026-02-24 (코드 전수 검증)
+> Updated: 2026-02-25 (v5 동기화 — 스케줄 예정시간, 회고분석 페이지, 매매검증 검색)
 > Service: tradingagents
 > Platform: responsive
 > Requirements: docs/tradingagents/spec.md
@@ -175,16 +175,16 @@ approach: "Mobile First"
 ├─────────────────────────────────┤
 │ ┌───────────────────────────┐   │
 │ │ NVDA 엔비디아    [실행중] │   │
-│ │ 매일 · 12회차             │   │
+│ │ 매일 · 2/26 07:00 예정    │   │
 │ └───────────────────────────┘   │
 │ ┌───────────────────────────┐   │
 │ │ AAPL 애플        [활성]   │   │
-│ │ 매일 · 8회차              │   │
+│ │ 매일 · 2/26 07:00 예정    │   │
 │ │         ← 스와이프로 삭제 │   │
 │ └───────────────────────────┘   │
 │ ┌───────────────────────────┐   │
 │ │ TSLA             [대기중] │   │
-│ │ 2일마다 · 3회차           │   │
+│ │ 매일 · 2/26 07:00 예정    │   │
 │ └───────────────────────────┘   │
 └─────────────────────────────────┘
 
@@ -612,5 +612,5 @@ pwa:
 | Item           | Content                                      |
 | -------------- | -------------------------------------------- |
 | Generated      | 2026-02-13                                   |
-| Last synced    | 2026-02-24 (코드 전수 검증 + 버그 수정 반영 — formatAmount/formatSignedAmount 공용화, KRW 통화 전체 적용, Reflections 필터 리셋) |
-| Analysis scope | `apps/web/src/` (11 screens, 3 shared components: AppHeader, BottomNav, SelectMenu) |
+| Last synced    | 2026-02-25 (v5 동기화 — 스케줄 예정시간 표시, 회고분석 페이지, AnalysisTabs, 매매검증 검색) |
+| Analysis scope | `apps/web/src/` (13 screens, 4 shared components: AppHeader, BottomNav, AnalysisTabs, SelectMenu) |
