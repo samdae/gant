@@ -289,6 +289,8 @@ async def get_schedules(
     start = cursor or 0
     end = start + limit
 
+    import pytz
+    kst = pytz.timezone("Asia/Seoul")
     jobs = {job.id: job for job in scheduler.scheduler.get_jobs()} if scheduler else {}
     results = []
     for cfg in configs[start:end]:
@@ -296,11 +298,9 @@ async def get_schedules(
         job = jobs.get(f"ticker_{ticker}")
         next_run_time = None
         if job:
-            next_run_time = getattr(job, "next_run_time", None) or getattr(
-                job, "next_fire_time", None
-            )
-            if isinstance(next_run_time, datetime):
-                next_run_time = next_run_time.isoformat()
+            nft = job.trigger.get_next_fire_time(None, datetime.now(job.trigger.timezone))
+            if nft:
+                next_run_time = nft.astimezone(kst).isoformat()
 
         results.append(
             {

@@ -248,6 +248,8 @@ class TickerScheduler:
         return self.scheduler.running
 
     def list_schedules(self) -> List[Dict[str, Any]]:
+        import pytz
+        kst = pytz.timezone("Asia/Seoul")
         jobs = self.scheduler.get_jobs()
         schedules = []
         for job in jobs:
@@ -257,11 +259,10 @@ class TickerScheduler:
                 if hasattr(job.trigger, "interval"):
                     interval_days = job.trigger.interval.days
 
-                next_run_time = getattr(job, "next_run_time", None)
-                if next_run_time is None:
-                    next_run_time = getattr(job, "next_fire_time", None)
-                if isinstance(next_run_time, datetime):
-                    next_run_time = next_run_time.isoformat()
+                next_run_time = None
+                nft = job.trigger.get_next_fire_time(None, datetime.now(job.trigger.timezone))
+                if nft:
+                    next_run_time = nft.astimezone(kst).isoformat()
 
                 schedules.append({
                     "ticker": ticker,
