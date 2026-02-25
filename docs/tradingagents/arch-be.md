@@ -492,7 +492,7 @@ scripts/
 > **경로 접두사**: # 1~55, 56~80 파일 경로는 `tradingagents/` 하위 (scripts/ 제외)
 > **Impl**: `[x]` = 구현 완료
 
-### Phase 4: 미구현 (FR-051~054)
+### Phase 4: 구현 완료 (FR-051~054)
 
 | # | Spec Ref | Feature | File | Class | Method | Action | Impl |
 |---|----------|---------|------|-------|--------|--------|------|

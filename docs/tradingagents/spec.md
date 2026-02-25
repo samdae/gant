@@ -56,10 +56,10 @@
 | FR-048     | Frontend   | TradeDetail History 뱃지 동적 색상 — 하드코딩 `badge-gain` → `getDecisionClass(getReportDecision(report))` 동적 적용. BUY/매수=gain, SELL/매도=loss, HOLD/관망=muted                                           | Low          | Implemented          |
 | FR-049     | Frontend   | Reflections 웹 UI — `/reflections` 라우트 + Reflections.svelte 페이지. win/loss 필터, cursor 페이지네이션, 마크다운 reflection 본문(marked+DOMPurify) + key_lessons 요약                                       | Medium       | Implemented          |
 | FR-050     | LLM        | Codex(GPT-5.3) LLM Provider — `oauth-codex` PyPI 패키지, `ChatCodex(BaseChatModel)` LangChain 래퍼, Responses API + tool calling, `gpt-5.3-codex` 단일 모델                                                   | Medium       | Implemented          |
-| FR-051     | Memory     | RAG 맥락 인식 검색 — 쿼리에 market/sector 텍스트 부착 (쿼리 enrichment). ChromaDB 시멘틱이 맥락 반영, FTS는 순수 키워드 매칭 유지. industry 배제, DB 하드 필터 대신 graceful degradation                        | High         | Designed             |
-| FR-052     | Memory     | RAG 검색 파이프라인 재설계 — FTS top-3 + ChromaDB top-3 → 중복제거 + RRF top-3 → usefulness < 40 하드 배제 → usefulness DESC → top-K. `reflections.usefulness_score` 컬럼 추가(기본값 50). `RAG_TOP_K` 환경변수(기본 1, 추후 2~3) | Critical     | Designed             |
-| FR-053     | Learning   | RAG Validator — 회고분석 결과 기반 RAG 문서별 usefulness_score ±1 자동 조정. RAG 문서는 반성(매매검증) 출신으로 한정. 효과 분석 리포트 생성 (사람이 읽고 판단)                                                  | High         | Designed             |
-| FR-054     | Frontend   | 매매검증 검색 — 키워드(FTS LIKE/ILIKE) + 시멘틱(ChromaDB) 이중 검색. UI 검색창 + 모드 토글. `GET /reflections/search?q=...&mode=keyword\|semantic`                                                              | Medium       | Designed             |
+| FR-051     | Memory     | RAG 맥락 인식 검색 — 쿼리에 market/sector 텍스트 부착 (쿼리 enrichment). ChromaDB 시멘틱이 맥락 반영, FTS는 순수 키워드 매칭 유지. industry 배제, DB 하드 필터 대신 graceful degradation                        | High         | Implemented          |
+| FR-052     | Memory     | RAG 검색 파이프라인 재설계 — FTS top-3 + ChromaDB top-3 → 중복제거 + RRF top-3 → usefulness < 40 하드 배제 → usefulness DESC → top-K. `reflections.usefulness_score` 컬럼 추가(기본값 50). `RAG_TOP_K` 환경변수(기본 1, 추후 2~3) | Critical     | Implemented          |
+| FR-053     | Learning   | RAG Validator — 회고분석 결과 기반 RAG 문서별 usefulness_score ±1 자동 조정. RAG 문서는 반성(매매검증) 출신으로 한정. 효과 분석 리포트 생성 (사람이 읽고 판단)                                                  | High         | Implemented          |
+| FR-054     | Frontend   | 매매검증 검색 — 키워드(FTS LIKE/ILIKE) + 시멘틱(ChromaDB) 이중 검색. UI 검색창 + 모드 토글. `GET /reflections/search?q=...&mode=keyword\|semantic`                                                              | Medium       | Implemented          |
 
 > **Status**: `Implemented` = 코드 존재, `Designed` = 설계 완료 (미구현), `Draft` = proposal.md에서 추출
 > **Req ID Rule**: `FR-{number}` format. New = max + 1. Never reuse deleted numbers.
@@ -501,6 +501,7 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 
 | Date       | Type            | Changes                                                                                                                                                                 |
 | ---------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-02-25 | code_sync       | FR-051~054 Status: Designed→Implemented (코드 매핑 17/17, API 런타임 5/5 검증 완료). arch-be.md Phase 4 구현 완료 마킹. 경미 이슈 2건 수정 (ON CONFLICT DO NOTHING, usefulness 이중 조회 제거) |
 | 2026-02-24 | code_sync       | FR-038~050 Status: Designed→Implemented (코드 전수 검증). metrics/positions `?currency=` 서버필터 → FE 클라이언트 필터링으로 정정. position.opened_at을 yfinance 데이터 기준일로 통일 (FR-043). 하단 6탭(회고 추가). CronTrigger timezone 파라미터 명시. deep_think_llm/quick_think_llm codex 조건 분기 반영 |
 | 2026-02-24 | code_fix        | A-1: `_get_latest_close()` 전일종가 가드 제거 → 항상 최신 확정 종가 사용. A-2: FE 통화 표시 `formatAmount`/`formatSignedAmount` 공용화, KRW ₩ 지원. A-3: PA 프롬프트 MODIFY 제거(BUY/SELL/HOLD만). B-1~6: 데드코드 정리(`_get_current_price`, `_ticker_intervals`, reflection DEPRECATED 메서드), `_requeued_job_ids` discard, console.log 삭제, Reflections 필터 리셋. C-2: stop_loss≥target 역전 검증 |
 | 2026-02-24 | add_requirement | issues_20260223.md 기반 FR-038~050 추가 (13개). DB 스키마 7테이블 재설계(schedules 제거), 통화 지원, 자동 청산, 독립 자금, 시장별 스케줄, 매매 시점 보정, Closed 포지션 UI, Reflections UI, Codex 프로바이더 |
