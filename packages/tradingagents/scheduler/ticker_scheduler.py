@@ -237,18 +237,6 @@ class TickerScheduler:
             nft = job.trigger.get_next_fire_time(None, datetime.now(job.trigger.timezone))
             logger.info(f"  Job '{job.id}': next_fire_time={nft}")
 
-        # DEBUG: 2분 뒤 fire하는 테스트 job (확인 후 삭제)
-        from apscheduler.triggers.date import DateTrigger
-        test_fire = datetime.now() + timedelta(minutes=2)
-        self.scheduler.add_job(
-            func=lambda: logger.info("🔔 TEST TRIGGER FIRED — APScheduler is working"),
-            trigger=DateTrigger(run_date=test_fire),
-            id="__debug_test_trigger",
-            name="Debug test (delete me)",
-            replace_existing=True,
-        )
-        logger.info(f"  DEBUG: test trigger scheduled at {test_fire.isoformat()}")
-
     def stop(self):
         self.scheduler.shutdown(wait=False)
         logger.info("TickerScheduler stopped")
