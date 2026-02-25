@@ -217,6 +217,16 @@
 
   const formatInterval = (days: number) => (days === 1 ? "매일" : `${days}일마다`);
 
+  const formatNextRun = (iso: string | null): string => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const h = d.getHours().toString().padStart(2, "0");
+    const m = d.getMinutes().toString().padStart(2, "0");
+    const mon = d.getMonth() + 1;
+    const day = d.getDate();
+    return `${mon}/${day} ${h}:${m}`;
+  };
+
   onMount(() => {
     loadSchedules();
   });
@@ -284,9 +294,9 @@
             </div>
             <div class="schedule-details">
               {#if cycles[schedule.ticker]}
-                <span>{formatInterval(schedule.interval_days)} · {cycles[schedule.ticker]?.scheduled_cycle}회차</span>
+                <span>{formatInterval(schedule.interval_days)}{#if schedule.next_run_time} · 다음 {formatNextRun(schedule.next_run_time)}{/if} · {cycles[schedule.ticker]?.scheduled_cycle}회차</span>
               {:else}
-                <span>{formatInterval(schedule.interval_days)}</span>
+                <span>{formatInterval(schedule.interval_days)}{#if schedule.next_run_time} · 다음 {formatNextRun(schedule.next_run_time)}{/if}</span>
               {/if}
             </div>
           </div>
