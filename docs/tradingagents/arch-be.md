@@ -1,7 +1,7 @@
-# Backend Design Doc: TradingAgents Features (FR-013~050)
+# Backend Design Doc: TradingAgents Features (FR-013~054)
 
 > Created: 2026-02-11
-> Updated: 2026-02-24
+> Updated: 2026-02-25
 > Service: tradingagents
 > Type: Backend
 > Requirements document: docs/tradingagents/spec.md
@@ -11,7 +11,7 @@
 
 ### Goal
 
-기존 TradingAgents 멀티에이전트 분석 파이프라인에 **영속 메모리(Hybrid RAG)**, **가상 매매 검증**, **스케줄 기반 자동화**를 추가하고, **Postgres 기반 데이터 저장**, **반성 집중화(반성에이전트 1곳)**, **요약에이전트**를 도입하여, AI 분석의 정확도를 정량적으로 추적·학습하는 자기 개선 시스템으로 진화시킨다. 추가로 **스케줄 테이블 재설계(7테이블)**, **통화 지원(KRW/USD)**, **자동 청산 메커니즘**, **시장별 스케줄링**, **Codex LLM 프로바이더**를 도입한다.
+기존 TradingAgents 멀티에이전트 분석 파이프라인에 **영속 메모리(Hybrid RAG)**, **가상 매매 검증**, **스케줄 기반 자동화**를 추가하고, **Postgres 기반 데이터 저장**, **반성 집중화(반성에이전트 1곳)**, **요약에이전트**를 도입하여, AI 분석의 정확도를 정량적으로 추적·학습하는 자기 개선 시스템으로 진화시킨다. 추가로 **스케줄 테이블 재설계(7테이블)**, **통화 지원(KRW/USD)**, **자동 청산 메커니즘**, **시장별 스케줄링**, **Codex LLM 프로바이더**를 도입한다. v5에서 **RAG 검색 파이프라인 개편(맥락 인식 검색, usefulness 기반 필터링)**, **RAG Validator(경험 유용성 자동 평가)**, **매매검증 검색 기능**을 추가한다.
 
 ### Non-goals
 
@@ -26,6 +26,8 @@
 - 학습 효과: has_memory=true vs false 분석 결과 비교 가능
 - 스케줄: 지정 주기대로 자동 분석 실행, 1시간 이내 완료
 - 반성 품질: 청산 포지션마다 전 사이클 기반 반성문 생성
+- RAG 품질: usefulness_score < 40 문서 자동 배제, 쓰레기 경험 점진적 필터링
+- RAG 맥락: 동일 market/sector 경험 우선 검색, 크로스 티커 노이즈 감소
 
 ---
 
@@ -68,6 +70,10 @@
 - **FR-045: 총손익 = 실현 + 미실현**
 - **FR-047: Win/Loss 판정 기준 통일**
 - **FR-050: Codex(GPT-5.3) LLM Provider**
+- **FR-051: RAG 맥락 인식 검색 — 쿼리 enrichment (market/sector 텍스트 부착)**
+- **FR-052: RAG 검색 파이프라인 재설계 — RRF → usefulness 순서, usefulness_score, RAG_TOP_K**
+- **FR-053: RAG Validator — 회고분석 기반 문서별 usefulness_score ±1 자동 조정**
+- **FR-054: 매매검증 검색 — 키워드 + 시멘틱 이중 검색**
 
 ### Out of scope
 
@@ -197,6 +203,10 @@ dependencies:
 | `tradingagents/errors.py` | 커스텀 예외 계층 (DataVendorError, DecisionParseError, AgentExecutionError) | **new** |
 | `tradingagents/default_config.py` | DB URL, 스케줄러 설정, 캐시 설정 추가 | modify |
 | `apps/api/app.py` | FastAPI 진입점 (프록시) | **new** |
+| `tradingagents/rag_validator/` | RAG Validator — 회고분석 기반 문서별 usefulness_score ±1 평가 + 효과 리포트 생성 | **new** (FR-053) |
+| `tradingagents/memory/hybrid_memory.py` | 쿼리 enrichment + 파이프라인 재설계 (RRF → usefulness 순서, top-K) | modify (FR-051, FR-052) |
+| `tradingagents/virtual_trade/portfolio_agent.py` | `_build_rag_query()` enrichment 반영, `RAG_TOP_K` 적용 | modify (FR-051, FR-052) |
+| `tradingagents/storage/reflection_repo.py` | `usefulness_score` 컬럼 CRUD, `search_keyword()` 추가 | modify (FR-052, FR-054) |
 | `apps/web/` | Svelte SPA 프론트엔드 | **new** (FR-035) |
 | `pyproject.toml` | chromadb, apscheduler, fastapi, uvicorn, psycopg | modify |
 | ~~`tradingagents/virtual_trade/report_store.py`~~ | ~~JSON array append~~ | **삭제** (FR-032로 대체) |
@@ -302,18 +312,19 @@ CREATE TABLE trades (
 CREATE INDEX idx_trades_position ON trades(position_id);
 CREATE INDEX idx_trades_report ON trades(report_id);
 
--- ⑥ reflections: 회고 (변경 없음)
+-- ⑥ reflections: 회고 (FR-052 usefulness_score 추가)
 CREATE TABLE reflections (
-    id          BIGSERIAL PRIMARY KEY,
-    position_id BIGINT NOT NULL REFERENCES positions(id),
-    reflection  TEXT    NOT NULL,
-    key_lessons TEXT,
-    outcome     TEXT,
-    return_pct  DOUBLE PRECISION,
-    market      TEXT,
-    sector      TEXT,
-    industry    TEXT,
-    created_at  TIMESTAMPTZ NOT NULL
+    id               BIGSERIAL PRIMARY KEY,
+    position_id      BIGINT NOT NULL REFERENCES positions(id),
+    reflection       TEXT    NOT NULL,
+    key_lessons      TEXT,
+    outcome          TEXT,
+    return_pct       DOUBLE PRECISION,
+    market           TEXT,
+    sector           TEXT,
+    industry         TEXT,
+    usefulness_score DOUBLE PRECISION NOT NULL DEFAULT 50, -- [NEW] FR-052/053: RAG Validator ±1 조정, < 40 시 배제
+    created_at       TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX idx_reflections_position ON reflections(position_id);
 
@@ -481,6 +492,26 @@ scripts/
 > **경로 접두사**: # 1~55, 56~80 파일 경로는 `tradingagents/` 하위 (scripts/ 제외)
 > **Impl**: `[x]` = 구현 완료
 
+### Phase 4: 미구현 (FR-051~054)
+
+| # | Spec Ref | Feature | File | Class | Method | Action | Impl |
+|---|----------|---------|------|-------|--------|--------|------|
+| 81 | FR-051 | RAG 쿼리 enrichment | `virtual_trade/portfolio_agent.py` | `PortfolioAgent` | `_build_rag_query` | market/sector 텍스트 부착. `schedule_configs.market` + `yfinance Ticker.info.sector` 사용 | [ ] |
+| 82 | FR-052 | HybridMemory 파이프라인 재설계 | `memory/hybrid_memory.py` | `HybridMemory` | `get_memories` | FTS top-3 + ChromaDB top-3 → 중복제거 + RRF top-3 → usefulness < 40 배제 → usefulness DESC → top-K. 기존 top-10+top-10 RRF 교체 | [ ] |
+| 83 | FR-052 | usefulness 필터링 | `memory/hybrid_memory.py` | `HybridMemory` | `_apply_usefulness_filter` | usefulness_score < 40 하드 배제, DESC 정렬, top-K 컷. `ReflectionRepository` 연동 | [ ] |
+| 84 | FR-052 | reflections.usefulness_score 컬럼 | `storage/database.py` | `Database` | `init_schema` | ALTER TABLE reflections ADD COLUMN usefulness_score (ensure_column 패턴) | [ ] |
+| 85 | FR-052 | ReflectionRepo usefulness 메서드 | `storage/reflection_repo.py` | `ReflectionRepository` | `get_usefulness_scores(reflection_ids)`, `update_usefulness_score(reflection_id, delta)` | 벌크 조회 + ±1 업데이트 (0~100 클램핑) | [ ] |
+| 86 | FR-052 | RAG_TOP_K 환경변수 | `default_config.py` | — | — | `"rag_top_k": int(os.getenv("RAG_TOP_K", "1"))` 추가 | [ ] |
+| 87 | FR-053 | RAG Validator 모듈 | `rag_validator/__init__.py` | — | — | 새 모듈 생성 | [ ] |
+| 88 | FR-053 | RAG Validator 프롬프트 | `rag_validator/prompt.py` | — | `build_validation_prompt` | 회고분석 결과 + RAG 문서별 → "PA가 이 경험을 반영했는가?" 판정 프롬프트. 구조화 출력 (JSON verdict + justification) | [ ] |
+| 89 | FR-053 | RAG Validator 서비스 | `rag_validator/service.py` | `RAGValidatorService` | `validate(retrospective_id)`, `_evaluate_document(retro_content, rag_doc)`, `_apply_score_adjustments(results)`, `_generate_report(results)` | 오케스트레이터: 입력 수집 → 문서별 평가 → 점수 조정 → 리포트 생성 | [ ] |
+| 90 | FR-053 | RAG Validator 멱등성 | `rag_validator/service.py` | `RAGValidatorService` | `_is_already_evaluated(retrospective_id, reflection_id)` | (retrospective_id, reflection_id) 쌍 중복 평가 방지 | [ ] |
+| 91 | FR-053 | RAG Validator API | `api/routes.py` | — | `POST /rag-validator/run`, `GET /rag-validator/reports` | 수동 실행 트리거 + 리포트 조회. Bearer 인증 | [ ] |
+| 92 | FR-053 | RAG Validator 큐 통합 | `api/app.py` | — | `_queue_worker` | `item['type'] == 'rag_validation'` 분기. priority=2 (스케줄 0, 회고분석 1, RAG 검증 2) | [ ] |
+| 93 | FR-054 | 키워드 검색 | `storage/reflection_repo.py` | `ReflectionRepository` | `search_keyword(query, limit)` | `ILIKE '%{query}%'` on reflection + key_lessons | [ ] |
+| 94 | FR-054 | 시멘틱 검색 | `memory/hybrid_memory.py` | `HybridMemory` | `search_semantic(query, limit)` | ChromaDB 단독 쿼리 (RRF 없이) | [ ] |
+| 95 | FR-054 | 검색 API | `api/routes.py` | — | `GET /reflections/search?q=...&mode=keyword|semantic&limit=20` | 모드별 전략 디스패치. 공개 READ | [ ] |
+
 ---
 
 ## 4. Implementation Plan
@@ -606,25 +637,63 @@ scripts/
 > **ChromaDB**: 트랜잭션 밖에서 별도 저장 (ChromaDB는 Postgres 트랜잭션과 무관). 실패 시 로그만 남기고 진행.
 > **Reflection**: 트랜잭션 밖에서 실행. 실패해도 포지션 청산은 이미 커밋됨.
 
-### 5.2 Hybrid RAG Search (PA Memory Read)
+### 5.2 Hybrid RAG Search (PA Memory Read) — FR-051/052 개편
 
 ```
 PA: "반도체 대형주 모멘텀 진입 경험?"
          │
+    1. Query Enrichment (FR-051)
+       + "Market: us Sector: Technology"
+         │
     ┌────┴────┐
     ▼         ▼
  ChromaDB    Postgres FTS
- (벡터)      (GIN + ts_rank_cd)
-    │         │
-    │   ReflectionRepository.search_fts(query)
-    │   → to_tsvector @@ plainto_tsquery → ts_rank_cd
+ top-3       top-3
+ (시멘틱     (키워드 매칭,
+  맥락 반영)  enrichment 무관)
     │         │
     └────┬────┘
          ▼
-    RRF 합산: Σ 1/(60 + rank_i(d))
+    2. 중복 제거 + RRF top-3 (적합성 커팅)
          ▼
-    Top-K 결과 + 레이블 부착
-    [✅ 성공 사례] / [⚠️ 실패 사례]
+    3. usefulness_score < 40 하드 배제
+       → usefulness DESC 정렬
+       → top-K (env: RAG_TOP_K, 기본 1)
+         ▼
+    4. 레이블 부착
+       [✅ 성공 사례] / [⚠️ 실패 사례]
+         ▼
+    PA에 주입 (파이프라인 60% + 경험 40%)
+```
+
+### 5.4 RAG Validator Flow (FR-053)
+
+```
+회고분석 완료 (retrospective_analyses.status = 'completed')
+         │
+    사용자 또는 자동 트리거
+         │
+         ▼
+RAGValidatorService.validate(retrospective_id)
+         │
+    ┌────┴──────────────────────────────────────┐
+    │  retrospective_analyses.analysis_content  │
+    │  reports WHERE position_id = X            │
+    │  → rag_used=true인 reports의 rag_docs     │
+    │  → memories[*].reflection_id 추출         │
+    └────┬──────────────────────────────────────┘
+         │
+    각 RAG 문서별 LLM 평가:
+    "PA가 이 경험을 실제로 반영했는가?"
+    → verdict: reflected | not_reflected | ambiguous
+         │
+    ┌────┴────┐
+    │         │
+    ▼         ▼
+ 점수 조정   리포트 생성
+ ±1 UPDATE   효과 분석
+ (0~100      보고서
+  클램핑)    (사람이 읽음)
 ```
 
 ### 5.3 Reflection Agent Flow (청산 시에만)
@@ -688,6 +757,9 @@ Reflector.reflect_on_position(position_id, db, ticker)
 | GET | `/search/tickers` | — | Yahoo Finance 티커 검색 (?q) |
 | GET | `/tickers/names` | — | 티커 display_name 맵 |
 | GET | `/live/{ticker}/events` | — | 실시간 에이전트 이벤트 (?limit) |
+| GET | `/reflections/search` | — | 매매검증 검색 (?q, ?mode=keyword\|semantic, ?limit) (FR-054) |
+| POST | `/rag-validator/run` | Bearer | RAG Validator 수동 실행 (retrospective_id 또는 전체) (FR-053) |
+| GET | `/rag-validator/reports` | — | RAG 효과 분석 리포트 조회 (?cursor, ?limit) (FR-053) |
 
 ### WebSocket
 
@@ -724,6 +796,7 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | `TRADINGAGENTS_STOCK_CACHE_STALE_DAYS` | 캐시 유효 기간 | `3` |
 | `TRADINGAGENTS_CHROMA_PATH` | ChromaDB 저장 경로 | `memory/chroma` |
 | `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API 키 (optional) | — |
+| `RAG_TOP_K` | PA 주입 경험 수 (초기 1, 추후 2~3) (FR-052) | `1` |
 
 ---
 
@@ -749,6 +822,15 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | 스케줄 테이블 | schedules 제거, 7테이블 | 기존 8테이블 유지 | schedules↔schedule_jobs 1:1 중복 제거, FK 단순화 (FR-039) |
 | 통화 처리 | 통화별 분리 (환율 변환 안 함) | 환율 변환 합산 | 환율 변동 리스크 제거, 단순성 (FR-040) |
 | 스케줄 타이밍 | CronTrigger 시장별 | IntervalTrigger 단순 간격 | 장마감 후 종가 확정 데이터 기반 분석 보장 (FR-044) |
+| RAG 맥락 인식 | 쿼리 enrichment (텍스트 부착) | DB 하드 필터 (WHERE market = :market) | 인프라 변경 없음, graceful degradation, ChromaDB 시멘틱이 맥락 자연 반영 (FR-051) |
+| RAG 파이프라인 순서 | RRF(적합성) → usefulness(유용성) | usefulness → RRF | 초기 usefulness 전부 50이라 변별력 없음. 변별력이 항상 있는 축(RRF)으로 먼저 커팅이 안전 (FR-052) |
+| RAG top-K 초기값 | K=1 | K=3 | 1개일 때 RAG Validator 귀인 평가가 깨끗함. 3개면 어느 문서가 영향을 줬는지 판별 어려움 (FR-052) |
+| usefulness 하드 플로어 | 40 | 30 또는 동적 | 기본값 50에서 10회 연속 "쓸모없다" 판정 시 도달. 충분히 보수적. 운영 데이터 보면서 40~43 조절 예정 (FR-052) |
+| usefulness 점수 범위 | 0~100 클램핑 | 무한 | 장기 누적 시 점수 폭주 방지 (Best Practice Advisor 제안 반영) |
+| RAG Validator 평가 단위 | 문서별 개별 평가 | 사이클 단위 일괄 평가 | 문서별이어야 usefulness_score 귀인이 정확 (FR-053) |
+| RAG Validator 조정 폭 | ±1 고정 | 신뢰도 가중 (±1~3) | 느린 수렴이 의도. 빠른 적용은 노이즈에 반응할 위험 (FR-053) |
+| RAG 소스 범위 | 반성(매매검증)만 | 회고분석 포함 | 회고분석은 검증/시각화 전용. RAG 소스 단일화로 역할 명확 |
+| 검색 API 설계 | 단일 엔드포인트 + mode 파라미터 | 모드별 별도 엔드포인트 | API 표면 최소화, 클라이언트 로직 단순화 (FR-054) |
 
 ### 리스크
 
@@ -794,6 +876,13 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | 13 | Schedule | 새 데이터 없음 | schedule_job status='skipped' (FR-036) |
 | 14 | Transaction | 부분 실패 | 전체 롤백, schedule_job status='failed' |
 | 15 | Server | 서버 재시작 시 running job | self-heal: running→failed 마킹 후 재큐잉 |
+| 16 | RAG | 양쪽 retriever 빈 결과 | 빈 결과 반환, PA는 RAG 없이 파이프라인 결론만으로 판단 (FR-052) |
+| 17 | RAG | FTS 또는 ChromaDB 한쪽 실패 | 살아있는 쪽 결과만으로 진행. 로그 남김 (FR-052) |
+| 18 | RAG | usefulness 필터 후 전부 배제됨 | 빈 결과 반환. 임계값 완화 안 함 (FR-052) |
+| 19 | RAG | usefulness_score 경계값 (0 또는 100) | 클램핑 처리. 조정은 no-op. 로그 남김 (FR-053) |
+| 20 | RAG Validator | LLM이 ambiguous 판정 | ±0 (점수 변경 없음). 로그에 기록 (FR-053) |
+| 21 | RAG Validator | 중복 평가 시도 | 멱등성 가드: (retrospective_id, reflection_id) 이미 평가 시 스킵 (FR-053) |
+| 22 | Search | 시멘틱 검색 시 ChromaDB 불가 | 503 반환. 키워드 검색은 정상 작동 (FR-054) |
 
 ### Authorization
 
@@ -803,6 +892,9 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | POST /schedules | Bearer token | `api/auth.py` `check_admin_token` | 401 |
 | DELETE /schedules/{ticker} | Bearer token | `api/auth.py` `check_admin_token` | 401 |
 | POST /schedules/{ticker}/retry | Bearer token | `api/auth.py` `check_admin_token` | 401 |
+| POST /rag-validator/run | Bearer token | `api/auth.py` `check_admin_token` | 401 |
+| GET /reflections/search | 없음 (공개) | — | — |
+| GET /rag-validator/reports | 없음 (공개) | — | — |
 
 ### Data Integrity Rules
 

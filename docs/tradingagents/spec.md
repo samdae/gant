@@ -56,10 +56,10 @@
 | FR-048     | Frontend   | TradeDetail History 뱃지 동적 색상 — 하드코딩 `badge-gain` → `getDecisionClass(getReportDecision(report))` 동적 적용. BUY/매수=gain, SELL/매도=loss, HOLD/관망=muted                                           | Low          | Implemented          |
 | FR-049     | Frontend   | Reflections 웹 UI — `/reflections` 라우트 + Reflections.svelte 페이지. win/loss 필터, cursor 페이지네이션, 마크다운 reflection 본문(marked+DOMPurify) + key_lessons 요약                                       | Medium       | Implemented          |
 | FR-050     | LLM        | Codex(GPT-5.3) LLM Provider — `oauth-codex` PyPI 패키지, `ChatCodex(BaseChatModel)` LangChain 래퍼, Responses API + tool calling, `gpt-5.3-codex` 단일 모델                                                   | Medium       | Implemented          |
-| FR-051     | Memory     | RAG 맥락 인식 검색 — 쿼리에 market/sector 텍스트 부착 (쿼리 enrichment). ChromaDB 시멘틱이 맥락 반영, FTS는 순수 키워드 매칭 유지. industry 배제, DB 하드 필터 대신 graceful degradation | High | Draft |
-| FR-052     | Memory     | RAG 검색 파이프라인 재설계 — FTS top-3 + ChromaDB top-3 → 중복제거 + RRF top-3 → usefulness < 40 하드 배제 → usefulness DESC → top-K. `reflections.usefulness_score` 컬럼 추가(기본값 50). `RAG_TOP_K` 환경변수(기본 1, 추후 2~3) | Critical | Draft |
-| FR-053     | Learning   | RAG Validator — 회고분석 결과 기반 RAG 문서별 usefulness_score ±1 자동 조정. RAG 문서는 반성(매매검증) 출신으로 한정. 효과 분석 리포트 생성 (사람이 읽고 판단) | High | Draft |
-| FR-054     | Frontend   | 매매검증 검색 — 키워드(FTS LIKE/ILIKE) + 시멘틱(ChromaDB) 이중 검색. UI 검색창 + 모드 토글. `GET /reflections/search?q=...&mode=keyword\|semantic` | Medium | Draft |
+| FR-051     | Memory     | RAG 맥락 인식 검색 — 쿼리에 market/sector 텍스트 부착 (쿼리 enrichment). ChromaDB 시멘틱이 맥락 반영, FTS는 순수 키워드 매칭 유지. industry 배제, DB 하드 필터 대신 graceful degradation                        | High         | Designed             |
+| FR-052     | Memory     | RAG 검색 파이프라인 재설계 — FTS top-3 + ChromaDB top-3 → 중복제거 + RRF top-3 → usefulness < 40 하드 배제 → usefulness DESC → top-K. `reflections.usefulness_score` 컬럼 추가(기본값 50). `RAG_TOP_K` 환경변수(기본 1, 추후 2~3) | Critical     | Designed             |
+| FR-053     | Learning   | RAG Validator — 회고분석 결과 기반 RAG 문서별 usefulness_score ±1 자동 조정. RAG 문서는 반성(매매검증) 출신으로 한정. 효과 분석 리포트 생성 (사람이 읽고 판단)                                                  | High         | Designed             |
+| FR-054     | Frontend   | 매매검증 검색 — 키워드(FTS LIKE/ILIKE) + 시멘틱(ChromaDB) 이중 검색. UI 검색창 + 모드 토글. `GET /reflections/search?q=...&mode=keyword\|semantic`                                                              | Medium       | Designed             |
 
 > **Status**: `Implemented` = 코드 존재, `Designed` = 설계 완료 (미구현), `Draft` = proposal.md에서 추출
 > **Req ID Rule**: `FR-{number}` format. New = max + 1. Never reuse deleted numbers.
@@ -126,10 +126,6 @@ Financial Analysis / AI-driven Investment Decision Support
 | Closed Positions UI (FR-046)                        | active/closed 탭 분리, 과거 포지션 승패·수익률·보유기간 표시                                              | ✅ High    |
 | Reflections Web UI (FR-049)                         | 회고 목록 페이지, win/loss 필터, cursor 페이지네이션, 마크다운 렌더링                                     | ✅ Medium  |
 | Codex LLM Provider (FR-050)                         | OpenAI Codex(GPT-5.3) OAuth PKCE 기반 LangChain 래퍼                                                     | ✅ Medium  |
-| RAG Context-Aware Search (FR-051)                   | 쿼리 enrichment로 market/sector 맥락 반영. 크로스 티커 노이즈 감소                                       | ⬜ High    |
-| RAG Search Pipeline Redesign (FR-052)               | RRF → usefulness 순서, top-K 제어(`RAG_TOP_K`), usefulness < 40 하드 배제                                | ⬜ Critical |
-| RAG Validator (FR-053)                              | 회고분석 기반 문서별 usefulness_score ±1 자동 조정. 느린 쓰레기 필터                                      | ⬜ High    |
-| Reflections Search (FR-054)                         | 매매검증 키워드 + 시멘틱 이중 검색, UI 검색창 + 모드 토글                                                 | ⬜ Medium  |
 
 ### 3.2 Detailed Features
 
@@ -162,10 +158,6 @@ Market Analyst → [Msg Clear] → Social Analyst → [Msg Clear]
 - **Memory Poisoning Prevention**: outcome(win/loss), market, sector, industry 메타데이터로 기억 품질 관리 (FR-029)
 - **Metadata Source**: `yfinance.Ticker(ticker).info` — market=`fullExchangeName`, sector=`sector`, industry=`industry`. crypto(`quoteType=CRYPTOCURRENCY`)는 고정값 fallback. fetch 실패 시 `null` 저장 + 정상 진행
 - **Cross-ticker Learning**: 모든 티커의 반성 데이터가 하나의 RAG에 통합 → 종목 간 패턴 인식
-- **RAG Query Enrichment** (FR-051): 검색 쿼리에 market/sector 텍스트 부착. ChromaDB 임베딩이 맥락을 벡터에 반영하여 같은 시장/섹터 문서의 유사도 자연 상승. FTS는 순수 키워드 매칭 유지. industry는 배제 (sector 수준이면 충분). DB 하드 필터 대신 graceful degradation — 같은 맥락 문서가 부족하면 cross-sector 문서가 낮은 유사도로 자연 상승
-- **RAG Search Pipeline** (FR-052): FTS top-3 + ChromaDB top-3 → 중복제거 + RRF 융합 → top-3 (적합성 커팅) → usefulness_score < 40 하드 배제 → usefulness DESC → top-K (유용성 커팅) → PA 주입. `RAG_TOP_K` 환경변수로 주입 경험 수 제어 (기본 1, 추후 2~3). 초기 K=1은 RAG Validator의 귀인 평가 정확도를 높이기 위한 의도적 선택
-- **usefulness_score** (FR-052, FR-053): `reflections` 테이블에 `usefulness_score` 컬럼 (DOUBLE PRECISION, 기본값 50). RAG Validator가 ±1 조정. 40 미만 시 검색 결과에서 하드 배제. 대부분 문서가 48~52에 머물며, 진짜 쓰레기만 서서히 하락하는 보수적 필터
-- **RAG Validator** (FR-053): 회고분석 결과(`retrospective_analyses.analysis_content`)를 입력으로 받아, RAG 문서(`reports.rag_docs.memories[*]`)별로 PA가 실제로 해당 경험을 반영했는지 문서 단위 개별 평가. usefulness_score ±1 자동 조정 + 효과 분석 리포트 생성 (사람이 읽고 판단). RAG 문서는 반성(매매검증) 출신으로 한정 — 회고분석은 RAG에 저장하지 않음
 
 #### 3.2.3 Virtual Trading Validation (FR-013, FR-014, FR-020, FR-032, FR-041, FR-042, FR-043)
 
@@ -337,7 +329,7 @@ Market Analyst → [Msg Clear] → Social Analyst → [Msg Clear]
 | currency | TEXT NOT NULL DEFAULT 'USD' | **[NEW]** 매매 통화 (FR-040) |
 | executed_at | TIMESTAMPTZ NOT NULL | **[CHANGED]** datetime.now() → yfinance 데이터 기준일 (FR-043) |
 
-#### reflections (청산 시 반성에이전트 산출물 — FR-052 usefulness_score 추가)
+#### reflections (청산 시 반성에이전트 산출물 — 변경 없음)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -350,7 +342,6 @@ Market Analyst → [Msg Clear] → Social Analyst → [Msg Clear]
 | market | TEXT | 거래소/시장 (nullable) |
 | sector | TEXT | 섹터 (nullable) |
 | industry | TEXT | 산업 (nullable) |
-| usefulness_score | DOUBLE PRECISION NOT NULL DEFAULT 50 | **[NEW]** RAG Validator가 ±1 조정. 40 미만 시 검색 배제 (FR-052, FR-053) |
 | created_at | TIMESTAMPTZ NOT NULL | 레코드 생성 일시 |
 
 #### schedule_job_events (에이전트 진행 이벤트 — FK 정리)
@@ -438,8 +429,6 @@ DEFAULT_CONFIG = {
     # FR-030: ChromaDB path (Vector store, 환경변수 오버라이드 가능)
     "chroma_path": os.getenv("TRADINGAGENTS_CHROMA_PATH", "<project_dir>/memory/chroma"),
     "default_initial_capital": 5000.0,
-    # FR-052: RAG top-K (PA 주입 경험 수, 초기 1 → 추후 2~3)
-    "rag_top_k": int(os.getenv("RAG_TOP_K", "1")),
     # FR-016: Scheduler
     "schedules": [],  # List[{"ticker": str, "interval_days": int}]
     "scheduler_enabled": _get_env_bool("TRADINGAGENTS_SCHEDULER_ENABLED", False),
@@ -512,7 +501,6 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 
 | Date       | Type            | Changes                                                                                                                                                                 |
 | ---------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-02-25 | add_requirement | proposal_v5_not_impl.md → FR-051~054 추가 (4개). RAG 맥락 인식 검색(쿼리 enrichment), RAG 검색 파이프라인 재설계(RRF→usefulness 순서, top-K, 하드 플로어 40), RAG Validator(usefulness_score ±1), 매매검증 검색. reflections 테이블 usefulness_score 컬럼 추가. Configuration에 RAG_TOP_K 환경변수 추가 |
 | 2026-02-24 | code_sync       | FR-038~050 Status: Designed→Implemented (코드 전수 검증). metrics/positions `?currency=` 서버필터 → FE 클라이언트 필터링으로 정정. position.opened_at을 yfinance 데이터 기준일로 통일 (FR-043). 하단 6탭(회고 추가). CronTrigger timezone 파라미터 명시. deep_think_llm/quick_think_llm codex 조건 분기 반영 |
 | 2026-02-24 | code_fix        | A-1: `_get_latest_close()` 전일종가 가드 제거 → 항상 최신 확정 종가 사용. A-2: FE 통화 표시 `formatAmount`/`formatSignedAmount` 공용화, KRW ₩ 지원. A-3: PA 프롬프트 MODIFY 제거(BUY/SELL/HOLD만). B-1~6: 데드코드 정리(`_get_current_price`, `_ticker_intervals`, reflection DEPRECATED 메서드), `_requeued_job_ids` discard, console.log 삭제, Reflections 필터 리셋. C-2: stop_loss≥target 역전 검증 |
 | 2026-02-24 | add_requirement | issues_20260223.md 기반 FR-038~050 추가 (13개). DB 스키마 7테이블 재설계(schedules 제거), 통화 지원, 자동 청산, 독립 자금, 시장별 스케줄, 매매 시점 보정, Closed 포지션 UI, Reflections UI, Codex 프로바이더 |
@@ -540,6 +528,6 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 | Item           | Content                                      |
 | -------------- | -------------------------------------------- |
 | Generated      | 2026-02-11                                   |
-| Last synced    | 2026-02-25 (proposal_v5 → FR-051~054 추가) |
+| Last synced    | 2026-02-24 (코드 전수 검증 — FR-038~050 Implemented 확인) |
 | Analysis scope | `packages/tradingagents/` + `apps/` (Python + Svelte) |
 | Skill version  | reverse 2.0.0                                |
