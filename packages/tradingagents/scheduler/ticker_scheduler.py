@@ -40,6 +40,7 @@ analysis_queue: Optional[asyncio.PriorityQueue] = None
 
 PRIORITY_SCHEDULED = 0
 PRIORITY_RETROSPECTIVE = 1
+PRIORITY_RAG_VALIDATION = 2
 _enqueue_seq: int = 0
 
 
@@ -521,6 +522,7 @@ class TickerScheduler:
                 "current_price": current_price,
                 "currency": ticker_currency,
                 "initial_capital": ticker_initial_capital,
+                "market": cfg.get("market"),
             }
 
             try:

@@ -221,6 +221,7 @@ async def _queue_worker():
                 )
 
             is_retrospective = isinstance(item, dict) and item.get("type") == "retrospective"
+            is_rag_validation = isinstance(item, dict) and item.get("type") == "rag_validation"
 
             try:
                 if is_retrospective:
@@ -234,6 +235,18 @@ async def _queue_worker():
                     broadcast_status(
                         ticker, "system", "completed",
                         f"Retrospective analysis complete for {ticker}",
+                    )
+                elif is_rag_validation:
+                    from tradingagents.rag_validator import RAGValidatorService
+
+                    service = RAGValidatorService(scheduler.db, scheduler.config)
+                    retrospective_id = item.get("retrospective_id")
+                    await asyncio.to_thread(service.validate, retrospective_id)
+                    broadcast_status(
+                        ticker,
+                        "system",
+                        "completed",
+                        f"RAG validation complete for {ticker}",
                     )
                 else:
                     await asyncio.to_thread(
@@ -251,7 +264,15 @@ async def _queue_worker():
             except Exception as e:
                 broadcast_status(
                     ticker, "system", "error",
-                    f"{'Retrospective a' if is_retrospective else 'A'}nalysis failed: {str(e)}",
+                    (
+                        f"Retrospective analysis failed: {str(e)}"
+                        if is_retrospective
+                        else (
+                            f"RAG validation failed: {str(e)}"
+                            if is_rag_validation
+                            else f"Analysis failed: {str(e)}"
+                        )
+                    ),
                     schedule_job_id=job_id,
                 )
                 if graph:

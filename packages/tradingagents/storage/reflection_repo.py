@@ -55,8 +55,8 @@ class ReflectionRepository:
             """
             INSERT INTO reflections (
                 position_id, reflection, key_lessons, outcome, return_pct,
-                market, sector, industry, created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                market, sector, industry, usefulness_score, created_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 50, %s)
             RETURNING id
             """,
             (
@@ -89,7 +89,7 @@ class ReflectionRepository:
         cursor = self.db.get_connection().execute(
             """
             SELECT id, position_id, reflection, key_lessons, outcome, return_pct,
-                   market, sector, industry, created_at
+                   market, sector, industry, usefulness_score, created_at
             FROM reflections
             WHERE id = %s
             """,
@@ -111,7 +111,7 @@ class ReflectionRepository:
         cursor = self.db.get_connection().execute(
             """
             SELECT id, position_id, reflection, key_lessons, outcome, return_pct,
-                   market, sector, industry, created_at
+                   market, sector, industry, usefulness_score, created_at
             FROM reflections
             WHERE position_id = %s
             """,
@@ -137,6 +137,7 @@ class ReflectionRepository:
                 """
                 SELECT r.id, r.position_id, r.reflection, r.key_lessons,
                        r.outcome, r.return_pct, r.market, r.sector, r.industry,
+                       r.usefulness_score,
                        r.created_at,
                        ts_rank_cd(
                            to_tsvector('simple', coalesce(r.reflection, '') || ' ' || coalesce(r.key_lessons, '')),
@@ -158,6 +159,62 @@ class ReflectionRepository:
         except Exception as e:
             logger.warning(f"FTS search failed (query: '{query}'): {e}")
             return []
+
+    def get_usefulness_scores(self, reflection_ids: List[int]) -> Dict[int, float]:
+        """Bulk-fetch usefulness scores by reflection IDs."""
+        if not reflection_ids:
+            return {}
+
+        deduped_ids = sorted({int(rid) for rid in reflection_ids if rid is not None})
+        if not deduped_ids:
+            return {}
+
+        cursor = self.db.get_connection().execute(
+            """
+            SELECT id, usefulness_score
+            FROM reflections
+            WHERE id = ANY(%s)
+            """,
+            (deduped_ids,),
+        )
+        rows = cursor.fetchall()
+        return {int(row["id"]): float(row.get("usefulness_score") or 50.0) for row in rows}
+
+    def update_usefulness_score(self, reflection_id: int, delta: int) -> Optional[float]:
+        """Apply usefulness delta (+1/-1/0) with 0~100 clamp."""
+        connection = self.db.get_connection()
+        cursor = connection.execute(
+            """
+            UPDATE reflections
+            SET usefulness_score = LEAST(100, GREATEST(0, usefulness_score + %s))
+            WHERE id = %s
+            RETURNING usefulness_score
+            """,
+            (int(delta), reflection_id),
+        )
+        connection.commit()
+        row = cursor.fetchone()
+        return float(row["usefulness_score"]) if row else None
+
+    def search_keyword(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Keyword search over reflection + key_lessons using ILIKE."""
+        like_query = f"%{query}%"
+        cursor = self.db.get_connection().execute(
+            """
+            SELECT r.id, r.position_id, r.reflection, r.key_lessons,
+                   r.outcome, r.return_pct, r.market, r.sector, r.industry,
+                   r.usefulness_score, r.created_at,
+                   p.ticker
+            FROM reflections r
+            LEFT JOIN positions p ON p.id = r.position_id
+            WHERE coalesce(r.reflection, '') ILIKE %s
+               OR coalesce(r.key_lessons, '') ILIKE %s
+            ORDER BY r.created_at DESC
+            LIMIT %s
+            """,
+            (like_query, like_query, limit),
+        )
+        return [dict(row) for row in cursor.fetchall()]
 
 
 if __name__ == "__main__":

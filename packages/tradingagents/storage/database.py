@@ -185,6 +185,7 @@ class Database:
             market      TEXT,
             sector      TEXT,
             industry    TEXT,
+            usefulness_score DOUBLE PRECISION NOT NULL DEFAULT 50,
             created_at  TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_reflections_position ON reflections(position_id);
@@ -226,6 +227,19 @@ class Database:
         );
         CREATE INDEX IF NOT EXISTS idx_retro_ticker ON retrospective_analyses(ticker);
         CREATE INDEX IF NOT EXISTS idx_retro_status ON retrospective_analyses(status);
+
+        CREATE TABLE IF NOT EXISTS rag_validation_results (
+            id                BIGSERIAL PRIMARY KEY,
+            retrospective_id  BIGINT NOT NULL REFERENCES retrospective_analyses(id),
+            reflection_id     BIGINT NOT NULL REFERENCES reflections(id),
+            verdict           TEXT NOT NULL,
+            justification     TEXT,
+            score_delta       INTEGER NOT NULL,
+            created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE(retrospective_id, reflection_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_rag_validation_retro
+            ON rag_validation_results(retrospective_id);
         """
 
         for statement in (s.strip() for s in schema_sql.split(";")):
@@ -240,6 +254,7 @@ class Database:
         self._ensure_schedule_event_unique_index()
         self._ensure_column("reports", "rag_used", "BOOLEAN NOT NULL DEFAULT FALSE")
         self._ensure_column("reports", "rag_docs", "JSONB")
+        self._ensure_column("reflections", "usefulness_score", "DOUBLE PRECISION NOT NULL DEFAULT 50")
 
         logger.info("Schema initialization complete")
 

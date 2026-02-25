@@ -1142,6 +1142,34 @@ async def search_memories(
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 
+@router.get("/reflections/search", response_model=dict, tags=["Search"])
+async def search_reflections(
+    q: str = Query(..., min_length=1, description="Search query"),
+    mode: str = Query("keyword", pattern="^(keyword|semantic)$"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Search reflections with keyword or semantic mode (PUBLIC)."""
+    scheduler = app_module.scheduler
+    graph = app_module.graph
+    if not scheduler or not graph:
+        raise HTTPException(status_code=503, detail="System not initialized")
+
+    try:
+        if mode == "keyword":
+            from tradingagents.storage import ReflectionRepository
+
+            repo = ReflectionRepository(scheduler.db)
+            results = repo.search_keyword(q, limit=limit)
+        else:
+            results = graph.memory.search_semantic(q, limit=limit)
+        return {"mode": mode, "results": results}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Reflection search failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Search failed: {exc}")
+
+
 @router.get("/live/{ticker}/events", response_model=List[dict], tags=["Live"])
 async def get_live_events(
     ticker: str,
@@ -1301,6 +1329,10 @@ class RetrospectiveAnalyzeRequest(BaseModel):
     tickers: Optional[List[str]] = None
     date_from: Optional[str] = None
     date_to: Optional[str] = None
+
+
+class RAGValidatorRunRequest(BaseModel):
+    retrospective_ids: Optional[List[int]] = None
 
 
 @router.get("/retrospective/tickers", tags=["Retrospective"])
@@ -1473,3 +1505,105 @@ async def get_retrospective_result(retro_id: int):
     if not result:
         raise HTTPException(status_code=404, detail="Retrospective analysis not found")
     return result
+
+
+@router.post("/rag-validator/run", tags=["RAG Validator"])
+async def run_rag_validator(
+    req: RAGValidatorRunRequest,
+    _: bool = Depends(check_admin_token),
+):
+    """Queue RAG validation jobs (AUTHENTICATED)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.scheduler.ticker_scheduler import PRIORITY_RAG_VALIDATION
+    from tradingagents.storage import RetrospectiveRepository
+
+    retro_repo = RetrospectiveRepository(scheduler.db)
+    if req.retrospective_ids:
+        targets = []
+        for retro_id in req.retrospective_ids:
+            row = retro_repo.get_by_id(retro_id)
+            if row:
+                targets.append(row)
+    else:
+        rows = scheduler.db.get_connection().execute(
+            """
+            SELECT ra.id, ra.ticker
+            FROM retrospective_analyses ra
+            LEFT JOIN rag_validation_results rvr
+              ON rvr.retrospective_id = ra.id
+            WHERE ra.status = 'completed'
+            GROUP BY ra.id, ra.ticker
+            HAVING COUNT(rvr.id) = 0
+            ORDER BY ra.id DESC
+            """
+        ).fetchall()
+        targets = [dict(row) for row in rows]
+
+    enqueued = 0
+    skipped = 0
+    for target in targets:
+        retro_id = target["id"]
+        ticker = target["ticker"]
+        item = {
+            "type": "rag_validation",
+            "ticker": ticker,
+            "retrospective_id": retro_id,
+        }
+        try:
+            scheduler._enqueue_item(item, priority=PRIORITY_RAG_VALIDATION, skip_dedup=True)
+            enqueued += 1
+        except Exception:
+            skipped += 1
+
+    return {"enqueued": enqueued, "skipped": skipped}
+
+
+@router.get("/rag-validator/reports", tags=["RAG Validator"])
+async def get_rag_validator_reports(
+    cursor: Optional[int] = Query(None, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+):
+    """Get RAG validation report summaries (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.storage import RAGValidationRepository
+
+    repo = RAGValidationRepository(scheduler.db)
+    return repo.get_summary(cursor=cursor, limit=limit)
+
+
+@router.get("/rag-validator/reports/{retrospective_id}", tags=["RAG Validator"])
+async def get_rag_validator_report_detail(retrospective_id: int):
+    """Get detailed RAG validation report by retrospective_id (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    from tradingagents.storage import RAGValidationRepository, RetrospectiveRepository
+
+    retro = RetrospectiveRepository(scheduler.db).get_by_id(retrospective_id)
+    if not retro:
+        raise HTTPException(status_code=404, detail="Retrospective analysis not found")
+
+    repo = RAGValidationRepository(scheduler.db)
+    details = repo.list_by_retrospective(retrospective_id)
+    if not details:
+        raise HTTPException(status_code=404, detail="RAG validation report not found")
+
+    summary = {
+        "evaluated_count": len(details),
+        "reflected_count": len([d for d in details if d.get("verdict") == "reflected"]),
+        "not_reflected_count": len([d for d in details if d.get("verdict") == "not_reflected"]),
+        "ambiguous_count": len([d for d in details if d.get("verdict") == "ambiguous"]),
+    }
+    return {
+        "retrospective_id": retrospective_id,
+        "ticker": retro.get("ticker"),
+        "summary": summary,
+        "details": details,
+    }

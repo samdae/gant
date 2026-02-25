@@ -59,6 +59,7 @@ class PortfolioAgent:
             if initial_capital is not None and float(initial_capital) > 0
             else DEFAULT_INITIAL_CAPITAL
         )
+        self.rag_top_k = max(int(os.getenv("RAG_TOP_K", "1")), 1)
 
     def decide(
         self,
@@ -127,8 +128,8 @@ class PortfolioAgent:
         rag_docs = None
         if self.hybrid_memory:
             try:
-                query = self._build_rag_query(pipeline_state, ticker)
-                memories = self.hybrid_memory.get_memories(query, n_matches=3)
+                query = self._build_rag_query(pipeline_state, ticker, context=context)
+                memories = self.hybrid_memory.get_memories(query, n_matches=self.rag_top_k)
 
                 if memories:
                     has_experience = True
@@ -211,7 +212,12 @@ class PortfolioAgent:
             logger.error(f"Portfolio agent LLM timeout or error: {e}")
             raise AgentExecutionError("Portfolio agent failed") from e
 
-    def _build_rag_query(self, pipeline_state: Dict[str, Any], ticker: str) -> str:
+    def _build_rag_query(
+        self,
+        pipeline_state: Dict[str, Any],
+        ticker: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """Build RAG query from pipeline state.
 
         FR-022: Extract key concepts from analysis for RAG search.
@@ -227,9 +233,29 @@ class PortfolioAgent:
         market_excerpt = pipeline_state.get("market_report", "")[:300]
         final_decision = pipeline_state.get("final_trade_decision", "")[:300]
 
-        # Build query focusing on decision pattern
+        market = (context or {}).get("market")
+        sector = (context or {}).get("sector")
+
+        if not sector:
+            try:
+                import yfinance as yf
+
+                info = yf.Ticker(ticker).info or {}
+                sector = info.get("sector")
+            except Exception as exc:
+                logger.debug(f"{ticker}: Failed to enrich sector for RAG query: {exc}")
+
+        context_parts = []
+        if market:
+            context_parts.append(f"Market: {market}")
+        if sector:
+            context_parts.append(f"Sector: {sector}")
+        context_text = " ".join(context_parts).strip()
+
         query = f"{ticker} analysis: {market_excerpt} Decision: {final_decision}"
-        
+        if context_text:
+            query = f"{query} {context_text}"
+
         return query
 
     def _build_prompt(

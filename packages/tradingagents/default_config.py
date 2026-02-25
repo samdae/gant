@@ -66,6 +66,7 @@ DEFAULT_CONFIG = {
         "TRADINGAGENTS_CHROMA_PATH",
         os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")), "memory", "chroma")
     ),
+    "rag_top_k": int(os.getenv("RAG_TOP_K", "1")),
     "default_initial_capital": 5000.0,
     # FR-016: Scheduler
     "schedules": [],  # List[{"ticker": str, "interval_days": int}]

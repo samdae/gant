@@ -256,13 +256,13 @@ class HybridMemory:
         if not self.chroma_available and self.chroma_client is None:
             self._lazy_init_vector()
 
-        # FTS retrieval
-        fts_results = self._fts_retrieve(current_situation, n_results=10)
+        # FR-052: RRF candidates are fixed to top-3 per retriever.
+        fts_results = self._fts_retrieve(current_situation, n_results=3)
 
         # Vector retrieval (if available)
         vector_results = []
         if self.chroma_available:
-            vector_results = self._vector_retrieve(current_situation, n_results=10)
+            vector_results = self._vector_retrieve(current_situation, n_results=3)
 
         # RRF fusion
         if vector_results and fts_results:
@@ -279,9 +279,20 @@ class HybridMemory:
             self.last_query_had_results = False
             return []
 
+        # FR-052: Keep top-3 by relevance (RRF), then filter/sort by usefulness.
+        fused_results = fused_results[:3]
+        filtered_results = self._apply_usefulness_filter(fused_results, top_k=n_matches)
+        if not filtered_results:
+            self.last_query_had_results = False
+            return []
+
+        usefulness_map = self.reflection_repo.get_usefulness_scores(
+            [reflection_id for reflection_id, _ in filtered_results]
+        )
+
         # Build final results (FR-029: include metadata + labels)
         results = []
-        for reflection_id, rrf_score in fused_results[:n_matches]:
+        for reflection_id, rrf_score in filtered_results:
             # Get reflection from DB
             reflection = self.reflection_repo.get_by_id(reflection_id)
             if not reflection:
@@ -312,6 +323,9 @@ class HybridMemory:
                     "market": reflection.get("market"),
                     "sector": reflection.get("sector"),
                     "industry": reflection.get("industry"),
+                    "usefulness_score": usefulness_map.get(
+                        int(reflection.get("id")), 50.0
+                    ),
                 },
             })
 
@@ -319,6 +333,29 @@ class HybridMemory:
         self.last_query_had_results = len(results) > 0
 
         return results
+
+    def _apply_usefulness_filter(
+        self,
+        fused_results: List[Tuple[int, float]],
+        top_k: int,
+    ) -> List[Tuple[int, float]]:
+        """Filter by usefulness and return top-k sorted by usefulness desc."""
+        if not fused_results:
+            return []
+
+        reflection_ids = [doc_id for doc_id, _ in fused_results]
+        usefulness_map = self.reflection_repo.get_usefulness_scores(reflection_ids)
+
+        filtered = []
+        for reflection_id, rrf_score in fused_results:
+            usefulness = usefulness_map.get(reflection_id, 50.0)
+            if usefulness < 40:
+                continue
+            filtered.append((reflection_id, rrf_score, usefulness))
+
+        filtered.sort(key=lambda x: (x[2], x[1]), reverse=True)
+        limit = max(int(top_k), 1)
+        return [(reflection_id, score) for reflection_id, score, _ in filtered[:limit]]
 
     def _fts_retrieve(
         self,
@@ -389,6 +426,34 @@ class HybridMemory:
             # Graceful degradation: Disable ChromaDB for future queries
             self.chroma_available = False
             return []
+
+    def search_semantic(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Semantic-only reflection search using ChromaDB."""
+        if not self.chroma_available and self.chroma_client is None:
+            self._lazy_init_vector()
+        if not self.chroma_available:
+            raise RuntimeError("ChromaDB is not available")
+
+        vector_results = self._vector_retrieve(query, n_results=limit)
+        results: List[Dict[str, Any]] = []
+        for reflection_id, similarity in vector_results:
+            reflection = self.reflection_repo.get_by_id(reflection_id)
+            if not reflection:
+                continue
+            results.append(
+                {
+                    "id": reflection.get("id"),
+                    "position_id": reflection.get("position_id"),
+                    "matched_situation": reflection.get("key_lessons", ""),
+                    "reflection": reflection.get("reflection", ""),
+                    "outcome": reflection.get("outcome"),
+                    "return_pct": reflection.get("return_pct"),
+                    "usefulness_score": reflection.get("usefulness_score", 50.0),
+                    "semantic_score": similarity,
+                    "created_at": reflection.get("created_at"),
+                }
+            )
+        return results
 
     def clear(self):
         """Clear all stored memories (SQLite reflections + ChromaDB).

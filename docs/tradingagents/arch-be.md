@@ -496,23 +496,23 @@ scripts/
 
 | # | Spec Ref | Feature | File | Class | Method | Action | Impl |
 |---|----------|---------|------|-------|--------|--------|------|
-| 81 | FR-051 | RAG 쿼리 enrichment | `virtual_trade/portfolio_agent.py` | `PortfolioAgent` | `_build_rag_query` | market/sector 텍스트 부착. `schedule_configs.market` + `yfinance Ticker.info.sector` 사용 | [ ] |
-| 82 | FR-052 | HybridMemory 파이프라인 재설계 | `memory/hybrid_memory.py` | `HybridMemory` | `get_memories` | FTS top-3 + ChromaDB top-3 → 중복제거 + RRF top-3 → usefulness < 40 배제 → usefulness DESC → top-K. 기존 top-10+top-10 RRF 교체 | [ ] |
-| 83 | FR-052 | usefulness 필터링 | `memory/hybrid_memory.py` | `HybridMemory` | `_apply_usefulness_filter` | usefulness_score < 40 하드 배제, DESC 정렬, top-K 컷. `ReflectionRepository` 연동 | [ ] |
-| 84 | FR-052 | reflections.usefulness_score 컬럼 | `storage/database.py` | `Database` | `init_schema` | ALTER TABLE reflections ADD COLUMN usefulness_score (ensure_column 패턴) | [ ] |
-| 85 | FR-052 | ReflectionRepo usefulness 메서드 | `storage/reflection_repo.py` | `ReflectionRepository` | `get_usefulness_scores(reflection_ids)`, `update_usefulness_score(reflection_id, delta)` | 벌크 조회 + ±1 업데이트 (0~100 클램핑) | [ ] |
-| 86 | FR-052 | RAG_TOP_K 환경변수 | `default_config.py` | — | — | `"rag_top_k": int(os.getenv("RAG_TOP_K", "1"))` 추가 | [ ] |
-| 87 | FR-053 | RAG Validator 모듈 | `rag_validator/__init__.py` | — | — | 새 모듈 생성 | [ ] |
-| 88 | FR-053 | RAG Validator 프롬프트 | `rag_validator/prompt.py` | — | `build_validation_prompt` | 회고분석 결과 + RAG 문서별 → "PA가 이 경험을 반영했는가?" 판정 프롬프트. 구조화 출력 (JSON verdict + justification) | [ ] |
-| 89 | FR-053 | RAG Validator 서비스 | `rag_validator/service.py` | `RAGValidatorService` | `validate(retrospective_id)`, `_evaluate_document(retro_content, rag_doc)`, `_apply_score_adjustments(results)`, `_generate_report(results)` | 오케스트레이터: 입력 수집 → 문서별 평가 → 점수 조정 → 리포트 생성 | [ ] |
-| 90 | FR-053 | RAG Validator 멱등성 | `rag_validator/service.py` | `RAGValidatorService` | `_is_already_evaluated(retrospective_id, reflection_id)` | (retrospective_id, reflection_id) 쌍 중복 평가 방지 | [ ] |
-| 91 | FR-053 | RAG Validator API | `api/routes.py` | — | `POST /rag-validator/run`, `GET /rag-validator/reports`, `GET /rag-validator/reports/{id}` | 수동 실행 트리거 + 리포트 목록/상세 조회. Bearer 인증(POST만) | [ ] |
-| 92 | FR-053 | RAG Validator 큐 통합 | `api/app.py` | — | `_queue_worker` | `item['type'] == 'rag_validation'` 분기. priority=2 (스케줄 0, 회고분석 1, RAG 검증 2) | [ ] |
-| 93 | FR-054 | 키워드 검색 | `storage/reflection_repo.py` | `ReflectionRepository` | `search_keyword(query, limit)` | `ILIKE '%{query}%'` on reflection + key_lessons | [ ] |
-| 94 | FR-054 | 시멘틱 검색 | `memory/hybrid_memory.py` | `HybridMemory` | `search_semantic(query, limit)` | ChromaDB 단독 쿼리 (RRF 없이) | [ ] |
-| 95 | FR-054 | 검색 API | `api/routes.py` | — | `GET /reflections/search?q=...&mode=keyword|semantic&limit=20` | 모드별 전략 디스패치. 공개 READ | [ ] |
-| 96 | FR-053 | 평가 결과 테이블 | `storage/database.py` | `Database` | `init_schema` | `rag_validation_results` CREATE TABLE + UNIQUE 인덱스 | [ ] |
-| 97 | FR-053 | ValidationResultRepository | `storage/rag_validation_repo.py` | `RAGValidationRepository` | `create`, `exists(retro_id, reflection_id)`, `list_by_retrospective`, `get_summary` | CRUD + 멱등성 체크 + 집계 | [ ] |
+| 81 | FR-051 | RAG 쿼리 enrichment | `virtual_trade/portfolio_agent.py` | `PortfolioAgent` | `_build_rag_query` | market/sector 텍스트 부착. `schedule_configs.market` + `yfinance Ticker.info.sector` 사용 | [x] |
+| 82 | FR-052 | HybridMemory 파이프라인 재설계 | `memory/hybrid_memory.py` | `HybridMemory` | `get_memories` | FTS top-3 + ChromaDB top-3 → 중복제거 + RRF top-3 → usefulness < 40 배제 → usefulness DESC → top-K. 기존 top-10+top-10 RRF 교체 | [x] |
+| 83 | FR-052 | usefulness 필터링 | `memory/hybrid_memory.py` | `HybridMemory` | `_apply_usefulness_filter` | usefulness_score < 40 하드 배제, DESC 정렬, top-K 컷. `ReflectionRepository` 연동 | [x] |
+| 84 | FR-052 | reflections.usefulness_score 컬럼 | `storage/database.py` | `Database` | `init_schema` | ALTER TABLE reflections ADD COLUMN usefulness_score (ensure_column 패턴) | [x] |
+| 85 | FR-052 | ReflectionRepo usefulness 메서드 | `storage/reflection_repo.py` | `ReflectionRepository` | `get_usefulness_scores(reflection_ids)`, `update_usefulness_score(reflection_id, delta)` | 벌크 조회 + ±1 업데이트 (0~100 클램핑) | [x] |
+| 86 | FR-052 | RAG_TOP_K 환경변수 | `default_config.py` | — | — | `"rag_top_k": int(os.getenv("RAG_TOP_K", "1"))` 추가 | [x] |
+| 87 | FR-053 | RAG Validator 모듈 | `rag_validator/__init__.py` | — | — | 새 모듈 생성 | [x] |
+| 88 | FR-053 | RAG Validator 프롬프트 | `rag_validator/prompt.py` | — | `build_validation_prompt` | 회고분석 결과 + RAG 문서별 → "PA가 이 경험을 반영했는가?" 판정 프롬프트. 구조화 출력 (JSON verdict + justification) | [x] |
+| 89 | FR-053 | RAG Validator 서비스 | `rag_validator/service.py` | `RAGValidatorService` | `validate(retrospective_id)`, `_evaluate_document(retro_content, rag_doc)`, `_apply_score_adjustments(results)`, `_generate_report(results)` | 오케스트레이터: 입력 수집 → 문서별 평가 → 점수 조정 → 리포트 생성 | [x] |
+| 90 | FR-053 | RAG Validator 멱등성 | `rag_validator/service.py` | `RAGValidatorService` | `_is_already_evaluated(retrospective_id, reflection_id)` | (retrospective_id, reflection_id) 쌍 중복 평가 방지 | [x] |
+| 91 | FR-053 | RAG Validator API | `api/routes.py` | — | `POST /rag-validator/run`, `GET /rag-validator/reports`, `GET /rag-validator/reports/{id}` | 수동 실행 트리거 + 리포트 목록/상세 조회. Bearer 인증(POST만) | [x] |
+| 92 | FR-053 | RAG Validator 큐 통합 | `api/app.py` | — | `_queue_worker` | `item['type'] == 'rag_validation'` 분기. priority=2 (스케줄 0, 회고분석 1, RAG 검증 2) | [x] |
+| 93 | FR-054 | 키워드 검색 | `storage/reflection_repo.py` | `ReflectionRepository` | `search_keyword(query, limit)` | `ILIKE '%{query}%'` on reflection + key_lessons | [x] |
+| 94 | FR-054 | 시멘틱 검색 | `memory/hybrid_memory.py` | `HybridMemory` | `search_semantic(query, limit)` | ChromaDB 단독 쿼리 (RRF 없이) | [x] |
+| 95 | FR-054 | 검색 API | `api/routes.py` | — | `GET /reflections/search?q=...&mode=keyword|semantic&limit=20` | 모드별 전략 디스패치. 공개 READ | [x] |
+| 96 | FR-053 | 평가 결과 테이블 | `storage/database.py` | `Database` | `init_schema` | `rag_validation_results` CREATE TABLE + UNIQUE 인덱스 | [x] |
+| 97 | FR-053 | ValidationResultRepository | `storage/rag_validation_repo.py` | `RAGValidationRepository` | `create`, `exists(retro_id, reflection_id)`, `list_by_retrospective`, `get_summary` | CRUD + 멱등성 체크 + 집계 | [x] |
 
 ---
 
