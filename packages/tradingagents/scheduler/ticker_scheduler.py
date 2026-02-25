@@ -233,6 +233,9 @@ class TickerScheduler:
         self._self_heal()
         self.scheduler.start()
         logger.info("TickerScheduler started")
+        for job in self.scheduler.get_jobs():
+            nft = job.trigger.get_next_fire_time(None, datetime.now(job.trigger.timezone))
+            logger.info(f"  Job '{job.id}': next_fire_time={nft}")
 
     def stop(self):
         self.scheduler.shutdown(wait=False)
