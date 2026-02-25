@@ -281,14 +281,10 @@ class HybridMemory:
 
         # FR-052: Keep top-3 by relevance (RRF), then filter/sort by usefulness.
         fused_results = fused_results[:3]
-        filtered_results = self._apply_usefulness_filter(fused_results, top_k=n_matches)
+        filtered_results, usefulness_map = self._apply_usefulness_filter(fused_results, top_k=n_matches)
         if not filtered_results:
             self.last_query_had_results = False
             return []
-
-        usefulness_map = self.reflection_repo.get_usefulness_scores(
-            [reflection_id for reflection_id, _ in filtered_results]
-        )
 
         # Build final results (FR-029: include metadata + labels)
         results = []
@@ -338,10 +334,14 @@ class HybridMemory:
         self,
         fused_results: List[Tuple[int, float]],
         top_k: int,
-    ) -> List[Tuple[int, float]]:
-        """Filter by usefulness and return top-k sorted by usefulness desc."""
+    ) -> tuple:
+        """Filter by usefulness and return (top-k results, usefulness_map).
+
+        Returns:
+            Tuple of (filtered_results, usefulness_map) to avoid duplicate DB queries.
+        """
         if not fused_results:
-            return []
+            return [], {}
 
         reflection_ids = [doc_id for doc_id, _ in fused_results]
         usefulness_map = self.reflection_repo.get_usefulness_scores(reflection_ids)
@@ -355,7 +355,7 @@ class HybridMemory:
 
         filtered.sort(key=lambda x: (x[2], x[1]), reverse=True)
         limit = max(int(top_k), 1)
-        return [(reflection_id, score) for reflection_id, score, _ in filtered[:limit]]
+        return [(reflection_id, score) for reflection_id, score, _ in filtered[:limit]], usefulness_map
 
     def _fts_retrieve(
         self,

@@ -26,10 +26,7 @@ class RAGValidationRepository:
             INSERT INTO rag_validation_results (
                 retrospective_id, reflection_id, verdict, justification, score_delta, created_at
             ) VALUES (%s, %s, %s, %s, %s, %s)
-            ON CONFLICT (retrospective_id, reflection_id) DO UPDATE SET
-                verdict = EXCLUDED.verdict,
-                justification = EXCLUDED.justification,
-                score_delta = EXCLUDED.score_delta
+            ON CONFLICT (retrospective_id, reflection_id) DO NOTHING
             RETURNING id
             """,
             (
