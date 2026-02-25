@@ -10,6 +10,7 @@
   } from "../lib/api/endpoints";
   import { formatDateTime, formatAgo, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames, setTickerName, loadTickerNames } from "../stores/tickerNames";
+  import { currencyFilter, matchesCurrency } from "../stores/currency";
 
   type Schedule = {
     ticker: string;
@@ -219,6 +220,8 @@
   onMount(() => {
     loadSchedules();
   });
+
+  $: filteredSchedules = schedules.filter((s) => matchesCurrency(s.ticker, $currencyFilter));
 </script>
 
 <section class="page" id="page-schedules">
@@ -236,7 +239,7 @@
       <div class="card" style="padding:16px">예약이 없습니다.</div>
     {:else}
       <div class="schedule-list list-grid">
-        {#each schedules as schedule}
+        {#each filteredSchedules as schedule}
           {@const status = statusBadge(schedule.ticker)}
           <div
             class={`schedule-card list-row ${status.label === "실행중" ? "schedule-running" : status.label === "대기중" ? "schedule-queued" : "schedule-active"}`}

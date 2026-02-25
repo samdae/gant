@@ -1,242 +1,164 @@
 # Frontend Architecture Document Template
 
-> This template is for frontend-focused architecture design.
-> Use this when the target is web app, SPA, component library, etc.
-
-## Output File
-
-`docs/{serviceName}/arch-fe.md`
-
-## Required Input Documents
-
-- `docs/{serviceName}/spec.md` - Requirements specification
-- `docs/{serviceName}/ui.md` - UI specification (from /ui skill)
-
-> **Note**: ui.md contains screen list, component hierarchy, states, and interactions.
-> Use this as the primary reference for Component Structure section.
-
----
+Output: `docs/{serviceName}/arch-fe.md`
+Required input: `spec.md` + `ui.md` (from /ui skill)
+**NOTE**: ui.md (screens, components, states, interactions) is primary reference for Component Structure.
 
 ## Template
 
 ```markdown
 # Frontend Design Doc: {Feature Name}
 
-> Created: {date}
-> Service: {serviceName}
-> Type: Frontend
+> Created: {date} | Service: {serviceName} | Type: Frontend
 > Requirements: docs/{serviceName}/spec.md
 > UI Specification: docs/{serviceName}/ui.md
 
 ## 0. Summary
-
 ### Goal
-(Goal this feature aims to achieve - 1-2 sentences)
-
+(1-2 sentences)
 ### Non-goals
-- (Items excluded from this scope)
-
 ### Success metrics
-- (List of success criteria)
-
----
 
 ## 1. Scope
-
 ### In scope
-- (Items included in this implementation)
-
 ### Out of scope
-- (Future improvements or excluded items)
-
----
 
 ## 1.5. Tech Stack
-
 ```yaml
 tech_stack:
-  framework: "{framework}"                  # e.g., React 18, Vue 3, Next.js 14
+  framework: "{framework}"                  # e.g., React 18, Next.js 14
   language: "{language}"                    # e.g., TypeScript 5.x
-  state_management: "{state lib}"           # e.g., Zustand, Redux Toolkit, Pinia
-  styling: "{styling approach}"             # e.g., Tailwind CSS, styled-components
-  routing: "{router lib}"                   # e.g., react-router v6, vue-router
-  api_client: "{api lib}"                   # e.g., axios, fetch, react-query
-  form_handling: "{form lib}"               # e.g., react-hook-form, Formik, vee-validate
-  build_tool: "{bundler}"                   # e.g., Vite, Webpack, Turbopack
-  testing: "{test framework}"               # e.g., Vitest, Jest, Playwright
-  third_party:                              # External services/SDKs
+  state_management: "{state lib}"           # e.g., Zustand, Redux Toolkit
+  styling: "{styling}"                      # e.g., Tailwind CSS
+  routing: "{router}"                       # e.g., react-router v6
+  api_client: "{api lib}"                   # e.g., axios, react-query
+  form_handling: "{form lib}"               # e.g., react-hook-form
+  build_tool: "{bundler}"                   # e.g., Vite
+  testing: "{test fw}"                      # e.g., Vitest, Playwright
+  third_party:
     - "{service 1}"                         # e.g., Firebase Auth
     - "{service 2}"                         # e.g., Sentry
 ```
 
----
-
 ## 1.6. Dependencies
-
 ```yaml
-package_manager: "{npm|yarn|pnpm}"          # Selected in Phase 0-1.7
-project_type: "{new|existing}"              # New or existing project
-
+package_manager: "{npm|yarn|pnpm}"
+project_type: "{new|existing}"
 dependencies:
-  # Core framework
-  - name: "{package name}"
+  - name: "{package}"
     version: "{version or latest}"
     purpose: "{what it's used for}"
     status: "{approved|rejected|alternative}"
-  
-  # UI Library
-  - name: "{package name}"
-    version: "{version}"
-    purpose: "{purpose}"
-    status: "{status}"
-  
-  # State Management
-  - name: "{package name}"
-    version: "{version}"
-    purpose: "{purpose}"
-    status: "{status}"
-  
-  # Add more as needed...
 ```
-
-> **Note**: This section is populated from Phase 0-1.7c Library Review.
-> `status: approved` packages will be installed in build phase.
-
----
+> `status: approved` = installed in build phase.
 
 ## 2. Architecture Impact
 
 ### Component Structure
-
-> **Reference**: Use `ui.md` Screen Specifications and Shared Components as the basis.
-> Convert UI specification's component hierarchy into technical file structure.
-
+> Reference ui.md screens. Convert to technical file structure.
 ```yaml
 component_structure:
   pages:                                    # From ui.md Screen List
     - path: "/example"
       component: "ExamplePage"
       file: "src/pages/ExamplePage.tsx"
-      description: "{from ui.md screen purpose}"
-
-  features:                                 # Feature-specific components
+      description: "{from ui.md}"
+  features:
     - name: "{feature_name}"
       path: "src/features/{feature_name}/"
       components:
         - name: "{ComponentName}"
           type: "container | presentational"
-          description: "{component description}"
-
-  shared:                                   # Reusable components
+          description: "{desc}"
+  shared:
     - name: "{ComponentName}"
       path: "src/components/{ComponentName}"
       props:
         - name: "{propName}"
           type: "{type}"
           required: true
-      description: "{component description}"
 ```
 
 ### File Structure
-
 ```
 src/
-├── pages/                    # Route-level components
-│   └── {PageName}/
-│       ├── index.tsx
-│       ├── {PageName}.tsx
-│       └── {PageName}.test.tsx
-├── features/                 # Feature modules
-│   └── {feature}/
-│       ├── components/
-│       ├── hooks/
-│       ├── api/
-│       └── types.ts
-├── components/               # Shared UI components
-│   └── {ComponentName}/
-│       ├── index.tsx
-│       ├── {ComponentName}.tsx
-│       └── {ComponentName}.stories.tsx
-├── hooks/                    # Global custom hooks
-├── store/                    # State management
-├── api/                      # API layer
-├── utils/                    # Utility functions
-├── types/                    # Global type definitions
-└── styles/                   # Global styles
+├── pages/{PageName}/
+│   ├── index.tsx
+│   ├── {PageName}.tsx
+│   └── {PageName}.test.tsx
+├── features/{feature}/
+│   ├── components/
+│   ├── hooks/
+│   ├── api/
+│   └── types.ts
+├── components/{ComponentName}/
+│   ├── index.tsx
+│   ├── {ComponentName}.tsx
+│   ├── {ComponentName}.test.tsx
+│   └── {ComponentName}.stories.tsx
+├── hooks/            # Global custom hooks
+├── store/            # State management
+├── api/              # API layer
+├── utils/
+├── types/
+└── styles/
 ```
 
----
-
 ## 3. State Management
-
 ```yaml
 state_management:
-  global_state:               # Application-wide state
+  global_state:
     - name: "{storeName}"
       file: "src/store/{storeName}.ts"
       state:
         - field: "{fieldName}"
           type: "{type}"
-          initial: "{initial value}"
+          initial: "{value}"
       actions:
         - name: "{actionName}"
           description: "{what it does}"
       selectors:
         - name: "{selectorName}"
           returns: "{return type}"
-
-  server_state:               # API cache state (react-query, SWR, etc.)
+  server_state:                             # react-query, SWR, etc.
     - query_key: "{queryKey}"
       endpoint: "{API endpoint}"
       stale_time: "{duration}"
       cache_time: "{duration}"
-
-  local_state:                # Component-level state
+  local_state:
     - component: "{ComponentName}"
       states:
         - name: "{stateName}"
           type: "{type}"
-          purpose: "{why this state exists}"
+          purpose: "{why}"
 ```
 
----
-
 ## 4. Route Definition
-
 ```yaml
 routes:
   - path: "/"
     component: "HomePage"
     exact: true
     auth_required: false
-
   - path: "/dashboard"
     component: "DashboardPage"
     auth_required: true
-    guards:
-      - "AuthGuard"
+    guards: ["AuthGuard"]
     children:
       - path: "settings"
         component: "SettingsPage"
-
   - path: "/example/:id"
     component: "ExampleDetailPage"
     params:
       - name: "id"
         type: "string"
     auth_required: true
-
   - path: "*"
     component: "NotFoundPage"
-    exact: false
 ```
 
----
-
 ## 5. API Integration
-
 ### API Client Configuration
-
 ```yaml
 api_client:
   base_url: "{API_BASE_URL}"
@@ -245,87 +167,48 @@ api_client:
     - name: "Content-Type"
       value: "application/json"
   interceptors:
-    request:
-      - "addAuthToken"
-      - "addRequestId"
-    response:
-      - "handleUnauthorized"
-      - "transformResponse"
+    request: ["addAuthToken", "addRequestId"]
+    response: ["handleUnauthorized", "transformResponse"]
 ```
 
-### API Endpoints (Reference from arch-be.md)
-
+### API Endpoints (from arch-be.md)
 ```yaml
 api_integration:
   - endpoint: "GET /api/v1/example"
     hook: "useExampleList"
     file: "src/features/example/api/useExampleList.ts"
-    options:
-      stale_time: "5min"
-      retry: 3
-
+    options: { stale_time: "5min", retry: 3 }
   - endpoint: "POST /api/v1/example"
     hook: "useCreateExample"
     file: "src/features/example/api/useCreateExample.ts"
-    invalidates:
-      - "exampleList"
+    invalidates: ["exampleList"]
 ```
 
----
-
 ## 6. Code Mapping
-
 | # | Spec Ref | Feature | File | Component/Hook | Props/Params | Action | Impl |
 |---|----------|---------|------|----------------|--------------|--------|------|
-| 1 | FR-001 | {feature} | {file path} | {component or hook name} | {key props} | {what to implement} | [ ] |
+| 1 | FR-001 | {feature} | {path} | {name} | {props} | {action} | [ ] |
 
-> **Spec Ref**: Links to Requirement ID in spec.md (1 Req ID → multiple Code Mapping rows possible)
-> **Impl column**: `[ ]` = not implemented, `[x]` = implemented
-> - arch generates all rows with `[ ]`
-> - build updates to `[x]` after implementation
-
----
+> **Spec Ref**: Req ID (1:N). **Impl**: `[ ]` = pending, `[x]` = done by build.
 
 ## 7. Implementation Plan
+### Required Reference Files
+| File | Purpose |
+|------|---------|
+| {path 1} | {component patterns, naming} |
+| {path 2} | {styling, design tokens} |
 
-### Required Reference Files (Must read before implementation)
+> Read above files first when running build skill.
 
-| File | Reference Purpose |
-|------|------------------|
-| {file path 1} | {component patterns, naming conventions} |
-| {file path 2} | {styling approach, design tokens} |
-| {file path 3} | {state management patterns} |
-
-> When running build skill, read above files first to understand patterns
-
-### Step-by-Step Implementation
-
-1. **Step 1: Types & Interfaces**
-   - Define TypeScript types
-   - Create API response types
-
-2. **Step 2: API Layer**
-   - Create API hooks
-   - Set up error handling
-
-3. **Step 3: State Management**
-   - Create stores if needed
-   - Define selectors
-
-4. **Step 4: Components**
-   - Create UI components
-   - Implement business logic
-
-5. **Step 5: Pages & Routes**
-   - Create page components
-   - Configure routes
-
----
+### Steps
+1. **Types & Interfaces** - TypeScript types, API response types
+2. **API Layer** - API hooks, error handling
+3. **State Management** - Stores, selectors
+4. **Components** - UI components, business logic
+5. **Pages & Routes** - Page components, route config
 
 ## 8. User Flow Diagram
-
 ### {Flow name}
-
 \`\`\`mermaid
 flowchart TD
     A[User Action] --> B{Route Guard}
@@ -333,7 +216,7 @@ flowchart TD
     B -->|Not Auth| D[Login Page]
     C --> E[Fetch Data]
     E --> F{Loading?}
-    F -->|Yes| G[Skeleton]
+    F -->|Yes| G[Skeleton/Spinner]
     F -->|No| H[Render Content]
     H --> I[User Interaction]
     I --> J[Update State]
@@ -343,42 +226,25 @@ flowchart TD
     L -->|Error| N[Show Error Toast]
 \`\`\`
 
----
-
 ## 9. Style Guide
-
 ### Design Tokens
-
 ```yaml
 design_tokens:
   colors:
-    primary: "{color value}"
-    secondary: "{color value}"
-    error: "{color value}"
-    success: "{color value}"
-  
+    primary: "{color}"                      # e.g., #3B82F6
+    secondary: "{color}"                    # e.g., #6B7280
+    error: "{color}"                        # e.g., #EF4444
+    success: "{color}"                      # e.g., #10B981
   spacing:
-    unit: "{base unit}"            # e.g., 4px, 0.25rem
-    scale: [1, 2, 4, 6, 8, 12, 16] # multipliers
-
+    unit: "{base}"                          # e.g., 4px, 0.25rem
+    scale: [1, 2, 4, 6, 8, 12, 16]
   typography:
-    font_family: "{font family}"
-    sizes:
-      xs: "{size}"
-      sm: "{size}"
-      base: "{size}"
-      lg: "{size}"
-      xl: "{size}"
-
-  breakpoints:
-    sm: "640px"
-    md: "768px"
-    lg: "1024px"
-    xl: "1280px"
+    font_family: "{font}"                   # e.g., Inter, Pretendard
+    sizes: { xs: "0.75rem", sm: "0.875rem", base: "1rem", lg: "1.125rem", xl: "1.25rem" }
+  breakpoints: { sm: "640px", md: "768px", lg: "1024px", xl: "1280px" }
 ```
 
-### Component Styling Convention
-
+### Styling Convention
 ```yaml
 styling_convention:
   approach: "{Tailwind | CSS Modules | styled-components}"
@@ -387,31 +253,17 @@ styling_convention:
   dark_mode: "{supported | not supported}"
 ```
 
----
-
 ## 10. Risks & Tradeoffs (Debate Conclusion)
-
 ### Chosen Option
-- {adopted design approach}
-
 ### Rejected Alternatives
-- {unadopted items and reasons}
-
 ### Reasoning
-- Project constraints: {reason}
-- Best practice adoption: {applied parts}
-- Future improvement points: {what to do later}
-
+- Project constraints | Best practice adoption | Future improvements
 ### Assumptions
-- **Confirmed**: {clearly decided in debate}
-- **Estimated**: {assumed due to lack of confirmation - needs verification in implementation}
+- **Confirmed**: {decided} | **Estimated**: {assumed, needs verification}
 
----
-
-## 11. UX/Performance/A11y Checklist (3 Essential Checks)
+## 11. UX/Performance/A11y Checklist
 
 ### UX States
-
 | State | Component | Handling | User Feedback |
 |-------|-----------|----------|---------------|
 | Loading | {component} | {skeleton/spinner} | {what user sees} |
@@ -419,21 +271,19 @@ styling_convention:
 | Error | {component} | {error boundary/toast} | {recovery action} |
 
 ### Performance
-
 | Item | Target | Measurement | Optimization |
 |------|--------|-------------|--------------|
 | LCP | < 2.5s | Lighthouse | {strategy} |
-| Bundle size | < {size} | Build output | {code splitting strategy} |
-| Re-renders | Minimal | React DevTools | {memo/useMemo strategy} |
+| Bundle size | < {size}KB | Build output | {code splitting} |
+| Re-renders | Minimal | React DevTools | {memo/useMemo} |
 
 ### Accessibility
-
 | Item | Requirement | Implementation |
 |------|-------------|----------------|
-| Keyboard nav | All interactive elements | {tab order, focus management} |
+| Keyboard nav | All interactive elements | {tab order, focus} |
 | Screen reader | Semantic HTML + ARIA | {aria labels, roles} |
-| Color contrast | WCAG AA (4.5:1) | {contrast check tool} |
+| Color contrast | WCAG AA (4.5:1) | {contrast check} |
 | Focus visible | Clear focus indicator | {focus-visible styles} |
 
-> If this section is empty, user experience will suffer - Must complete
+> **WARNING**: If empty, user experience will suffer - Must complete
 ```

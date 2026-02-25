@@ -1,60 +1,39 @@
 ---
 id: trace
-name: Trace
+name: trace
 description: |
-  Record bug fixes, changes, and their design impact to changelog.
-  Trace changes for future reference.
-
-  Triggers: trace, log, record, 추적, 변경 기록
+  Record bug fixes, changes, and design impact to trace.md.
+  Triggers: trace, log, record, changelog
 user-invocable: true
 version: 2.0.0
-triggers:
-  - "trace"
-  - "log"
-  - "record"
-  - "changelog"
+triggers: ["trace", "log", "record", "changelog"]
 requires: ["debug"]
 platform: all
 recommended_model: sonnet
-allowed-tools:
-  - Read
-  - Write
-  - Glob
-  - LS
-  - AskQuestion
+allowed-tools: [Read, Write, Glob, LS, AskQuestion]
 ---
 
-> ℹ️ **Global Rules Applied**:
-> This skill adheres to the Archflow Global Rules defined in `rules/archflow-rules.md`.
+> **Global Rules**: Adheres to `rules/archflow-rules.md`.
+> **Code Mapping `#` Rule**: Always use `max(existing #) + 1` for new rows. NEVER reuse deleted numbers.
+> **Document Version Control**: After changes, commit recommended. Message: `docs({serviceName}): trace - {summary}`. If git unavailable, skip.
+
+**Model**: Sonnet (document writing).
 
 # Trace Workflow
 
 Records bug fixes, analysis results, and changes in trace.md.
 
-## 💡 Recommended Model
+## Tool Fallback
 
-**Sonnet** (document writing)
+| Tool | Alternative |
+|------|-------------|
+| Read | Request user to copy-paste existing changelog content |
+| AskQuestion | "Please select one of the following" format |
 
-## 🔄 Tool Fallback
+## Invocation
 
-| Tool | Alternative when unavailable |
-|------|------------------------------|
-| **Read** | Request user to copy-paste existing changelog content |
-| **AskQuestion** | "Please select one of the following" format |
-
-## 📁 Document Structure
-
-```
-projectRoot/
-  └── docs/
-        └── {serviceName}/
-              └── trace.md   # ← This skill's output
-```
-
-## ⚠️ Invocation Timing
-
-1. **Automatically called from debug skill** - After analysis/fix completion
-2. **Manually called by user** - When not called from debug, or when recording independently
+1. Automatically from debug skill (after fix)
+2. Manually by user
 
 ---
 
@@ -62,123 +41,58 @@ projectRoot/
 
 ### 0-1. Context Verification
 
-**When called from debug session:**
-> Use context from previous conversation (cause, fix content, etc.) as is
+**From debug session:** Use context as-is (cause, fix, etc.).
 
-**When called independently:**
+**Independent:**
+
 ```json
-{
-  "title": "Changelog Writing",
-  "questions": [
-    {
-      "id": "has_context",
-      "prompt": "Do you have content to record?",
-      "options": [
-        {"id": "debug", "label": "Bug fix result - I analyzed/fixed in this session"},
-        {"id": "manual", "label": "Manual record - I will explain directly"}
-      ]
-    }
-  ]
-}
+{"title":"Changelog Writing","questions":[{"id":"has_context","prompt":"Do you have content to record?","options":[{"id":"debug","label":"Bug fix result - I analyzed/fixed in this session"},{"id":"manual","label":"Manual record - I will explain directly"}]}]}
 ```
 
 ### 0-2. serviceName Verification
 
 ```json
-{
-  "title": "Service Confirmation",
-  "questions": [
-    {
-      "id": "service_name",
-      "prompt": "Which service's changelog should this be recorded in?",
-      "options": [
-        {"id": "input", "label": "I will tell you the service name"}
-      ]
-    }
-  ]
-}
+{"title":"Service Confirmation","questions":[{"id":"service_name","prompt":"Which service's changelog should this be recorded in?","options":[{"id":"input","label":"I will tell you the service name"}]}]}
 ```
 
 ---
 
 ## Phase 1: Result Type Classification
 
-### 1-1. Result Type Verification
-
 ```json
-{
-  "title": "Result Type",
-  "questions": [
-    {
-      "id": "result_type",
-      "prompt": "What type of result are you recording?",
-      "options": [
-        {"id": "fix_complete", "label": "Code fix completed - Bug was fixed"},
-        {"id": "external_cause", "label": "External cause identified - Not my code's problem"},
-        {"id": "investigation", "label": "Investigation result - Cause identification in progress/failed"},
-        {"id": "other", "label": "Other changes"}
-      ]
-    }
-  ]
-}
+{"title":"Result Type","questions":[{"id":"result_type","prompt":"What type of result are you recording?","options":[{"id":"fix_complete","label":"Code fix completed - Bug was fixed"},{"id":"external_cause","label":"External cause identified - Not my code's problem"},{"id":"investigation","label":"Investigation result - Cause identification in progress/failed"},{"id":"other","label":"Other changes"}]}]}
 ```
 
 ---
 
 ## Phase 2: Information Gathering
 
-### 2-1. Extract from Context (debug session)
+### 2-1. From debug context
 
-Extract the following information from previous conversation:
-- Symptom (user-reported issue)
-- Cause (analysis result)
-- Fix content (if any)
-- Impact scope
+Extract: symptom, cause, fix content, impact scope.
 
-### 2-2. Manual Input (independent invocation)
+### 2-2. Manual input
 
-> "Please provide the following information:
-> 1. Symptom (What was the problem?)
-> 2. Cause (Why did it happen?)
-> 3. Action (How was it resolved? Or resolution plan)
-> 4. Impact scope (Which features/files are affected?)"
+> "Please provide: 1) Symptom 2) Cause 3) Action taken/plan 4) Impact scope"
 
 ### 2-3. Code Mapping Changes Verification
 
 ```json
-{
-  "title": "Code Mapping Changes",
-  "questions": [
-    {
-      "id": "has_mapping_changes",
-      "prompt": "Did this fix change the Code Mapping in arch.md?",
-      "options": [
-        {"id": "yes", "label": "Yes - Added/Modified/Deleted methods or files"},
-        {"id": "no", "label": "No - Bug fix only (no structural changes)"}
-      ]
-    }
-  ]
-}
+{"title":"Code Mapping Changes","questions":[{"id":"has_mapping_changes","prompt":"Did this fix change the Code Mapping in arch.md?","options":[{"id":"yes","label":"Yes - Added/Modified/Deleted methods or files"},{"id":"no","label":"No - Bug fix only (no structural changes)"}]}]}
 ```
 
-- `yes` → Extract Code Mapping changes from debug context and write to grid
-- `no` → Leave Code Mapping Changes section empty or with "No structural changes"
+- `yes` -> Extract from debug context, write to grid with `Synced = [ ]`
+- `no` -> Leave empty or "No structural changes"
 
-**When extracting from debug context:**
-1. Get arch.md Code Mapping table (passed from debug skill)
-2. Identify which rows were added/modified/deleted
-3. Write to Code Mapping Changes grid with `Synced = [ ]`
+**When extracting:** Get arch.md Code Mapping table, identify added/modified/deleted rows, write with `Synced = [ ]`.
 
 ---
 
-## Phase 3: Changelog Writing
+## Phase 3: Write Changelog
 
-### 3-1. Check Existing Changelog
+If exists: add new entry at top. If not: create new.
 
-- If exists → Add new entry at the top
-- If not exists → Create new
-
-### 3-2. Template
+### Template
 
 ```markdown
 # Changelog
@@ -188,12 +102,12 @@ Extract the following information from previous conversation:
 ### Code Mapping Changes
 | # | Feature | File | Class | Method | Action | Change | Synced |
 |---|---------|------|-------|--------|--------|--------|--------|
-| {#} | {feature} | {file path} | {class name} | {method name} | {action description} | {ADD/MODIFY/DELETE} | [ ] |
+| {#} | {feature} | {file path} | {class name} | {method name} | {action} | ADD/MODIFY/DELETE | [ ] |
 
-> **Change**: `ADD` = new row to arch, `MODIFY` = existing row modified, `DELETE` = row to remove from arch
-> **Synced**: `[ ]` = not yet synced to arch, `[x]` = synced
+> **Change**: ADD = new row to arch, MODIFY = existing row modified, DELETE = row to remove
+> **Synced**: [ ] = not yet synced, [x] = synced. Run `/sync` to apply.
 
-⚠️ **Run `sync` skill to apply these changes to arch.md**
+**WARNING**: Run `sync` skill to apply these changes to arch.md
 
 ---
 
@@ -205,8 +119,8 @@ Extract the following information from previous conversation:
 | Severity | Critical / High / Medium / Low |
 
 ### Change Reasoning
-- **Why did this problem occur**: {root cause analysis}
-- **Why was this action taken**: {reason for action choice}
+- **Why problem occurred**: {root cause analysis}
+- **Why this action**: {reason for action choice}
 
 ### Action Details
 | File | Changes | Change Type |
@@ -214,11 +128,11 @@ Extract the following information from previous conversation:
 | {file path} | {change description} | Fixed/Added/Deleted/None |
 
 ### Impact Scope
-- **Direct Impact**: {modified features/APIs}
-- **Indirect Impact**: {other features that may be affected by this fix}
-- **No Impact Confirmed**: {areas confirmed to not be affected by changes}
+- **Direct**: {modified features/APIs}
+- **Indirect**: {other features potentially affected}
+- **No Impact Confirmed**: {areas confirmed unaffected}
 
-### Verification Method
+### Verification
 | Verification Item | Method | Expected Result |
 |------------------|--------|-----------------|
 | Problem resolution | {test method} | {normal operation} |
@@ -227,42 +141,19 @@ Extract the following information from previous conversation:
 ### Related Documents
 - Requirements: docs/{serviceName}/spec.md
 - Design: docs/{serviceName}/arch-be.md or arch-fe.md
-
----
-
-(Previous changelog entries...)
 ```
 
-### 3-3. Adjustment by Result Type
+### Adjustment by Result Type
 
-**Code fix completed:**
-- Record actual changed files/content in Action Details
-- Fill Code Mapping Changes grid with ADD/MODIFY/DELETE rows
-- All rows start with `Synced = [ ]`
-
-**External cause identified:**
-- Code Mapping Changes: Leave empty or "No structural changes"
-- Action Details: "No code changes - External cause"
-- Record detailed external cause in Change Reasoning
-- Add recommended actions (contact external team, configuration changes, etc.)
-
-**Investigation result:**
-- Severity: "Under investigation"
-- Code Mapping Changes: Leave empty
-- Action Details: "Investigation in progress" or "Cause identification failed"
-- Record next steps
+- **Fix completed**: Fill Code Mapping grid (all `Synced = [ ]`), record actual changed files
+- **External cause**: Empty grid, Action = "No code changes - External cause", record cause + recommended actions
+- **Investigation**: Empty grid, Action = "Investigation in progress", record next steps
 
 ---
 
 ## Phase 4: Save and Complete
 
-### 4-1. Save
-
-```
-docs/{serviceName}/trace.md
-```
-
-### 4-2. Completion Report
+Path: `docs/{serviceName}/trace.md`
 
 ```markdown
 ## Changelog Writing Complete
@@ -271,51 +162,30 @@ docs/{serviceName}/trace.md
 | Item | Content |
 |------|---------|
 | Service | {serviceName} |
-| Result Type | {Code fix/External cause/Investigation record} |
+| Result Type | {Code fix/External cause/Investigation} |
 | Code Mapping Changes | {count} rows (ADD: {n}, MODIFY: {n}, DELETE: {n}) |
 
 ### Files
 - Updated: `docs/{serviceName}/trace.md`
 
 ### Next Steps
-- **When Code Mapping Changes exist**: Execute `sync` skill to apply changes to arch.md
-- **When testing needed**: Proceed with testing according to verification method
+- If Code Mapping Changes exist: Run `/sync` to apply to arch.md
+- If testing needed: Proceed with verification method
 ```
 
 ---
 
-# Integration Flow
+## Integration Flow
 
 ```
-[debug] → Analysis/fix complete
-              │
-              ├─→ Extract Code Mapping changes
-              │
-              ▼
-        [trace] → Write trace.md (with Code Mapping Changes grid)
-              │
-              ▼ (when Code Mapping Changes exist)
-        [sync] → Apply changes to arch.md
-              │   (filter Synced=[ ] rows)
-              │
-              └─→ Update trace.md (Synced=[ ] → [x])
+[debug] -> Extract Code Mapping changes
+  -> [trace] -> Write trace.md (Code Mapping Changes grid)
+    -> (when changes exist) -> [sync] -> Apply to arch.md (filter Synced=[ ])
+      -> Update trace.md (Synced [ ] -> [x])
 ```
 
----
+## Important Notes
 
-# Important Notes
-
-1. **Recommended to call in same session**
-   - Automatic extraction of Code Mapping changes when debug context exists
-   - Manual input required if different session
-
-2. **Code Mapping Changes Grid**
-   - `#` column must match arch.md row numbers
-   - New rows: `# = last_arch_number + 1`
-   - All rows start with `Synced = [ ]`
-   - `sync` skill updates to `[x]` after applying
-
-3. **External causes are also worth recording**
-   - "Not our code's problem" is also important information
-   - Reference for when same problem occurs later
-   - Code Mapping Changes can be left empty
+1. **Best called in same session** - Auto-extract Code Mapping changes from debug context; manual input required if different session
+2. **Code Mapping `#`** - Must match arch.md row numbers; new rows = last_arch_number + 1; all start `Synced = [ ]`; sync updates to `[x]`
+3. **External causes worth recording** - "Not our code's problem" is also important; reference for future similar issues

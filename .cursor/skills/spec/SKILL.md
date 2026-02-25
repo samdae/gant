@@ -1,86 +1,63 @@
 ---
 id: spec
-name: Spec
+name: spec
 description: |
   Transform unstructured materials into refined requirements document.
-  Collects service name and input materials, creates Q&A loop to clarify unclear points.
-
-  Triggers: spec, specification, define requirements, 요구사항 정의, 명세
+  Triggers: spec, specification, requirements
 user-invocable: true
 version: 2.0.0
-triggers:
-  - "spec"
-  - "specification"
-  - "requirements"
-  - "define requirements"
+triggers: ["spec", "specification", "requirements", "define requirements"]
 requires: []
 platform: all
 recommended_model: opus
-allowed-tools:
-  - Read
-  - Write
-  - Glob
-  - Grep
-  - LS
-  - AskQuestion
+allowed-tools: [Read, Write, Glob, Grep, LS, AskQuestion]
 ---
 
-> ℹ️ **Global Rules Applied**:
-> This skill adheres to the Archflow Global Rules defined in `rules/archflow-rules.md`.
+> **Global Rules**: Adheres to `rules/archflow-rules.md`.
+> **Req ID `FR-{number}` Rule**: Always use `max(existing number) + 1`. NEVER reuse deleted numbers.
+
+**Model**: Opus recommended (affects design quality). Sonnet acceptable for cost savings.
+**Output location**: `docs/{serviceName}/spec.md`
 
 # Spec Workflow
 
 Transform unstructured materials into refined requirements documentation.
 
-## 💡 Recommended Model
+## Tool Fallback
 
-**Opus** recommended (quality priority) / Sonnet acceptable (cost savings)
+| Tool | Alternative |
+|------|-------------|
+| Read/Grep | Request file from user → ask for copy-paste |
+| AskQuestion | "Select: 1) A 2) B" format |
+| Task | Use step-by-step checklist, proceed phase by phase |
 
-→ Affects design quality, so prefer high-performance model when possible
-
-## 🔄 Tool Fallback
-
-| Tool | Alternative when unavailable |
-|------|------------------------------|
-| **Read/Grep** | Request file path from user → ask for copy-paste |
-| **AskQuestion** | "Please select: 1) OptionA 2) OptionB 3) OptionC" format |
-| **Task** | Use step-by-step checklist, proceed phase by phase |
-
-## 📁 Document Structure
+## Document Structure
 
 ```
-projectRoot/
-  └── docs/
-        └── {serviceName}/
-              ├── spec.md   # ← This skill's output
-              ├── arch.md           # arch skill output
-              └── trace.md      # debug skill output
+docs/{serviceName}/
+  ├── spec.md    # ← This skill's output
+  ├── arch.md
+  └── trace.md
 ```
-
 
 ## Supported Input Types
 
-| Type | Recommended | Not Recommended |
-|------|------------|-----------------|
-| Notion/Markdown | MD file | - |
-| Chat history | Text copy-paste or include in MD | - |
-| Images | **Attach as separate file** (@reference) | Embed in MD ❌ |
-| Mixed | MD + separate image attachments | - |
+| Type | Method |
+|------|--------|
+| Markdown/Notion | MD file |
+| Chat history | Text copy-paste |
+| Images | Attach separately via @path |
+| Mixed | MD + separate image attachments |
 
-⚠️ **Image Warning**: Embedded images in MD cannot be analyzed. Must attach separately using `@imagePath` format.
+**WARNING**: Embedded images in MD cannot be analyzed. Must attach separately using @path.
+
+---
 
 ## Phase 0: Skill Entry
 
-### 0-0. Model Recommendation (Display at start)
+### 0-1. Collect Service Name and Input
 
-> 💡 **This skill performs best with the Opus model.**
-> Sonnet is acceptable if cost savings are needed, but may impact design quality.
->
-> **Output location**: `docs/{serviceName}/spec.md`
-
-### 0-1. Collect Service Name and Input Information
-
-When skill is invoked without input, **use AskQuestion to guide information collection**:
+When invoked without input, use AskQuestion:
 
 ```json
 {
@@ -106,13 +83,13 @@ When skill is invoked without input, **use AskQuestion to guide information coll
     },
     {
       "id": "domain",
-      "prompt": "What domain/industry does this feature belong to?",
+      "prompt": "What domain does this feature belong to?",
       "options": [
-        {"id": "ecommerce", "label": "E-commerce/Shopping"},
-        {"id": "fintech", "label": "Fintech/Finance"},
-        {"id": "manufacturing", "label": "Manufacturing/Production"},
+        {"id": "ecommerce", "label": "E-commerce"},
+        {"id": "fintech", "label": "Fintech"},
+        {"id": "manufacturing", "label": "Manufacturing"},
         {"id": "saas", "label": "SaaS/B2B"},
-        {"id": "healthcare", "label": "Healthcare/Medical"},
+        {"id": "healthcare", "label": "Healthcare"},
         {"id": "other", "label": "Other (specify)"}
       ]
     }
@@ -122,61 +99,37 @@ When skill is invoked without input, **use AskQuestion to guide information coll
 
 ### 0-2. Service Name Input
 
-After AskQuestion, ask for service name:
+Ask for service name (lowercase, hyphen/underscore). Output: `docs/{serviceName}/spec.md`.
 
-> "Please enter the service/feature name (e.g., alert, auth, payment)"
-> This name will be used to save documents in `docs/{serviceName}/` folder.
+**serviceName rules**: lowercase English, hyphen(-) or underscore(_). Examples: `alert`, `user-auth`, `order_management`
 
-**serviceName rules:**
-- Lowercase English letters
-- Use hyphen (-) or underscore (_) instead of spaces
-- Examples: `alert`, `user-auth`, `order_management`
-
-After user responds → Request file path or direct input → Proceed to Phase 1
+After response → request file path or direct input → Phase 1.
 
 ## Phase 1: Input Collection
 
-Confirm with user:
-- Path or content of unstructured materials
-- Brief purpose of feature (one line)
-
-**If file is already provided** → Proceed directly to Phase 2
+Confirm: materials path/content, brief feature purpose. If file already provided → Phase 2.
 
 ## Phase 2: Draft Analysis
 
-Analyze input materials and create draft:
-
-1. Read all materials (use vision analysis for images)
+1. Read all materials (vision for images)
 2. Extract core features
 3. Identify unclear areas
-4. Organize according to draft structure
+4. Organize draft structure
 
 ## Phase 3: Q&A Loop
 
-Resolve unclear points using **AskQuestion**:
-
 ```
 Loop:
-  1. Ask 1-2 highest priority questions about unclear points
-  2. Receive user answers
-  3. Update document reflecting answers
+  1. Ask 1-2 highest priority questions
+  2. Receive answers
+  3. Update document
   4. Check remaining unclear points
-
-Termination conditions:
-  - All required items resolved
-  - OR user selects "This is sufficient"
+  Terminate when: all resolved OR user says "sufficient"
 ```
 
-**Question rules:**
-- Only 1-2 questions at a time (manage user fatigue)
-- Provide options when possible (selection faster than free input)
-- Avoid technical questions, prioritize business perspective
+Rules: 1-2 questions at a time, provide options when possible, business perspective over technical.
 
 ## Phase 4: User Review
-
-Present completed draft to user:
-
-**Confirm with AskQuestion:**
 
 ```json
 {
@@ -187,7 +140,7 @@ Present completed draft to user:
       "prompt": "Please review the requirements document. How would you like to proceed?",
       "options": [
         {"id": "approve", "label": "Approve - Save as is"},
-        {"id": "modify", "label": "Modify - Need changes to specific parts"},
+        {"id": "modify", "label": "Modify - Need changes"},
         {"id": "add", "label": "Add - Missing content"},
         {"id": "restart", "label": "Restart - Wrong direction"}
       ]
@@ -196,31 +149,19 @@ Present completed draft to user:
 }
 ```
 
-**Processing by response:**
-- `approve` → Proceed to Phase 5 (save)
-- `modify` / `add` → Receive modification details, return to Phase 3 and iterate
-- `restart` → Return to Phase 2 and rewrite draft
+- approve → Phase 5
+- modify/add → return to Phase 3
+- restart → return to Phase 2
 
-## Phase 5: Save Final Document
+## Phase 5: Save
 
-Save as MD file upon approval:
-- **Path**: `docs/{serviceName}/spec.md`
-- Create folder if it doesn't exist
+Path: `docs/{serviceName}/spec.md`. Create folder if needed.
 
-### Post-Completion Guidance
-
-After saving document, inform user:
-
-> ✅ **Requirements Document Complete**
->
-> Saved to: `docs/{serviceName}/spec.md`
->
-> **Next Step**: Run the `arch` skill to begin design.
-> → Pass `@docs/{serviceName}/spec.md` file.
+> **Document Complete.** Next: Run `/arch` with `@docs/{serviceName}/spec.md`.
 
 ---
 
-# Output Document Template
+# Output Template
 
 ```markdown
 # Requirements Definition: {Feature Name}
@@ -234,47 +175,30 @@ After saving document, inform user:
 
 | Req ID | Category | Requirement | Priority | Status |
 |--------|----------|-------------|----------|--------|
-| FR-001 | {category} | {requirement description} | High/Medium/Low | Draft |
-| FR-002 | {category} | {requirement description} | High/Medium/Low | Draft |
+| FR-001 | {category} | {description} | High/Medium/Low | Draft |
 
 > **Req ID Rule**: `FR-{number}` format. New = max + 1. Never reuse deleted numbers.
 > **Status**: `Draft` → `Designed` (after arch) → `Implemented` (after build)
 
 ## 0.5. Development Target
-
 - [ ] Backend
 - [ ] Frontend
 - [ ] Both
 
 ## 1. Business Context
-
 ### Purpose
-(Why is this feature needed?)
-
 ### Users
-(Who will use it?)
-
 ### Problem to Solve
-(What pain points does it address?)
 
 ## 2. Feature Specification
-
 ### 2-1. Backend Perspective
-- ...
-
 ### 2-2. Frontend Perspective
-- ...
 
 ## 3. Related Existing Modules
-
 | Type | Name | Impact |
 |------|------|--------|
-| Table | | |
-| API | | |
-| Service | | |
 
 ## 4. Non-Functional Requirements
-
 | Item | Requirement |
 |------|-------------|
 | Performance | |
@@ -282,60 +206,31 @@ After saving document, inform user:
 | Concurrency | |
 
 ## 4.5. Data Contract
-
 ### Input Data
 | Field | Type | Required | Validation | Source |
-|-------|------|----------|------------|--------|
-| | | | | |
-
 ### Output Data
 | Field | Type | Description | Consumer |
-|-------|------|-------------|----------|
-| | | | |
-
 ### Data Permissions
 | Data | Read | Write | Conditions |
-|------|------|-------|------------|
-| | | | |
 
 ## 4.6. Exception and Error Policy
-
-### Expected Exception Scenarios
-| Scenario | Handling Method | User Message |
-|----------|----------------|--------------|
-| | | |
-
+### Expected Scenarios
+| Scenario | Handling | User Message |
 ### Error Response Format
 | HTTP Code | Error Code | Scenario |
-|-----------|-----------|----------|
-| | | |
-
 ### Recovery Strategy
-- **Retry Possible**: (Which operations can be retried)
-- **Rollback Required**: (When rollback is needed)
-- **Notification Required**: (When to send alerts for errors)
+- Retry Possible / Rollback Required / Notification Required
 
 ## 5. Unclear Items
-
-(Items not resolved through Q&A)
-
 - [ ] ...
 
 ## 6. Development Priority
-
 ### MVP (Must Have)
-1. ...
-
 ### Should Have
-1. ...
-
 ### Nice to Have
-1. ...
 
 ## 7. Completion Criteria
-
-- [ ] Criterion 1
-- [ ] Criterion 2
+- [ ] ...
 ```
 
 ---

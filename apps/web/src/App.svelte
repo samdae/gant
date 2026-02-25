@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Router, { location } from "svelte-spa-router";
+  import AppHeader from "./components/AppHeader.svelte";
   import BottomNav from "./components/BottomNav.svelte";
   import Dashboard from "./routes/Dashboard.svelte";
   import Positions from "./routes/Positions.svelte";
@@ -10,6 +11,9 @@
   import Reports from "./routes/Reports.svelte";
   import ReportDetail from "./routes/ReportDetail.svelte";
   import Live from "./routes/Live.svelte";
+  import Reflections from "./routes/Reflections.svelte";
+  import Retrospective from "./routes/Retrospective.svelte";
+  import RetroDetail from "./routes/RetroDetail.svelte";
   import Auth from "./routes/Auth.svelte";
   import NotFoundRedirect from "./routes/NotFoundRedirect.svelte";
   import { loadTickerNames } from "./stores/tickerNames";
@@ -23,6 +27,9 @@
     "/reports": Reports,
     "/reports/:ticker": ReportDetail,
     "/live": Live,
+    "/reflections": Reflections,
+    "/retrospective": Retrospective,
+    "/retrospective/:ticker": RetroDetail,
     "/auth": Auth,
     "*": NotFoundRedirect,
   };
@@ -43,6 +50,8 @@
   }
 
 </script>
+
+<AppHeader />
 
 <main class="main-content">
   <Router {routes} />

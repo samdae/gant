@@ -28,6 +28,8 @@ class TradeRepository:
         action: str,
         shares: float,
         price: float,
+        currency: str = "USD",
+        executed_at: str = None,
         commit: bool = True,
         conn=None,
     ) -> int:
@@ -39,20 +41,24 @@ class TradeRepository:
             action: 'BUY' or 'SELL'
             shares: Number of shares traded
             price: Price per share
+            currency: Trade currency
+            executed_at: Execution timestamp (defaults to now)
 
         Returns:
             Trade ID
         """
-        executed_at = datetime.now().isoformat()
+        if executed_at is None:
+            executed_at = datetime.now().isoformat()
 
         connection = conn or self.db.get_connection()
         cursor = connection.execute(
             """
-            INSERT INTO trades (position_id, report_id, action, shares, price, executed_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO trades (position_id, report_id, action, shares, price,
+                                currency, executed_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
-            (position_id, report_id, action, shares, price, executed_at)
+            (position_id, report_id, action, shares, price, currency, executed_at),
         )
         if commit:
             connection.commit()
@@ -60,8 +66,8 @@ class TradeRepository:
         row = cursor.fetchone()
         trade_id = int(row["id"]) if row else 0
         logger.info(
-            f"Created trade {trade_id}: {action} {shares:.2f} shares @ ${price:.2f} "
-            f"(position={position_id})"
+            f"Created trade {trade_id}: {action} {shares:.2f} shares @ {price:.2f} "
+            f"{currency} (position={position_id})"
         )
         return trade_id
 
@@ -112,14 +118,10 @@ class TradeRepository:
         return [dict(row) for row in cursor.fetchall()]
 
     def get_cash_balance(self, ticker: str, initial_capital: float) -> float:
-        """Calculate available cash balance for a ticker.
+        """Calculate available cash balance for the current active position.
 
-        Args:
-            ticker: Ticker symbol
-            initial_capital: Starting cash balance for the ticker
-
-        Returns:
-            Cash balance after applying trade cash flows
+        Only considers trades belonging to the active position for this ticker.
+        cash = initial_capital - BUY total + SELL total (for the active position only).
         """
         cursor = self.db.get_connection().execute(
             """
@@ -135,75 +137,12 @@ class TradeRepository:
             ) AS net_cash
             FROM trades t
             JOIN positions p ON t.position_id = p.id
-            WHERE p.ticker = %s
+            WHERE p.ticker = %s AND p.status = 'active'
             """,
-            (ticker,)
+            (ticker,),
         )
         row = cursor.fetchone()
         net_cash = float(row["net_cash"]) if row and row.get("net_cash") is not None else 0.0
         return float(initial_capital) + net_cash
 
 
-if __name__ == "__main__":
-    # Test trade repository
-    import tempfile
-    import shutil
-
-    temp_dir = tempfile.mkdtemp()
-    print(f"Test directory: {temp_dir}")
-
-    try:
-        import os
-        from .database import Database
-        from .schedule_repo import ScheduleRepository
-        from .position_repo import PositionRepository
-        from .report_repo import ReportRepository
-
-        db_url = os.getenv("SUPABASE_DB_URL")
-        if not db_url:
-            print("SUPABASE_DB_URL not set; skipping test")
-            raise SystemExit(0)
-
-        db = Database(db_url)
-        db.init_schema()
-
-        # Create dependencies
-        schedule_repo = ScheduleRepository(db)
-        position_repo = PositionRepository(db)
-        report_repo = ReportRepository(db)
-
-        schedule_id = schedule_repo.create("NVDA", 1)
-        position_id = position_repo.create("NVDA")
-        report_id = report_repo.create(schedule_id, position_id, {
-            "market_report": "Test",
-            "pa_opinion": "Test PA"
-        })
-
-        repo = TradeRepository(db)
-
-        # Test create
-        print("\n1. Creating trades...")
-        trade_id_1 = repo.create(position_id, report_id, "BUY", shares=10, price=250.0)
-        trade_id_2 = repo.create(position_id, report_id, "BUY", shares=5, price=260.0)
-        trade_id_3 = repo.create(position_id, report_id, "SELL", shares=15, price=280.0)
-        print(f"   Created trade IDs: {trade_id_1}, {trade_id_2}, {trade_id_3}")
-
-        # Test get_by_position
-        print("\n2. Getting trades by position...")
-        trades = repo.get_by_position(position_id)
-        print(f"   Found {len(trades)} trades:")
-        for t in trades:
-            print(f"   - Trade {t['id']}: {t['action']} {t['shares']} @ ${t['price']:.2f}")
-
-        # Test get_history
-        print("\n3. Getting trade history for NVDA...")
-        history = repo.get_history("NVDA", limit=10)
-        print(f"   Found {len(history)} trades in history")
-
-        print("\n✅ TradeRepository test passed!")
-
-        db.close()
-
-    finally:
-        shutil.rmtree(temp_dir)
-        print(f"Cleaned up test directory")

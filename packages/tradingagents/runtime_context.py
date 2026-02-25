@@ -4,9 +4,6 @@ from contextvars import ContextVar, Token
 from typing import Callable, Optional, Tuple
 
 
-_current_schedule_id: ContextVar[Optional[int]] = ContextVar(
-    "current_schedule_id", default=None
-)
 _current_schedule_job_id: ContextVar[Optional[int]] = ContextVar(
     "current_schedule_job_id", default=None
 )
@@ -16,25 +13,26 @@ _error_logger: ContextVar[Optional[Callable[[int, str, str, Optional[str]], None
 
 
 def set_schedule_context(
-    schedule_id: int,
-    schedule_job_id: Optional[int],
+    schedule_job_id: int,
+    _unused: Optional[int],
     error_logger: Callable[[int, str, str, Optional[str]], None],
-) -> Tuple[Token, Token, Token]:
-    token_id: Token = _current_schedule_id.set(schedule_id)
+) -> Tuple[Token, Token]:
     token_job: Token = _current_schedule_job_id.set(schedule_job_id)
     token_logger: Token = _error_logger.set(error_logger)
-    return token_id, token_job, token_logger
+    return token_job, token_logger
 
 
-def reset_schedule_context(tokens: Tuple[Token, Token, Token]) -> None:
-    token_id, token_job, token_logger = tokens
-    _current_schedule_id.reset(token_id)
-    _current_schedule_job_id.reset(token_job)
-    _error_logger.reset(token_logger)
+def reset_schedule_context(tokens: Tuple[Token, ...]) -> None:
+    for token in tokens:
+        try:
+            token.var.reset(token)
+        except Exception:
+            pass
 
 
 def get_current_schedule_id() -> Optional[int]:
-    return _current_schedule_id.get()
+    """Backward-compatible alias for get_current_schedule_job_id."""
+    return _current_schedule_job_id.get()
 
 
 def get_current_schedule_job_id() -> Optional[int]:
@@ -44,11 +42,11 @@ def get_current_schedule_job_id() -> Optional[int]:
 def log_schedule_error(
     error_type: str, error_message: str, error_detail: Optional[str] = None
 ) -> None:
-    schedule_id = _current_schedule_id.get()
+    job_id = _current_schedule_job_id.get()
     error_logger = _error_logger.get()
-    if schedule_id is None or error_logger is None:
+    if job_id is None or error_logger is None:
         return
     try:
-        error_logger(schedule_id, error_type, error_message, error_detail)
+        error_logger(job_id, error_type, error_message, error_detail)
     except Exception:
         pass

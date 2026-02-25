@@ -8,7 +8,7 @@
     fetchReportsByTicker,
     fetchPositionGraph,
   } from "../lib/api/endpoints";
-  import { formatMoney, formatMoneyPlain, formatPercent, formatDateTime, formatErrorMessage } from "../lib/utils/format";
+  import { formatMoney, formatMoneyPlain, formatPercent, formatDateTime, formatErrorMessage, formatAmount, formatSignedAmount } from "../lib/utils/format";
   import { marked } from "marked";
   import DOMPurify from "dompurify";
 
@@ -357,9 +357,8 @@
         const s = areaPoints[0]; const e = areaPoints[areaPoints.length - 1];
         chartAreaPath = `M ${s.x.toFixed(1)} ${chartBaselineY} L ${areaPoints.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" L ")} L ${e.x.toFixed(1)} ${chartBaselineY} Z`;
         chartEntryPoint = { x: s.x, y: s.y };
-        console.log("[ENTRY DEBUG] chartEntryPoint SET:", chartEntryPoint);
-      } else { chartAreaPath = ""; chartEntryPoint = null; console.log("[ENTRY DEBUG] areaPoints empty!"); }
-    } else { chartAreaPath = ""; chartEntryPoint = null; console.log("[ENTRY DEBUG] entryIdx < 0, no entry point"); }
+      } else { chartAreaPath = ""; chartEntryPoint = null; }
+    } else { chartAreaPath = ""; chartEntryPoint = null; }
 
     /* trend & stats */
     const entryValue = chartEntryPoint && entryIdx >= 0 ? (mapped.find((mp) => mp.idx >= entryIdx)?.value ?? null) : null;
@@ -547,7 +546,7 @@
 
   const getReportDecision = (report?: PositionDetail["reports"][number] | null) => {
     if (!report) return null;
-    return report.portfolio_action || report.decision_position || report.final_trade_decision || null;
+    return report.portfolio_action || report.decision_position || null;
   };
 
   const getExecutionNote = (report?: PositionDetail["reports"][number] | null) => {
@@ -603,7 +602,7 @@
       </div>
       <div class="price-panel-summary">
         <div class="price-panel-price">
-          {chartStats.last !== null ? formatMoneyPlain(chartStats.last) : "-"}
+          {chartStats.last !== null ? formatAmount(chartStats.last, ticker) : "-"}
         </div>
         {#if chartStats.count > 0}
           <div class="chart-mode-toggle">
@@ -739,13 +738,13 @@
                     class="trade-marker trade-buy"
                     points="{tm.x},{tm.y + 3} {tm.x - 5},{tm.y + 11} {tm.x + 5},{tm.y + 11}"
                   />
-                  <text class="trade-marker-label trade-buy-label" x={tm.x} y={tm.y + 20} text-anchor="middle">${tm.price.toFixed(0)}</text>
+                  <text class="trade-marker-label trade-buy-label" x={tm.x} y={tm.y + 20} text-anchor="middle">{formatAmount(tm.price, ticker)}</text>
                 {:else}
                   <polygon
                     class="trade-marker trade-sell"
                     points="{tm.x},{tm.y - 3} {tm.x - 5},{tm.y - 11} {tm.x + 5},{tm.y - 11}"
                   />
-                  <text class="trade-marker-label trade-sell-label" x={tm.x} y={tm.y - 14} text-anchor="middle">${tm.price.toFixed(0)}</text>
+                  <text class="trade-marker-label trade-sell-label" x={tm.x} y={tm.y - 14} text-anchor="middle">{formatAmount(tm.price, ticker)}</text>
                 {/if}
               {/each}
 
@@ -776,8 +775,8 @@
 
       {#if chartStats.count > 0}
         <div class="price-panel-footer">
-          <div class="price-panel-stat"><span>고가</span><strong>{formatMoneyPlain(chartStats.high)}</strong></div>
-          <div class="price-panel-stat"><span>저가</span><strong>{formatMoneyPlain(chartStats.low)}</strong></div>
+          <div class="price-panel-stat"><span>고가</span><strong>{formatAmount(chartStats.high, ticker)}</strong></div>
+          <div class="price-panel-stat"><span>저가</span><strong>{formatAmount(chartStats.low, ticker)}</strong></div>
         </div>
       {/if}
     </div>
@@ -787,14 +786,14 @@
         <div class="card-header"><h3>투자</h3></div>
         <div class="card-body">
           <div class="stat-row"><span class="stat-label">보유</span><span class="stat-value">{summary?.shares ?? "-"}</span></div>
-          <div class="stat-row"><span class="stat-label">1주 평균</span><span class="stat-value">{summary?.avg_cost ? `$${summary.avg_cost.toFixed(2)}` : "-"}</span></div>
+          <div class="stat-row"><span class="stat-label">1주 평균</span><span class="stat-value">{summary?.avg_cost ? formatAmount(summary.avg_cost, ticker) : "-"}</span></div>
           <div class="stat-row">
             <span class="stat-label">총 금액</span>
             <span class="stat-value">
               {#if totalAmount !== null}
-                {formatMoneyPlain(totalAmount)}
+                {formatAmount(totalAmount, ticker)}
                 <span class={summary && summary.pnl >= 0 ? "text-gain" : "text-loss"} style="margin-left:2px">
-                  ({summary ? formatMoney(summary.pnl) : "-"})
+                  ({summary ? formatSignedAmount(summary.pnl, ticker) : "-"})
                 </span>
               {:else}
                 -
@@ -845,7 +844,7 @@
                   <div class="history-top">
                     <span class="history-no">{getReportTitle(report)}</span>
                     <span class="history-date">{formatDateTime(report.created_at)}</span>
-                    <span class="badge badge-gain">{mapDecision(getReportDecision(report))}</span>
+                    <span class={getDecisionClass(getReportDecision(report))}>{mapDecision(getReportDecision(report))}</span>
                   </div>
                 </button>
                 {#if selectedHistoryId === String(report.id)}

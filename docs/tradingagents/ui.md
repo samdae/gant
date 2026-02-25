@@ -1,7 +1,7 @@
 # UI Specification: TradingAgents (GANT)
 
 > Created: 2026-02-13
-> Updated: 2026-02-20 (code-based reverse sync)
+> Updated: 2026-02-24 (코드 전수 검증)
 > Service: tradingagents
 > Platform: responsive
 > Requirements: docs/tradingagents/spec.md
@@ -24,16 +24,17 @@ approach: "Mobile First"
 
 | #   | Screen          | Route                | Related Endpoints                                                                                              | Auth Required    | Spec Reference         |
 | --- | --------------- | -------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------- | ---------------------- |
-| 1   | Dashboard       | `/`                  | `GET /health`, `GET /queue`, `GET /positions/market`, `GET /metrics`, `GET /activity`, `GET /schedules/summary` | No               | FR-025, FR-034         |
-| 2   | Positions       | `/positions`         | `GET /positions/market`, `GET /metrics`                                                                        | No               | FR-013, FR-025, FR-034 |
+| 1   | Dashboard       | `/`                  | `GET /health`, `GET /queue`, `GET /positions/market`, `GET /metrics`, `GET /activity`, `GET /schedules/summary` | No               | FR-025, FR-034, FR-040, FR-045 |
+| 2   | Positions       | `/positions`         | `GET /positions/market`, `GET /positions/closed`, `GET /metrics`                                               | No               | FR-013, FR-025, FR-034, FR-046 |
 | 3   | Schedules       | `/schedules`         | `GET /schedules`, `GET /queue`, `GET /schedules/{ticker}/cycles`, `GET /search/tickers`, `POST /schedules`, `DELETE /schedules/{ticker}` | POST/DELETE: Yes | FR-016, FR-025, FR-026 |
 | 4   | Schedule Detail | `/schedules/:ticker` | `GET /schedules/{ticker}/cycles`, `GET /schedules/{ticker}/cycles/{id}/events`                                 | No               | FR-025, FR-037         |
-| 5   | Trade Detail    | `/trade/:ticker`     | `GET /positions`, `GET /positions/{id}`, `GET /positions/market`, `GET /reports?ticker=`, `GET /position/{id}/graph` | No               | FR-013, FR-014, FR-020, FR-034 |
+| 5   | Trade Detail    | `/trade/:ticker`     | `GET /positions`, `GET /positions/{id}`, `GET /positions/market`, `GET /reports?ticker=`, `GET /position/{id}/graph` | No               | FR-013, FR-014, FR-020, FR-034, FR-048 |
 | 6   | Reports         | `/reports`           | `GET /reports/tickers`                                                                                         | No               | FR-025, FR-032         |
 | 7   | Report Detail   | `/reports/:ticker`   | `GET /reports?ticker=`                                                                                         | No               | FR-025, FR-032         |
-| 8   | Live Analysis   | `/live`              | `WS /ws/analyze/{ticker}`, `GET /queue`, `GET /live/{ticker}/events`                                           | No               | FR-025, FR-037         |
-| 9   | Auth            | `/auth`              | —                                                                                                              | No               | FR-026                 |
-| 10  | Not Found       | `*`                  | —                                                                                                              | No               | —                      |
+| 8   | Reflections     | `/reflections`       | `GET /reflections`                                                                                             | No               | FR-049                 |
+| 9   | Live Analysis   | `/live`              | `WS /ws/analyze/{ticker}`, `GET /queue`, `GET /live/{ticker}/events`                                           | No               | FR-025, FR-037         |
+| 10  | Auth            | `/auth`              | —                                                                                                              | No               | FR-026                 |
+| 11  | Not Found       | `*`                  | —                                                                                                              | No               | —                      |
 
 ---
 
@@ -47,15 +48,18 @@ approach: "Mobile First"
 
 ```
 ┌─────────────────────────────────┐
-│ 홈                [● 온라인·대기]│
+│ 홈   [ALL▾KRW|USD] [● 온라인·대기]│
 ├─────────────────────────────────┤
 │ ┌─ 오늘 실행 ──────────── 12 ─┐ │
 │ │ 완료 8  건너뜀 2  실패 1  1 │ │
 │ └─────────────────────────────┘ │
 │ ┌─ 총손익 ────┬─ 투자 ────────┐ │
-│ │ +$423.50    │ 4             │ │
-│ │ 수익률+8.5% │ 승 3 · 패 1  │ │
+│ │ 실현 +$200  │ 4             │ │
+│ │ 미실현+$223 │ 승 3 · 패 1  │ │
+│ │ 합계 +$423  │               │ │
+│ │ 수익률+8.5% │               │ │
 │ └─────────────┴───────────────┘ │
+│ ※ ALL 선택 시 퍼센트만 표시     │
 │ ┌─ 내 투자 ──────── 전체 보기 ┐ │
 │ │ NVDA 엔비디아    $1,250(+$50)│ │
 │ │ AAPL 애플        $890 (-$12)│ │
@@ -70,7 +74,7 @@ approach: "Mobile First"
 │ │ ● TSLA 매도 5 @ $245.00    │ │
 │ └─────────────────────────────┘ │
 ├─────────────────────────────────┤
-│ 예약  실시간  [홈]  투자  AI분석│
+│ 예약 실시간 [홈] 투자 AI분석 회고│
 └─────────────────────────────────┘
 ```
 
@@ -78,7 +82,7 @@ approach: "Mobile First"
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ GANT         예약  실시간  홈  투자  검색                     │
+│ GANT    [ALL▾KRW|USD]                                         │
 ├──────────────────────────────────────────────────────────────┤
 │ 홈                                        [● 온라인·대기]    │
 │                                                              │
@@ -106,25 +110,32 @@ approach: "Mobile First"
 
 ---
 
-### 2.2 Positions (`/positions`)
+### 2.2 Positions (`/positions`) — FR-046
 
-**Purpose**: 활성 포지션의 현재가·미실현 수익률 표시. 클릭 시 Trade Detail로 이동.
+**Purpose**: 활성/종료 포지션 표시. active/closed 탭 분리. 클릭 시 Trade Detail로 이동.
 
 **Mobile (카드 리스트)**:
 
 ```
 ┌─────────────────────────────────┐
 │ 투자                 손익 +$423 │
+│ [활성 포지션]  [이전 투자]       │
 ├─────────────────────────────────┤
+│ === 활성 포지션 탭 ===          │
 │ ┌───────────────────────────┐   │
 │ │ NVDA 엔비디아     +4.12%  │   │
 │ │ 보유 10 · 1주 평균 $125   │   │
 │ │ 총 금액 $1,250 (+$50.00) │   │
 │ └───────────────────────────┘   │
+│                                 │
+│ === 이전 투자 탭 ===            │
 │ ┌───────────────────────────┐   │
-│ │ AAPL 애플         -1.33%  │   │
-│ │ 보유 5 · 1주 평균 $180    │   │
-│ │ 총 금액 $890 (-$12.00)   │   │
+│ │ GOOGL 구글   ✅ 승 +2.34% │   │
+│ │ 보유기간 15일 · 수익 $117  │   │
+│ └───────────────────────────┘   │
+│ ┌───────────────────────────┐   │
+│ │ TSLA 테슬라  ❌ 패 -5.12% │   │
+│ │ 보유기간 8일 · 손실 -$256  │   │
 │ └───────────────────────────┘   │
 └─────────────────────────────────┘
 ```
@@ -142,11 +153,13 @@ approach: "Mobile First"
 └──────────┴──────┴──────────┴───────────────┴─────────────────┘
 ```
 
-**States**: loading / error / empty ("투자가 없습니다.") / loaded
+**States**: loading / error / empty ("투자가 없습니다." / "이전 투자가 없습니다.") / loaded
 
-**API Calls**: `fetchPositionsMarket`, `fetchMetrics`
+**API Calls**: `fetchPositionsMarket`, `fetchPositionsClosed` (`GET /positions/closed`), `fetchMetrics`
 
-**Interactions**: 행/카드 클릭 → `/#/trade/{ticker}`
+**Interactions**: 행/카드 클릭 → `/#/trade/{ticker}`. 탭 전환으로 active/closed 목록 전환
+
+**Closed 포지션 표시 항목**: 티커, 승패(win/loss), 수익률(return_pct), 보유기간(opened_at~closed_at), 실현 손익 금액
 
 ---
 
@@ -371,7 +384,57 @@ approach: "Mobile First"
 
 ---
 
-### 2.8 Live Analysis (`/live`)
+### 2.8 Reflections (`/reflections`) — FR-049
+
+**Purpose**: AI 에이전트의 회고/반성 목록. 포지션 종료 후 생성된 반성문과 핵심 교훈 확인.
+
+**Mobile**:
+
+```
+┌─────────────────────────────────┐
+│ 회고                             │
+│ [전체]  [✅ 성공]  [❌ 실패]     │
+├─────────────────────────────────┤
+│ ┌───────────────────────────┐   │
+│ │ NVDA 엔비디아  ✅ +12.34% │   │
+│ │ 2026-02-18 · 보유 15일    │   │
+│ │                           │   │
+│ │ ## 핵심 교훈              │   │
+│ │ AI 반도체 수요 증가 추세  │   │
+│ │ 에서 모멘텀 진입이 효과적 │   │
+│ │ 이었으나, 과매수 구간에서 │   │
+│ │ 부분 익절이 필요했다...   │   │
+│ │                    [더보기]│   │
+│ └───────────────────────────┘   │
+│ ┌───────────────────────────┐   │
+│ │ TSLA 테슬라   ❌ -5.12%   │   │
+│ │ 2026-02-15 · 보유 8일     │   │
+│ │                           │   │
+│ │ ## 핵심 교훈              │   │
+│ │ 실적 발표 직전 진입은     │   │
+│ │ 리스크가 높았다. 이벤트   │   │
+│ │ 전 보수적 접근 필요...    │   │
+│ │                    [더보기]│   │
+│ └───────────────────────────┘   │
+│          [더 불러오기]           │
+└─────────────────────────────────┘
+```
+
+**States**: loading / error / empty ("회고가 없습니다.") / loaded
+
+**API Calls**: `fetchReflections(?outcome=win|loss, ?cursor, ?limit)`
+
+**표시 항목**: ticker, outcome(win/loss), return_pct, market/sector/industry, key_lessons (요약), reflection (전체, 마크다운), created_at
+
+**특이사항**:
+- win/loss 필터 (백엔드 `outcome` 파라미터 활용) — 전환 시 목록+cursor 초기화
+- cursor 기반 페이지네이션 (백엔드 이미 지원)
+- 마크다운 렌더링 (marked + DOMPurify)
+- 카드 클릭 시 전체 반성문 펼치기/접기
+
+---
+
+### 2.9 Live Analysis (`/live`)
 
 **Purpose**: WebSocket으로 에이전트 실행 상태를 실시간 스트리밍.
 
@@ -419,7 +482,7 @@ approach: "Mobile First"
 
 ---
 
-### 2.9 Auth (`/auth`)
+### 2.10 Auth (`/auth`)
 
 **Purpose**: WRITE 작업을 위한 Admin 토큰 입력. 성공 시 localStorage에 저장 + 원래 화면 복귀.
 
@@ -443,7 +506,7 @@ approach: "Mobile First"
 
 ---
 
-### 2.10 Not Found (`*`)
+### 2.11 Not Found (`*`)
 
 **Purpose**: 미등록 라우트 접근 시 대시보드로 자동 리다이렉트.
 
@@ -453,20 +516,22 @@ approach: "Mobile First"
 
 | Component       | Props / State                       | File                              | Usage                                         |
 | --------------- | ----------------------------------- | --------------------------------- | --------------------------------------------- |
-| AppHeader       | navItems, $location                 | `components/AppHeader.svelte`     | 모든 페이지 상단 (로고 + 데스크톱 네비게이션) |
-| BottomNav       | navItems, $location                 | `components/BottomNav.svelte`     | 모바일 하단 5탭 (예약/실시간/홈/투자/AI분석)  |
+| AppHeader       | `$currencyFilter`, `$location`      | `components/AppHeader.svelte`     | 모든 페이지 상단 (로고 + 통화 셀렉터 ALL/KRW/USD 인라인) (FR-040) |
+| BottomNav       | navItems, `$location`               | `components/BottomNav.svelte`     | 모바일 하단 6탭 (예약/실시간/홈/투자/AI분석/회고) + 스크롤 자동 숨김 |
 | SelectMenu      | value, options, placeholder, disabled | `components/SelectMenu.svelte`  | ScheduleDetail, ReportDetail (사이클 선택)     |
 
 ### Utility Functions (`lib/utils/format.ts`)
 
-| Function           | Description                                    |
-| ------------------ | ---------------------------------------------- |
-| `formatMoney`      | 부호 포함 통화 포맷 (+$1,234.56)              |
-| `formatMoneyPlain` | 부호 없는 통화 포맷 ($1,234.56)               |
-| `formatPercent`    | 퍼센트 포맷 (+12.34%)                         |
-| `formatDateTime`   | ISO → 로컬 날짜시간                            |
-| `formatAgo`        | ISO → 상대 시간 (방금 전, N분 전, N시간 전)   |
-| `formatErrorMessage` | Error → 사용자 친화적 메시지                 |
+| Function             | Description                                    |
+| -------------------- | ---------------------------------------------- |
+| `formatMoney`        | 부호 포함 통화 포맷 (+$1,234.56)              |
+| `formatMoneyPlain`   | 부호 없는 통화 포맷 ($1,234.56)               |
+| `formatPercent`      | 퍼센트 포맷 (+12.34%)                         |
+| `formatDateTime`     | ISO → 로컬 날짜시간                            |
+| `formatAgo`          | ISO → 상대 시간 (방금 전, N분 전, N시간 전)   |
+| `formatErrorMessage` | Error → 사용자 친화적 메시지                   |
+| `formatAmount`       | ticker 기반 통화 포맷 (KRW: ₩1,234 / USD: $1,234.56). ticker 접미사(.KS/.KQ)로 자동 판단 |
+| `formatSignedAmount` | `formatAmount` + 부호 (+₩1,234 / -$1,234.56)  |
 
 ---
 
@@ -497,13 +562,14 @@ colors:
 ## 5. Navigation Flow
 
 ```
-BottomNav: 예약(/schedules) ─ 실시간(/live) ─ [홈](/) ─ 투자(/positions) ─ AI분석(/reports)
-AppHeader: 예약(/schedules) ─ 실시간(/live) ─ [홈](/) ─ 투자(/positions) ─ 검색(/search ⚠️ 라우트 미등록)
+BottomNav: 예약(/schedules) ─ 실시간(/live) ─ [홈](/) ─ 투자(/positions) ─ AI분석(/reports) ─ 회고(/reflections)
+AppHeader: 로고(GANT) + [ALL▾KRW|USD] 통화 셀렉터 인라인 (FR-040) — 별도 네비게이션 링크 없음
 
 Dashboard (/) ──→ Positions (/positions) ──→ TradeDetail (/trade/:ticker)
               ──→ Schedules (/schedules) ──→ ScheduleDetail (/schedules/:ticker)
               ──→ Live (/live)
               ──→ Reports (/reports) ──→ ReportDetail (/reports/:ticker)
+              ──→ Reflections (/reflections) [FR-049]
               ──→ Auth (/auth) [401/403 시 자동 리다이렉트]
 ```
 
@@ -546,5 +612,5 @@ pwa:
 | Item           | Content                                      |
 | -------------- | -------------------------------------------- |
 | Generated      | 2026-02-13                                   |
-| Last synced    | 2026-02-20 (reverse — code-based full sync)  |
-| Analysis scope | `apps/web/src/` (Svelte + TypeScript)        |
+| Last synced    | 2026-02-24 (코드 전수 검증 + 버그 수정 반영 — formatAmount/formatSignedAmount 공용화, KRW 통화 전체 적용, Reflections 필터 리셋) |
+| Analysis scope | `apps/web/src/` (11 screens, 3 shared components: AppHeader, BottomNav, SelectMenu) |

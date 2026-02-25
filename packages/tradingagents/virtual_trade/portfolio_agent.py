@@ -81,7 +81,7 @@ class PortfolioAgent:
 
         Returns:
             Dict with:
-                - action: BUY | SELL | HOLD | MODIFY
+                - action: BUY | SELL | HOLD
                 - shares: float (for BUY action, LLM decides based on cash + price)
                 - rationale: str
                 - strategy_update: dict (stop_loss, target, next_action)
@@ -124,23 +124,35 @@ class PortfolioAgent:
         # FR-022: RAG search for past experiences (if hybrid_memory available)
         rag_context = ""
         has_experience = False
+        rag_docs = None
         if self.hybrid_memory:
             try:
-                # Build query from pipeline state
                 query = self._build_rag_query(pipeline_state, ticker)
-                
-                # Search for relevant past experiences
                 memories = self.hybrid_memory.get_memories(query, n_matches=3)
-                
+
                 if memories:
                     has_experience = True
                     rag_context = "\n**Past Experiences (from RAG):**\n"
+                    rag_memories = []
                     for i, mem in enumerate(memories, 1):
                         outcome_label = mem["metadata"].get("outcome_label", "")
+                        matched_situation = mem["matched_situation"][:200]
+                        return_pct = mem["metadata"].get("return_pct")
                         rag_context += f"\n{i}. {outcome_label}\n"
-                        rag_context += f"   Lessons: {mem['matched_situation'][:200]}...\n"
-                        rag_context += f"   Return: {mem['metadata'].get('return_pct', 'N/A')}%\n"
-                    
+                        rag_context += f"   Lessons: {matched_situation}...\n"
+                        rag_context += f"   Return: {return_pct if return_pct is not None else 'N/A'}%\n"
+                        rag_memories.append({
+                            "reflection_id": mem["metadata"].get("reflection_id"),
+                            "outcome_label": outcome_label,
+                            "matched_situation": matched_situation,
+                            "return_pct": return_pct,
+                        })
+
+                    import json
+                    rag_docs = json.dumps({
+                        "memories": rag_memories,
+                        "raw_context": rag_context,
+                    }, ensure_ascii=False)
                     logger.info(f"{ticker}: Found {len(memories)} relevant past experiences")
                 else:
                     logger.info(f"{ticker}: No relevant past experiences found")
@@ -148,8 +160,10 @@ class PortfolioAgent:
             except Exception as e:
                 logger.warning(f"{ticker}: RAG search failed: {e}")
                 rag_context = ""
+                rag_docs = None
 
-        cash_available = self._get_cash_available(ticker, trade_repo)
+        ctx_capital = context.get("initial_capital") if context else None
+        cash_available = self._get_cash_available(ticker, trade_repo, ctx_capital)
 
         # Build prompt
         prompt = self._build_prompt(
@@ -180,6 +194,9 @@ class PortfolioAgent:
                 current_price,
                 cash_available,
             )
+
+            decision["rag_used"] = has_experience
+            decision["rag_docs"] = rag_docs
 
             logger.info(
                 f"Portfolio decision for {ticker}: {decision['action']} "
@@ -338,13 +355,12 @@ class PortfolioAgent:
   * 전량 청산: allocation_pct = 100
   * 부분 청산: allocation_pct = 25/50/75 등
   * 불확실하면 전량 청산 기본
-- HOLD: 현 상태 유지
-- MODIFY: 스탑로스/목표가/다음 행동 조정
+- HOLD: 현 상태 유지 (strategy_update로 스탑로스/목표가 조정 가능)
 
 **응답은 반드시 아래 JSON 형식만 출력하세요. JSON 외에 다른 텍스트를 포함하지 마세요:**
 ```json
 {{{{
-  "action": "BUY 또는 SELL 또는 HOLD 또는 MODIFY",
+  "action": "BUY 또는 SELL 또는 HOLD",
   "allocation_pct": 0~100 정수,
   "shares": 0,
   "rationale": "2~3문장 (한국어)",
@@ -484,9 +500,25 @@ class PortfolioAgent:
 
         rationale = str(parsed.get("rationale", decision_text[:200]))
 
+        raw_strategy = parsed.get("strategy_update") or {}
+        if isinstance(raw_strategy, str):
+            try:
+                raw_strategy = json.loads(raw_strategy)
+            except Exception:
+                raw_strategy = {}
+
+        def _parse_price(val):
+            if val is None:
+                return None
+            try:
+                v = float(str(val).replace("$", "").replace(",", "").strip())
+                return v if v > 0 else None
+            except (ValueError, TypeError):
+                return None
+
         strategy_update = {
-            "stop_loss": None,
-            "target": None,
+            "stop_loss": _parse_price(raw_strategy.get("stop_loss")),
+            "target": _parse_price(raw_strategy.get("target")),
             "next_action": action,
         }
 
@@ -541,13 +573,16 @@ class PortfolioAgent:
 
         return 0.0
 
-    def _get_cash_available(self, ticker: str, trade_repo) -> float:
+    def _get_cash_available(
+        self, ticker: str, trade_repo, initial_capital: float = None
+    ) -> float:
+        capital = float(initial_capital) if initial_capital else float(self.initial_capital)
         try:
-            cash = trade_repo.get_cash_balance(ticker, self.initial_capital)
+            cash = trade_repo.get_cash_balance(ticker, capital)
             return max(float(cash), 0.0)
         except Exception as e:
             logger.warning(f"{ticker}: Failed to compute cash balance: {e}")
-            return float(self.initial_capital)
+            return capital
 
     @staticmethod
     def _round_shares(value: float) -> float:

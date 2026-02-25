@@ -1,48 +1,36 @@
 # Backend Reverse Engineering Profile
 
-> This profile is for reverse-engineering backend code.
-> Use when analyzing API servers, business logic, databases.
+> Reverse-engineering backend code. Use for API servers, business logic, databases.
 
 ## Code Type Detection
 
-Keywords to detect backend code:
-- `router`, `controller`, `endpoint`, `api`
-- `model`, `entity`, `schema`, `migration`
-- `service`, `usecase`, `repository`, `dao`
-- `database`, `sql`, `orm`, `query`
-
----
+Keywords: router, controller, endpoint, api, model, entity, schema, migration, service, usecase, repository, dao, database, sql, orm, query
 
 ## Core File Identification
 
 ### File Type to Target Mapping
 
 | File Type | Extraction Target | Common Patterns |
-|----------|------------------|-----------------|
-| **Router/Controller** | API endpoints | `*_router.py`, `*Controller.ts`, `routes/*.js` |
-| **Model/Entity** | DB schema | `models/*.py`, `entities/*.ts`, `*Model.java` |
-| **Service/Usecase** | Business logic | `services/*.py`, `*Service.ts`, `usecases/*.go` |
-| **Repository/DAO** | Data access | `repositories/*.py`, `*Repository.ts` |
-| **Schema/DTO** | Data structures | `schemas/*.py`, `dto/*.ts`, `types/*.ts` |
-| **Config files** | Tech Stack | `config.py`, `settings.ts`, `application.yml` |
+|----------|-------------------|-----------------|
+| Router/Controller | API endpoints | `*_router.py`, `*Controller.ts`, `routes/*.js` |
+| Model/Entity | DB schema | `models/*.py`, `entities/*.ts`, `*Model.java` |
+| Service/Usecase | Business logic | `services/*.py`, `*Service.ts`, `usecases/*.go` |
+| Repository/DAO | Data access | `repositories/*.py`, `*Repository.ts` |
+| Schema/DTO | Data structures | `schemas/*.py`, `dto/*.ts`, `types/*.ts` |
+| Config | Tech Stack | `config.py`, `settings.ts`, `application.yml` |
 
-### Directory Structure Patterns
+### Directory Structure
 
 ```
-Backend Project Structure:
-├── app/ or src/
-│   ├── api/ or routers/ or controllers/
-│   ├── models/ or entities/
-│   ├── services/ or usecases/
-│   ├── repositories/ or dao/
-│   ├── schemas/ or dto/
-│   └── config/ or settings/
-├── migrations/ or alembic/
-├── tests/
-└── requirements.txt / package.json / go.mod
+Backend: app/ or src/
+├── api/ or routers/ or controllers/
+├── models/ or entities/
+├── services/ or usecases/
+├── repositories/ or dao/
+├── schemas/ or dto/
+└── config/ or settings/
+migrations/ or alembic/, tests/, requirements.txt/package.json/go.mod
 ```
-
----
 
 ## Direct Extraction Items
 
@@ -53,7 +41,7 @@ Backend Project Structure:
 | `requirements.txt` | Python packages (FastAPI, SQLAlchemy, etc.) |
 | `package.json` | Node packages (Express, TypeORM, etc.) |
 | `go.mod` | Go modules |
-| `pom.xml` / `build.gradle` | Java dependencies |
+| `pom.xml`/`build.gradle` | Java dependencies |
 | Import statements | Framework, ORM, libraries used |
 
 ### API Specification Extraction
@@ -66,12 +54,7 @@ Backend Project Structure:
 | Spring | `@GetMapping`, `@PostMapping` |
 | Gin | `r.GET()`, `r.POST()` |
 
-**Extract for each endpoint:**
-- HTTP method
-- Path
-- Request params/body
-- Response schema
-- Auth requirements (decorators)
+Extract per endpoint: HTTP method, Path, Request params/body, Response schema, Auth requirements (decorators).
 
 ### Database Schema Extraction
 
@@ -83,10 +66,7 @@ Backend Project Structure:
 | GORM | `type Model struct` with `gorm:` tags |
 | Django | `class Model(models.Model):` |
 
-**Extract for each table:**
-- Table name
-- Column definitions (name, type, constraints)
-- Relationships (FK, indexes)
+Extract per table: Table name, Column definitions (name, type, constraints), Relationships (FK, indexes).
 
 ### Code Mapping Extraction
 
@@ -97,13 +77,11 @@ Backend Project Structure:
 | Method name | Parse function/method definitions |
 | Dependencies | Analyze imports and injections |
 
-**Output format (all rows have `Impl = [x]` since code exists):**
+Output format (all rows have `Impl = [x]` since code exists):
 
 | # | Feature | File | Class | Method | Action | Impl |
 |---|---------|------|-------|--------|--------|------|
 | 1 | {inferred} | {path} | {class} | {method} | {description} | [x] |
-
----
 
 ## Inference Items
 
@@ -136,107 +114,62 @@ Backend Project Structure:
 | HTTP status codes in responses | API error contracts |
 | Logging in catch blocks | Error monitoring |
 
----
-
 ## Q&A Items (Cannot Extract)
-
-### Required Questions
 
 ```json
 {
   "questions": [
-    {
-      "id": "business_purpose",
-      "prompt": "What is the main business purpose of this service?",
-      "type": "open"
-    },
-    {
-      "id": "users",
-      "prompt": "Who are the primary users of this service?",
+    {"id": "business_purpose", "prompt": "What is the main business purpose of this service?", "type": "open"},
+    {"id": "users", "prompt": "Who are the primary users of this service?",
       "options": [
         {"id": "internal", "label": "Internal team/employees"},
         {"id": "b2b", "label": "Business customers (B2B)"},
         {"id": "b2c", "label": "End users (B2C)"},
         {"id": "mixed", "label": "Both internal and external"}
-      ]
-    },
-    {
-      "id": "non_goals",
-      "prompt": "What does this service intentionally NOT do? (Out of scope)",
-      "type": "open"
-    },
-    {
-      "id": "critical_feature",
-      "prompt": "Which feature is most business-critical?",
-      "type": "open"
-    }
+      ]},
+    {"id": "non_goals", "prompt": "What does this service intentionally NOT do? (Out of scope)", "type": "open"},
+    {"id": "critical_feature", "prompt": "Which feature is most business-critical?", "type": "open"}
   ]
 }
 ```
 
----
-
 ## Output Templates
 
-### spec.md Output Sections
-
+**spec.md:**
 ```markdown
 # Requirements (Reverse-engineered)
-
-> ⚠️ Reverse-engineered from code. Verify with stakeholders.
-
+> Reverse-engineered from code. Verify with stakeholders.
 ## 1. Overview
-- Service Name: {extracted}
-- Domain: {inferred}
-- Development Focus: [x] Backend
-
+- Service Name: {extracted}, Domain: {inferred}, Focus: [x] Backend
 ## 2. Purpose
-- Goal: {inferred from API patterns} ❓
-- Non-goals: {from Q&A}
-
+- Goal: {inferred from API patterns} [verify], Non-goals: {from Q&A}
 ## 3. Feature Specifications
 | Feature | Description | Confidence |
 |---------|-------------|------------|
 | {from API} | {inferred} | High/Medium/Low |
-
 ## 4. Data Contracts
 | Entity | Fields | Source |
 |--------|--------|--------|
 | {from models} | {extracted} | Code |
-
-## 5. Exception Policy
-{inferred from error handlers}
+## 5. Exception Policy - {inferred from error handlers}
 ```
 
-### arch-be.md Output Sections
-
+**arch-be.md:**
 ```markdown
 # Backend Design Doc (Reverse-engineered)
-
-> ⚠️ Extracted from existing code.
-> - **Extracted**: Code Mapping, API Spec, DB Schema (reliable)
-> - **Inferred**: Goal, Scope (verify needed)
-
-## 1.5. Tech Stack
-{extracted from dependencies}
-
-## 2. Architecture Impact
-### Database Schema
-{extracted from models}
-
-## 3. Code Mapping
-{extracted from file analysis}
-
-## 6. API Specification
-{extracted from routers}
+> Extracted from existing code.
+> - Extracted (reliable): Code Mapping, API Spec, DB Schema
+> - Inferred (verify needed): Goal, Scope
+## 1.5. Tech Stack - {extracted from dependencies}
+## 2. Architecture Impact - Database Schema {extracted from models}
+## 3. Code Mapping - {extracted from file analysis}
+## 6. API Specification - {extracted from routers}
 ```
-
----
 
 ## Completeness Indicators
 
 | Section | Status | Meaning |
 |---------|--------|---------|
-| ✅ Extracted | Reliable | Directly from code |
-| ❓ Inferred | Verify | Guessed from patterns |
-| ❌ Unknown | Required | Need human input |
+| Extracted | Reliable | Directly from code |
+| Inferred [verify] | Verify needed | Guessed from patterns |
+| Unknown [required] | Required | Need human input |

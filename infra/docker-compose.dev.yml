@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: tradingagents-postgres-dev
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trading}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tradingpass}
+      POSTGRES_DB: ${POSTGRES_DB:-tradingagents_dev}
+      TZ: Asia/Seoul
+    command: ["postgres", "-c", "timezone=Asia/Seoul"]
+    ports:
+      - "5433:5432"
+    volumes:
+      - tradingagents_pgdata_dev:/var/lib/postgresql/data
+
+volumes:
+  tradingagents_pgdata_dev:

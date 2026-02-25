@@ -48,6 +48,15 @@
     return getBaseRoute(value || fallback || "#/");
   };
 
+  const analysisRoutes = new Set(["/reports", "/reflections", "/retrospective"]);
+
+  const isActive = (itemRoute: string, current: string): boolean => {
+    if (itemRoute === "/reports") {
+      return analysisRoutes.has(current);
+    }
+    return itemRoute === current;
+  };
+
   $: currentBaseRoute = getCurrentBaseRoute($location);
 </script>
 
@@ -56,7 +65,7 @@
     <a
       href={`#${item.route}`}
       class={`bottom-nav-item ${item.route === "/" ? "is-home" : ""}`}
-      class:active={currentBaseRoute === item.route}
+      class:active={isActive(item.route, currentBaseRoute)}
       data-route={item.route}
       use:link
     >

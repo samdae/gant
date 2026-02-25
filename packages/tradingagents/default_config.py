@@ -37,11 +37,11 @@ DEFAULT_CONFIG = {
     ),
     "stock_cache_stale_days": int(os.getenv("TRADINGAGENTS_STOCK_CACHE_STALE_DAYS", "3")),
     # LLM settings — uses Google OAuth, no API keys
-    # Providers: "gemini-cli" (default, uses ~/.gemini creds) or "antigravity"
+    # Providers: "gemini-cli" (default), "antigravity", "codex"
     # Override via LLM_PROVIDER env var
     "llm_provider": os.getenv("LLM_PROVIDER", "gemini-cli"),
-    "deep_think_llm": "gemini-3-pro-high",
-    "quick_think_llm": "gemini-3-flash",
+    "deep_think_llm": "gpt-5.3-codex" if os.getenv("LLM_PROVIDER", "").lower() == "codex" else "gemini-3-pro-high",
+    "quick_think_llm": "gpt-5.3-codex" if os.getenv("LLM_PROVIDER", "").lower() == "codex" else "gemini-3-flash",
     "backend_url": None,
     # Debate and discussion settings
     "max_debate_rounds": 1,

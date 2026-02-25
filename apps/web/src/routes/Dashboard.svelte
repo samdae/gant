@@ -1,15 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
-    fetchActivity,
     fetchHealth,
     fetchMetrics,
     fetchPositionsMarket,
     fetchQueue,
     fetchScheduleSummary,
   } from "../lib/api/endpoints";
-  import { formatMoney, formatMoneyPlain, formatPercent, formatAgo, formatErrorMessage } from "../lib/utils/format";
+  import { formatPercent, formatErrorMessage, formatAmount, formatSignedAmount } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
+  import { currencyFilter, showAmount, matchesCurrency, tickerCurrency } from "../stores/currency";
 
   type Metrics = {
     active_positions: number;
@@ -18,6 +18,10 @@
     losses: number;
     total_unrealized_pnl: number;
     total_unrealized_return_pct: number;
+    total_realized_pnl: number;
+    total_realized_return_pct: number;
+    total_pnl: number;
+    total_return_pct: number;
   };
 
   type Health = {
@@ -50,24 +54,12 @@
     as_of: string;
   };
 
-  type ActivityEvent = {
-    event_type: string;
-    ticker: string;
-    created_at: string;
-    scheduled_cycle?: number;
-    action?: string;
-    decision?: string;
-    shares?: number;
-    price?: number;
-  };
-
   let loading = true;
   let error = "";
   let metrics: Metrics | null = null;
   let health: Health | null = null;
   let positions: PositionMarket[] = [];
   let queue: QueueStatus = { running: null, pending: [], total: 0 };
-  let activity: ActivityEvent[] = [];
   let scheduleSummary: ScheduleSummary | null = null;
   let todayRunsTotal: number | null = null;
 
@@ -79,35 +71,6 @@
     window.location.hash = "#/archive";
   };
 
-  const mapDecision = (value?: string) => {
-    if (!value) return null;
-    if (value === "BUY") return "매수";
-    if (value === "SELL") return "매도";
-    if (value === "HOLD") return "관망";
-    return value;
-  };
-
-  const formatShares = (value?: number) => {
-    if (value == null) return "";
-    return value.toLocaleString(undefined, { maximumFractionDigits: 6 });
-  };
-
-  const formatActivity = (item: ActivityEvent) => {
-    if (item.event_type === "trade") {
-      const action = item.action === "BUY" ? "매수" : "매도";
-      const shares = item.shares ?? 0;
-      const price = item.price ? `$${item.price.toFixed(2)}` : "";
-      return `${action} ${shares} @ ${price}`;
-    }
-    if (item.event_type === "analysis") {
-      const decision = mapDecision(item.decision);
-      if (!decision) return "분석 완료";
-      if (item.shares != null) return `결정: ${decision} (${formatShares(item.shares)}주)`;
-      return `결정: ${decision}`;
-    }
-    return "활동";
-  };
-
   const getTotalAmount = (pos: PositionMarket) =>
     pos.avg_cost !== null && pos.avg_cost !== undefined
       ? pos.avg_cost * pos.shares
@@ -117,11 +80,10 @@
     loading = true;
     error = "";
     try {
-      const [metricsRes, positionsRes, queueRes, activityRes, healthRes, summaryRes] = await Promise.all([
+      const [metricsRes, positionsRes, queueRes, healthRes, summaryRes] = await Promise.all([
         fetchMetrics(),
         fetchPositionsMarket(),
         fetchQueue(),
-        fetchActivity(),
         fetchHealth(),
         fetchScheduleSummary(),
       ]);
@@ -129,7 +91,6 @@
       metrics = metricsRes as Metrics;
       positions = (positionsRes as PositionMarket[]) || [];
       queue = (queueRes as QueueStatus) || { running: null, pending: [], total: 0 };
-      activity = (activityRes as ActivityEvent[]) || [];
       health = healthRes as Health;
       scheduleSummary = summaryRes as ScheduleSummary;
     } catch (err) {
@@ -146,6 +107,9 @@
   $: todayRunsTotal = scheduleSummary
     ? scheduleSummary.done + scheduleSummary.failed + scheduleSummary.skipped + scheduleSummary.running
     : null;
+
+  $: filteredPositions = positions.filter((p) => matchesCurrency(p.ticker, $currencyFilter));
+
 </script>
 
 <section class="page" id="page-dashboard">
@@ -215,11 +179,12 @@
           </svg>
         </div>
         <div class="metric-label">총손익</div>
-        <div class="metric-value text-gain">
-          {metrics ? formatMoney(metrics.total_unrealized_pnl) : "-"}
+        <div class="metric-value" class:text-gain={metrics && metrics.total_return_pct >= 0} class:text-loss={metrics && metrics.total_return_pct < 0}>
+          {metrics ? formatPercent(metrics.total_return_pct) : "-"}
         </div>
-        <div class="metric-sub">
-          수익률 {metrics ? formatPercent(metrics.total_unrealized_return_pct) : "-"}
+        <div class="metric-sub metric-sub-grid">
+          <span>실현</span><span>{metrics ? formatPercent(metrics.total_realized_return_pct) : "-"}</span>
+          <span>미실현</span><span>{metrics ? formatPercent(metrics.total_unrealized_return_pct) : "-"}</span>
         </div>
       </div>
       <div class="metric-segment">
@@ -232,7 +197,8 @@
         <div class="metric-label">투자</div>
         <div class="metric-value">{metrics ? metrics.active_positions : "-"}</div>
         <div class="metric-sub">
-          승 {metrics ? metrics.wins : "-"} · 패 {metrics ? metrics.losses : "-"}
+          <div>승 {metrics ? metrics.wins : "-"}</div>
+          <div>패 {metrics ? metrics.losses : "-"}</div>
         </div>
       </div>
     </div>
@@ -250,23 +216,25 @@
                 <tr>
                   <td colspan="2">불러오는 중...</td>
                 </tr>
-              {:else if positions.length === 0}
+              {:else if filteredPositions.length === 0}
                 <tr>
                   <td colspan="2" class="empty-state">내 투자가 없습니다.</td>
                 </tr>
               {:else}
-                {#each positions as pos}
+                {#each filteredPositions as pos}
                   {@const totalAmount = getTotalAmount(pos)}
                   <tr on:click={() => goTrade(pos.ticker)}>
                     <td><span class="ticker-badge">{pos.ticker}</span>{#if $tickerNames[pos.ticker]} <span class="ticker-tag">{$tickerNames[pos.ticker]}</span>{/if}</td>
                     <td>
-                      {#if totalAmount !== null}
-                        <span>{formatMoneyPlain(totalAmount)}</span>
+                      {#if $showAmount && totalAmount !== null}
+                        <span>{formatAmount(totalAmount, pos.ticker)}</span>
                         <span class={pos.pnl >= 0 ? "text-gain" : "text-loss"} style="margin-left:2px">
-                          ({formatMoney(pos.pnl)})
+                          ({formatSignedAmount(pos.pnl, pos.ticker)})
                         </span>
                       {:else}
-                        -
+                        <span class={pos.return_pct >= 0 ? "text-gain" : "text-loss"}>
+                          {formatPercent(pos.return_pct)}
+                        </span>
                       {/if}
                     </td>
                   </tr>
@@ -277,75 +245,34 @@
         </div>
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:16px">
-        <div class="card">
-          <div class="card-header">
-            <h3>대기열</h3>
-            <a href="#/live" class="card-link">실시간 보기</a>
-          </div>
-          <div class="card-body">
-            {#if queue.running}
-              <div class="queue-item queue-running">
-                <span class="queue-indicator"></span>
-                <span class="queue-ticker">{queue.running}</span>
-                <span class="badge badge-info">실행중</span>
-              </div>
-            {/if}
-            {#if queue.pending.length === 0 && !queue.running}
+      <div class="card">
+        <div class="card-header">
+          <h3>대기열</h3>
+          <a href="#/live" class="card-link">실시간 보기</a>
+        </div>
+        <div class="card-body">
+          {#if queue.running}
+            <div class="queue-item queue-running">
+              <span class="queue-indicator"></span>
+              <span class="queue-ticker">{queue.running}</span>
+              <span class="badge badge-info">실행중</span>
+            </div>
+          {/if}
+          {#if queue.pending.length === 0 && !queue.running}
+            <div class="queue-item queue-pending">
+              <span class="queue-indicator"></span>
+              <span class="queue-ticker">대기 없음</span>
+              <span class="badge badge-muted">대기</span>
+            </div>
+          {:else}
+            {#each queue.pending as item}
               <div class="queue-item queue-pending">
                 <span class="queue-indicator"></span>
-                <span class="queue-ticker">대기 없음</span>
-                <span class="badge badge-muted">대기</span>
+                <span class="queue-ticker">{item}</span>
+                <span class="badge badge-muted">대기중</span>
               </div>
-            {:else}
-              {#each queue.pending as item}
-                <div class="queue-item queue-pending">
-                  <span class="queue-indicator"></span>
-                  <span class="queue-ticker">{item}</span>
-                  <span class="badge badge-muted">대기중</span>
-                </div>
-              {/each}
-            {/if}
-          </div>
-        </div>
-
-        <div class="card" style="flex:1">
-          <div class="card-header">
-            <h3>최근 활동</h3>
-            <span style="font-size:0.75rem;color:var(--text-dim)">최근 24시간</span>
-          </div>
-          <div class="card-body">
-            <div class="activity-list">
-              {#if loading}
-                <div class="activity-item">
-                  <div class="activity-content">불러오는 중...</div>
-                </div>
-              {:else if activity.length === 0}
-                <div class="activity-item">
-                  <div class="activity-content empty-state">최근 활동이 없습니다.</div>
-                </div>
-              {:else}
-                {#each activity as item}
-                  <div class="activity-item">
-                    <span
-                      class={`activity-dot ${item.event_type === "trade" ? (item.action === "SELL" ? "dot-sell" : "dot-buy") : item.decision === "HOLD" ? "dot-hold" : "dot-analysis"}`}
-                    ></span>
-                    <div class="activity-content">
-                      <div class="activity-title">
-                        <span class="ticker-badge" style="font-size:0.6875rem;padding:1px 5px">
-                          {item.ticker}
-                        </span>
-                        &nbsp;{formatActivity(item)}
-                      </div>
-                      <div class="activity-time">
-                        {formatAgo(item.created_at)}{item.scheduled_cycle ? ` · ${item.scheduled_cycle} 회차` : ""}
-                      </div>
-                    </div>
-                  </div>
-                {/each}
-              {/if}
-            </div>
-          </div>
+            {/each}
+          {/if}
         </div>
       </div>
     </div>

@@ -3,6 +3,8 @@
   import { fetchReportTickers } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
+  import { currencyFilter, matchesCurrency } from "../stores/currency";
+  import AnalysisTabs from "../components/AnalysisTabs.svelte";
 
   type TickerSummary = {
     ticker: string;
@@ -80,6 +82,8 @@
   onMount(() => {
     loadTickers();
   });
+
+  $: filteredTickers = tickers.filter((t) => matchesCurrency(t.ticker, $currencyFilter));
 </script>
 
 <section class="page" id="page-reports">
@@ -87,12 +91,13 @@
     <div class="page-header">
       <h2>AI분석</h2>
     </div>
+    <AnalysisTabs />
 
     {#if loading}
       <div class="card" style="padding:16px">불러오는 중...</div>
     {:else if error}
       <div class="card error-text" style="padding:16px">{error}</div>
-    {:else if tickers.length === 0}
+    {:else if filteredTickers.length === 0}
       <div class="card" style="padding:16px">AI분석이 없습니다.</div>
     {:else}
       <div class="report-legend">
@@ -101,9 +106,8 @@
         <span class="legend-item"><span class="legend-swatch legend-hold"></span>관망</span>
       </div>
         <div class="report-ticker-list list-grid">
-          {#each tickers as item}
-          {@const portfolioOk = item.portfolio_action ? (item.portfolio_action === "HOLD" || (item.portfolio_shares != null && item.portfolio_shares > 0)) : false}
-          {@const actionRaw = item.trade_action || (portfolioOk ? item.portfolio_action : "") || (!item.portfolio_action ? item.decision_position : "") || ""}
+          {#each filteredTickers as item}
+          {@const actionRaw = item.decision_position || item.portfolio_action || item.trade_action || ""}
           {@const action = actionRaw ? normalizeDecision(actionRaw) : ""}
           <a href={`#/reports/${item.ticker.toLowerCase()}`} class="report-ticker-card list-row {action ? 'action-bar-' + action.toLowerCase() : ''}">
             <div class="report-ticker-left">

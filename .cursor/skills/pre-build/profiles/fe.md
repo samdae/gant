@@ -1,10 +1,8 @@
 # Frontend Pre-build Profile
 
-## Check Categories
+## 1. External Services Detection
 
-### 1. External Services Detection
-
-**Parse `tech_stack.third_party` section and check:**
+Parse `tech_stack.third_party` section:
 
 | Pattern | Service Type | Required Config |
 |---------|--------------|-----------------|
@@ -14,9 +12,9 @@
 | `hotjar`, `clarity` | Session Recording | NEXT_PUBLIC_HOTJAR_ID |
 | `firebase` | Firebase | NEXT_PUBLIC_FIREBASE_* |
 
-### 2. UI Library Setup Detection
+## 2. UI Library Setup Detection
 
-**Parse `styling`, `ui_components` sections:**
+Parse `styling`, `ui_components` sections:
 
 | Pattern | Library | Init Command |
 |---------|---------|--------------|
@@ -26,9 +24,9 @@
 | `mui`, `material` | Material UI | npm install + theme setup |
 | `ant`, `antd` | Ant Design | npm install |
 
-### 3. Font Detection
+## 3. Font Detection
 
-**Parse `typography` or style sections:**
+Parse `typography` or style sections:
 
 | Pattern | Font | Install Method |
 |---------|------|----------------|
@@ -37,9 +35,9 @@
 | `roboto` | Roboto | next/font/google |
 | `noto sans` | Noto Sans | next/font/google |
 
-### 4. Project Bootstrap Detection
+## 4. Project Bootstrap Detection
 
-**If `project_type: new`:**
+If `project_type: new`:
 
 | Framework | Pattern | Init Command |
 |-----------|---------|--------------|
@@ -47,19 +45,11 @@
 | Vite | `vite` | `npm create vite@latest` |
 | CRA | `create-react-app` | `npx create-react-app` |
 
-**Next.js Options Checklist:**
-- `--typescript` (TS in tech_stack?)
-- `--tailwind` (tailwind in styling?)
-- `--eslint` (default yes)
-- `--app` (App Router vs Pages?)
-- `--src-dir` (src folder structure?)
+Next.js Options: `--typescript`, `--tailwind`, `--eslint`, `--app` (App Router), `--src-dir`
 
-### 5. API Mocking Detection
+## 5. API Mocking Detection
 
-**If testing includes `msw`:**
-
-- Check `src/mocks/handlers.ts` exists
-- Generate handler template if missing
+If testing includes `msw`: Check `src/mocks/handlers.ts` exists, generate handler template if missing.
 
 ---
 
@@ -70,15 +60,13 @@
 ```bash
 # API
 NEXT_PUBLIC_API_URL=http://localhost:8000
-
 # Analytics (optional)
 # NEXT_PUBLIC_GA_ID=
-
 # Error Tracking (optional)
 # NEXT_PUBLIC_SENTRY_DSN=
 ```
 
-### shadcn/ui Init Answers Template
+### shadcn/ui Init Answers
 
 ```
 Would you like to use TypeScript? → yes
@@ -93,16 +81,14 @@ Configure the import alias for utils? → @/shared/lib
 Are you using React Server Components? → yes
 ```
 
-### MSW Handlers Template
+### MSW Handlers (src/mocks/handlers.ts)
 
 ```typescript
-// src/mocks/handlers.ts
 import { http, HttpResponse } from 'msw';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export const handlers = [
-  // Auth
   http.get(`${API_URL}/api/v1/auth/me`, () => {
     return HttpResponse.json({
       id: 'mock-user-id',
@@ -110,72 +96,45 @@ export const handlers = [
       name: 'Mock User',
     });
   }),
-
   // TODO: Add more handlers based on API endpoints
 ];
 ```
 
-### MSW Browser Setup
+### MSW Browser Setup (src/mocks/browser.ts)
 
 ```typescript
-// src/mocks/browser.ts
 import { setupWorker } from 'msw/browser';
 import { handlers } from './handlers';
-
 export const worker = setupWorker(...handlers);
 ```
 
-### Pretendard Font Setup (next/font/local)
+### Pretendard Font Setup (src/app/fonts.ts)
 
 ```typescript
-// src/app/fonts.ts
 import localFont from 'next/font/local';
 
 export const pretendard = localFont({
   src: [
-    {
-      path: '../fonts/Pretendard-Regular.woff2',
-      weight: '400',
-      style: 'normal',
-    },
-    {
-      path: '../fonts/Pretendard-Medium.woff2',
-      weight: '500',
-      style: 'normal',
-    },
-    {
-      path: '../fonts/Pretendard-SemiBold.woff2',
-      weight: '600',
-      style: 'normal',
-    },
-    {
-      path: '../fonts/Pretendard-Bold.woff2',
-      weight: '700',
-      style: 'normal',
-    },
+    { path: '../fonts/Pretendard-Regular.woff2', weight: '400', style: 'normal' },
+    { path: '../fonts/Pretendard-Medium.woff2', weight: '500', style: 'normal' },
+    { path: '../fonts/Pretendard-SemiBold.woff2', weight: '600', style: 'normal' },
+    { path: '../fonts/Pretendard-Bold.woff2', weight: '700', style: 'normal' },
   ],
   variable: '--font-pretendard',
 });
 ```
 
-### Project Init Command Template
+### Project Init Command
 
 ```bash
 # Next.js 14 with App Router, TypeScript, Tailwind, ESLint
 npx create-next-app@latest {project-name} \
-  --typescript \
-  --tailwind \
-  --eslint \
-  --app \
-  --src-dir \
-  --import-alias "@/*"
+  --typescript --tailwind --eslint --app --src-dir --import-alias "@/*"
 
-# Then install additional dependencies
 cd {project-name}
 npm install zustand @tanstack/react-query zod react-hook-form @hookform/resolvers
 npm install date-fns lucide-react
 npm install -D vitest @testing-library/react playwright msw
 
-# Initialize shadcn/ui
 npx shadcn-ui@latest init
 ```

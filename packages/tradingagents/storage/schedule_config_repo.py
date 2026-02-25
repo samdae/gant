@@ -8,6 +8,22 @@ from .database import Database
 
 logger = logging.getLogger(__name__)
 
+# Ticker suffix → (currency, initial_capital, market)
+_TICKER_DEFAULTS = {
+    ".KS": ("KRW", 5_000_000.0, "kr"),
+    ".KQ": ("KRW", 5_000_000.0, "kr"),
+}
+_USD_DEFAULTS = ("USD", 5_000.0, "us")
+
+
+def detect_ticker_defaults(ticker: str) -> tuple[str, float, str]:
+    """Return (currency, initial_capital, market) based on ticker suffix."""
+    upper = ticker.upper()
+    for suffix, defaults in _TICKER_DEFAULTS.items():
+        if upper.endswith(suffix):
+            return defaults
+    return _USD_DEFAULTS
+
 
 class ScheduleConfigRepository:
     """Repository for schedule_configs table CRUD operations."""
@@ -24,15 +40,19 @@ class ScheduleConfigRepository:
         commit: bool = True,
         conn=None,
     ) -> int:
+        currency, initial_capital, market = detect_ticker_defaults(ticker)
         created_at = datetime.now().isoformat()
         connection = conn or self.db.get_connection()
         cursor = connection.execute(
             """
-            INSERT INTO schedule_configs (ticker, interval_days, display_name, created_at)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO schedule_configs
+                (ticker, interval_days, currency, initial_capital, market,
+                 display_name, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
-            (ticker, interval_days, display_name, created_at),
+            (ticker, interval_days, currency, initial_capital, market,
+             display_name, created_at),
         )
         if commit:
             connection.commit()
@@ -52,17 +72,22 @@ class ScheduleConfigRepository:
         commit: bool = True,
         conn=None,
     ) -> int:
+        currency, initial_capital, market = detect_ticker_defaults(ticker)
         created_at = datetime.now().isoformat()
         connection = conn or self.db.get_connection()
         connection.execute(
             """
-            INSERT INTO schedule_configs (ticker, interval_days, display_name, created_at)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO schedule_configs
+                (ticker, interval_days, currency, initial_capital, market,
+                 display_name, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(ticker)
             DO UPDATE SET interval_days = excluded.interval_days,
-                          display_name = COALESCE(excluded.display_name, schedule_configs.display_name)
+                          display_name = COALESCE(excluded.display_name,
+                                                  schedule_configs.display_name)
             """,
-            (ticker, interval_days, display_name, created_at),
+            (ticker, interval_days, currency, initial_capital, market,
+             display_name, created_at),
         )
         if commit:
             connection.commit()
@@ -75,10 +100,46 @@ class ScheduleConfigRepository:
             raise RuntimeError("Failed to read schedule config")
         return int(row["id"])
 
+    # ── cycle management (replaces ScheduleRepository) ──
+
+    def increment_cycle(
+        self,
+        ticker: str,
+        commit: bool = True,
+        conn=None,
+    ) -> int:
+        """Atomically increment current_cycle and return the new value."""
+        connection = conn or self.db.get_connection()
+        row = connection.execute(
+            """
+            UPDATE schedule_configs
+            SET current_cycle = current_cycle + 1
+            WHERE ticker = %s
+            RETURNING current_cycle
+            """,
+            (ticker,),
+        ).fetchone()
+        if commit:
+            connection.commit()
+        if row is None:
+            raise RuntimeError(f"schedule_config not found for {ticker}")
+        return int(row["current_cycle"])
+
+    def get_current_cycle(self, ticker: str) -> int:
+        row = self.db.get_connection().execute(
+            "SELECT current_cycle FROM schedule_configs WHERE ticker = %s",
+            (ticker,),
+        ).fetchone()
+        return int(row["current_cycle"]) if row else 0
+
+    # ── queries ──
+
     def get_all(self) -> List[Dict[str, Any]]:
         cursor = self.db.get_connection().execute(
             """
-            SELECT id, ticker, interval_days, display_name, last_data_date, created_at
+            SELECT id, ticker, interval_days, current_cycle, currency,
+                   initial_capital, market, display_name, last_data_date,
+                   created_at
             FROM schedule_configs
             ORDER BY created_at ASC
             """
@@ -88,7 +149,9 @@ class ScheduleConfigRepository:
     def get_by_ticker(self, ticker: str) -> Optional[Dict[str, Any]]:
         cursor = self.db.get_connection().execute(
             """
-            SELECT id, ticker, interval_days, display_name, last_data_date, created_at
+            SELECT id, ticker, interval_days, current_cycle, currency,
+                   initial_capital, market, display_name, last_data_date,
+                   created_at
             FROM schedule_configs
             WHERE ticker = %s
             LIMIT 1

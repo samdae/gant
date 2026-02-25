@@ -1,4 +1,4 @@
-"""Schedule job repository for error/retry history."""
+"""Schedule job repository for cycle execution records."""
 
 import logging
 from typing import Dict, Any, List, Optional
@@ -18,7 +18,8 @@ class ScheduleJobRepository:
 
     def create(
         self,
-        schedule_id: int,
+        schedule_config_id: int,
+        scheduled_cycle: int,
         status: str,
         error_type: Optional[str] = None,
         error_message: Optional[str] = None,
@@ -28,30 +29,25 @@ class ScheduleJobRepository:
     ) -> int:
         created_at = datetime.now().isoformat()
         connection = conn or self.db.get_connection()
-        safe_error_type = error_type if error_type is not None else ""
-        safe_error_message = error_message if error_message is not None else ""
 
         cursor = connection.execute(
             """
             INSERT INTO schedule_jobs (
-                schedule_id,
-                status,
-                error_type,
-                error_message,
-                error_detail,
-                created_at
+                schedule_config_id, scheduled_cycle, status,
+                error_type, error_message, error_detail, created_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
-                schedule_id,
+                schedule_config_id,
+                scheduled_cycle,
                 status,
-                safe_error_type,
-                safe_error_message,
+                error_type or "",
+                error_message or "",
                 error_detail,
                 created_at,
-            )
+            ),
         )
         if commit:
             connection.commit()
@@ -59,7 +55,8 @@ class ScheduleJobRepository:
         row = cursor.fetchone()
         job_id = row["id"] if row else None
         logger.info(
-            f"Created schedule_job {job_id} for schedule {schedule_id} (status={status})"
+            f"Created schedule_job {job_id} for config {schedule_config_id} "
+            f"cycle {scheduled_cycle} (status={status})"
         )
         return int(job_id) if job_id is not None else 0
 
@@ -74,8 +71,6 @@ class ScheduleJobRepository:
         conn=None,
     ) -> None:
         connection = conn or self.db.get_connection()
-        safe_error_type = error_type if error_type is not None else ""
-        safe_error_message = error_message if error_message is not None else ""
 
         connection.execute(
             """
@@ -83,54 +78,63 @@ class ScheduleJobRepository:
             SET status = %s, error_type = %s, error_message = %s, error_detail = %s
             WHERE id = %s
             """,
-            (status, safe_error_type, safe_error_message, error_detail, job_id)
+            (status, error_type or "", error_message or "", error_detail, job_id),
         )
         if commit:
             connection.commit()
 
         logger.info(f"Updated schedule_job {job_id} status to {status}")
 
-    def update_by_schedule(
-        self,
-        schedule_id: int,
-        status: Optional[str] = None,
-        error_type: Optional[str] = None,
-        error_message: Optional[str] = None,
-        error_detail: Optional[str] = None,
-        commit: bool = True,
-        conn=None,
-    ) -> None:
-        connection = conn or self.db.get_connection()
-        fields = []
-        values: List[Any] = []
-
-        if status is not None:
-            fields.append("status = %s")
-            values.append(status)
-        if error_type is not None or status is not None:
-            fields.append("error_type = %s")
-            values.append(error_type)
-        if error_message is not None or status is not None:
-            fields.append("error_message = %s")
-            values.append(error_message)
-        if error_detail is not None or status is not None:
-            fields.append("error_detail = %s")
-            values.append(error_detail)
-
-        if not fields:
-            return
-
-        values.append(schedule_id)
-        connection.execute(
-            f"UPDATE schedule_jobs SET {', '.join(fields)} WHERE schedule_id = %s",
-            tuple(values)
+    def get_latest_by_config(
+        self, schedule_config_id: int
+    ) -> Optional[Dict[str, Any]]:
+        cursor = self.db.get_connection().execute(
+            """
+            SELECT id, schedule_config_id, scheduled_cycle, status,
+                   error_type, error_message, error_detail, created_at
+            FROM schedule_jobs
+            WHERE schedule_config_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (schedule_config_id,),
         )
-        if commit:
-            connection.commit()
+        row = cursor.fetchone()
+        return dict(row) if row else None
 
-    def update_latest_by_schedule(
+    def get_latest_by_ticker(self, ticker: str) -> Optional[Dict[str, Any]]:
+        cursor = self.db.get_connection().execute(
+            """
+            SELECT sj.id, sj.schedule_config_id, sj.scheduled_cycle,
+                   sj.status, sj.error_type, sj.error_message,
+                   sj.error_detail, sj.created_at
+            FROM schedule_jobs sj
+            JOIN schedule_configs sc ON sc.id = sj.schedule_config_id
+            WHERE sc.ticker = %s
+            ORDER BY sj.created_at DESC
+            LIMIT 1
+            """,
+            (ticker,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def list_by_config(self, schedule_config_id: int) -> List[Dict[str, Any]]:
+        cursor = self.db.get_connection().execute(
+            """
+            SELECT id, schedule_config_id, scheduled_cycle, status,
+                   error_type, error_message, error_detail, created_at
+            FROM schedule_jobs
+            WHERE schedule_config_id = %s
+            ORDER BY created_at ASC
+            """,
+            (schedule_config_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def update_latest_by_config(
         self,
-        schedule_id: int,
+        schedule_config_id: int,
         status: Optional[str] = None,
         error_type: Optional[str] = None,
         error_message: Optional[str] = None,
@@ -138,7 +142,7 @@ class ScheduleJobRepository:
         commit: bool = True,
         conn=None,
     ) -> None:
-        latest = self.get_latest_by_schedule(schedule_id)
+        latest = self.get_latest_by_config(schedule_config_id)
         if not latest:
             return
 
@@ -166,59 +170,17 @@ class ScheduleJobRepository:
             conn=conn,
         )
 
-    def list_by_schedule(self, schedule_id: int) -> List[Dict[str, Any]]:
-        cursor = self.db.get_connection().execute(
-            """
-            SELECT id, schedule_id, status, error_type, error_message, error_detail, created_at
-            FROM schedule_jobs
-            WHERE schedule_id = %s
-            ORDER BY created_at ASC
-            """,
-            (schedule_id,)
-        )
-        return [dict(row) for row in cursor.fetchall()]
-
-    def get_latest_by_schedule(self, schedule_id: int) -> Optional[Dict[str, Any]]:
-        cursor = self.db.get_connection().execute(
-            """
-            SELECT id, schedule_id, status, error_type, error_message, error_detail, created_at
-            FROM schedule_jobs
-            WHERE schedule_id = %s
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (schedule_id,)
-        )
-        row = cursor.fetchone()
-        return dict(row) if row else None
-
-    def get_latest_by_ticker(self, ticker: str) -> Optional[Dict[str, Any]]:
-        cursor = self.db.get_connection().execute(
-            """
-            SELECT sj.id, sj.schedule_id, sj.status, sj.error_type, sj.error_message,
-                   sj.error_detail, sj.created_at
-            FROM schedule_jobs sj
-            JOIN schedules s ON s.id = sj.schedule_id
-            WHERE s.ticker = %s
-            ORDER BY s.created_at DESC
-            LIMIT 1
-            """,
-            (ticker,)
-        )
-        row = cursor.fetchone()
-        return dict(row) if row else None
-
     def has_done_today_for_ticker(self, ticker: str, today: str) -> bool:
         cursor = self.db.get_connection().execute(
             """
             SELECT 1
             FROM schedule_jobs sj
-            JOIN schedules s ON s.id = sj.schedule_id
-            WHERE s.ticker = %s
+            JOIN schedule_configs sc ON sc.id = sj.schedule_config_id
+            WHERE sc.ticker = %s
               AND sj.status = 'done'
               AND date(sj.created_at) = %s
             LIMIT 1
             """,
-            (ticker, today)
+            (ticker, today),
         )
         return cursor.fetchone() is not None

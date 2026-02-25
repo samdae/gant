@@ -1,29 +1,15 @@
 # Frontend Test Profile
 
-This profile defines test generation patterns for frontend (E2E) testing using Playwright.
+E2E test patterns using Playwright.
 
-## Test Framework: Playwright
-
-Playwright is the default E2E testing framework for frontend tests.
-
-### Installation Check
+## Installation
 
 ```bash
-# Check if Playwright is installed
-grep -q "playwright" package.json && echo "Installed" || echo "Not installed"
-```
-
-### Installation Command
-
-```bash
-# Install Playwright
 npm install -D @playwright/test
-
-# Install browsers
 npx playwright install
 ```
 
-## Test File Naming Convention
+## File Naming Convention
 
 | Source File | Test File |
 |-------------|-----------|
@@ -31,7 +17,7 @@ npx playwright install
 | `src/pages/alerts/[id].tsx` | `e2e/alert-detail.spec.ts` |
 | `src/components/AlertList.tsx` | `e2e/components/alert-list.spec.ts` |
 
-## Test Structure Template
+## Test Templates
 
 ### Page Test
 
@@ -40,42 +26,31 @@ import { test, expect } from '@playwright/test';
 
 test.describe('{PageName} Page - {FR_IDs}', () => {
   test.beforeEach(async ({ page }) => {
-    // Setup: login, navigate, etc.
     await page.goto('/{route}');
   });
 
-  // State: Loading
   test('should show loading state initially', async ({ page }) => {
-    // Mock slow API response
     await page.route('**/api/{resource}', async route => {
       await new Promise(resolve => setTimeout(resolve, 1000));
       await route.fulfill({ json: [] });
     });
-    
     await page.goto('/{route}');
     await expect(page.getByTestId('loading-spinner')).toBeVisible();
   });
 
-  // State: Loaded (with data)
   test('should display {resource} list', async ({ page }) => {
     await expect(page.getByRole('heading', { name: '{PageTitle}' })).toBeVisible();
     await expect(page.getByTestId('{resource}-list')).toBeVisible();
   });
 
-  // State: Empty
   test('should show empty state when no data', async ({ page }) => {
-    await page.route('**/api/{resource}', route => 
-      route.fulfill({ json: [] })
-    );
+    await page.route('**/api/{resource}', route => route.fulfill({ json: [] }));
     await page.goto('/{route}');
     await expect(page.getByText('No {resource} found')).toBeVisible();
   });
 
-  // State: Error
   test('should show error state on API failure', async ({ page }) => {
-    await page.route('**/api/{resource}', route => 
-      route.fulfill({ status: 500 })
-    );
+    await page.route('**/api/{resource}', route => route.fulfill({ status: 500 }));
     await page.goto('/{route}');
     await expect(page.getByText('Something went wrong')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
@@ -88,42 +63,25 @@ test.describe('{PageName} Page - {FR_IDs}', () => {
 ```typescript
 test.describe('{Feature} Interactions - {FR_IDs}', () => {
   test('should create new {resource}', async ({ page }) => {
-    // Navigate to form
     await page.goto('/{route}');
     await page.getByRole('button', { name: 'Create' }).click();
-
-    // Fill form
     await page.getByLabel('Title').fill('Test Title');
     await page.getByLabel('Description').fill('Test Description');
-
-    // Submit
     await page.getByRole('button', { name: 'Submit' }).click();
-
-    // Verify success
     await expect(page.getByText('Created successfully')).toBeVisible();
   });
 
   test('should show validation errors', async ({ page }) => {
     await page.goto('/{route}/new');
-    
-    // Submit empty form
     await page.getByRole('button', { name: 'Submit' }).click();
-
-    // Verify errors
     await expect(page.getByText('Title is required')).toBeVisible();
   });
 
   test('should delete {resource} with confirmation', async ({ page }) => {
     await page.goto('/{route}');
-    
-    // Click delete
     await page.getByRole('button', { name: 'Delete' }).first().click();
-    
-    // Confirm dialog
     await expect(page.getByRole('dialog')).toBeVisible();
     await page.getByRole('button', { name: 'Confirm' }).click();
-
-    // Verify deleted
     await expect(page.getByText('Deleted successfully')).toBeVisible();
   });
 });
@@ -157,22 +115,17 @@ test.describe('Authentication', () => {
   });
 
   test('should access protected route when authenticated', async ({ page }) => {
-    // Login first
     await page.goto('/login');
     await page.getByLabel('Email').fill('user@example.com');
     await page.getByLabel('Password').fill('password');
     await page.getByRole('button', { name: 'Login' }).click();
-
-    // Access protected route
     await page.goto('/protected-route');
     await expect(page).toHaveURL('/protected-route');
   });
 });
 ```
 
-## Playwright Configuration
-
-### playwright.config.ts
+## Playwright Config
 
 ```typescript
 import { defineConfig, devices } from '@playwright/test';
@@ -184,26 +137,15 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
-  
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-
   projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    // Mobile viewport (if responsive)
-    {
-      name: 'mobile',
-      use: { ...devices['iPhone 13'] },
-    },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'mobile', use: { ...devices['iPhone 13'] } },
   ],
-
-  // Dev server
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:3000',
@@ -212,20 +154,18 @@ export default defineConfig({
 });
 ```
 
-## Test Run Commands
+## Run Commands
 
 | Action | Command |
 |--------|---------|
 | Run all | `npx playwright test` |
-| Run specific file | `npx playwright test e2e/alerts.spec.ts` |
-| Run headed (visible) | `npx playwright test --headed` |
-| Run with UI | `npx playwright test --ui` |
-| Debug mode | `npx playwright test --debug` |
-| Generate report | `npx playwright show-report` |
+| Run specific | `npx playwright test e2e/alerts.spec.ts` |
+| Headed | `npx playwright test --headed` |
+| UI mode | `npx playwright test --ui` |
+| Debug | `npx playwright test --debug` |
+| Report | `npx playwright show-report` |
 
-## API Mocking Patterns
-
-### Mock API Response
+## API Mocking
 
 ```typescript
 test('with mocked API', async ({ page }) => {
@@ -239,37 +179,23 @@ test('with mocked API', async ({ page }) => {
       ]),
     });
   });
-
   await page.goto('/alerts');
   await expect(page.getByText('Mock Alert 1')).toBeVisible();
 });
-```
 
-### Mock Error Response
-
-```typescript
 test('handles API error', async ({ page }) => {
-  await page.route('**/api/alerts', route => {
-    route.fulfill({
-      status: 500,
-      body: JSON.stringify({ error: 'Internal Server Error' }),
-    });
-  });
-
+  await page.route('**/api/alerts', route =>
+    route.fulfill({ status: 500, body: JSON.stringify({ error: 'Internal Server Error' }) })
+  );
   await page.goto('/alerts');
   await expect(page.getByText('Something went wrong')).toBeVisible();
 });
-```
 
-### Mock Delayed Response
-
-```typescript
 test('shows loading state', async ({ page }) => {
   await page.route('**/api/alerts', async route => {
     await new Promise(resolve => setTimeout(resolve, 2000));
     route.fulfill({ json: [] });
   });
-
   await page.goto('/alerts');
   await expect(page.getByTestId('loading')).toBeVisible();
 });
@@ -299,7 +225,7 @@ test('shows loading state', async ({ page }) => {
 | Count | `await expect(locator).toHaveCount(5)` |
 | Attribute | `await expect(locator).toHaveAttribute('disabled')` |
 
-## Visual Testing (Optional)
+## Visual Testing
 
 ```typescript
 test('visual regression', async ({ page }) => {
@@ -315,9 +241,7 @@ import AxeBuilder from '@axe-core/playwright';
 
 test('should not have accessibility violations', async ({ page }) => {
   await page.goto('/alerts');
-  
-  const accessibilityScanResults = await new AxeBuilder({ page }).analyze();
-  
-  expect(accessibilityScanResults.violations).toEqual([]);
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations).toEqual([]);
 });
 ```
