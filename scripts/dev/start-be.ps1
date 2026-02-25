@@ -17,6 +17,6 @@ $env:POSTGRES_PORT = "5433"
 $env:TRADINGAGENTS_CORS_ORIGINS = "http://localhost:5174"
 
 Write-Host "[dev] Starting FastAPI on port 8001..." -ForegroundColor Cyan
-uv run uvicorn tradingagents.api.app:app --host 0.0.0.0 --port 8001 --reload
+uv run uvicorn tradingagents.api.app:app --host 0.0.0.0 --port 8001
 
 Pop-Location
