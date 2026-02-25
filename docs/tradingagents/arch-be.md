@@ -506,7 +506,7 @@ scripts/
 | 88 | FR-053 | RAG Validator 프롬프트 | `rag_validator/prompt.py` | — | `build_validation_prompt` | 회고분석 결과 + RAG 문서별 → "PA가 이 경험을 반영했는가?" 판정 프롬프트. 구조화 출력 (JSON verdict + justification) | [ ] |
 | 89 | FR-053 | RAG Validator 서비스 | `rag_validator/service.py` | `RAGValidatorService` | `validate(retrospective_id)`, `_evaluate_document(retro_content, rag_doc)`, `_apply_score_adjustments(results)`, `_generate_report(results)` | 오케스트레이터: 입력 수집 → 문서별 평가 → 점수 조정 → 리포트 생성 | [ ] |
 | 90 | FR-053 | RAG Validator 멱등성 | `rag_validator/service.py` | `RAGValidatorService` | `_is_already_evaluated(retrospective_id, reflection_id)` | (retrospective_id, reflection_id) 쌍 중복 평가 방지 | [ ] |
-| 91 | FR-053 | RAG Validator API | `api/routes.py` | — | `POST /rag-validator/run`, `GET /rag-validator/reports` | 수동 실행 트리거 + 리포트 조회. Bearer 인증 | [ ] |
+| 91 | FR-053 | RAG Validator API | `api/routes.py` | — | `POST /rag-validator/run`, `GET /rag-validator/reports`, `GET /rag-validator/reports/{id}` | 수동 실행 트리거 + 리포트 목록/상세 조회. Bearer 인증(POST만) | [ ] |
 | 92 | FR-053 | RAG Validator 큐 통합 | `api/app.py` | — | `_queue_worker` | `item['type'] == 'rag_validation'` 분기. priority=2 (스케줄 0, 회고분석 1, RAG 검증 2) | [ ] |
 | 93 | FR-054 | 키워드 검색 | `storage/reflection_repo.py` | `ReflectionRepository` | `search_keyword(query, limit)` | `ILIKE '%{query}%'` on reflection + key_lessons | [ ] |
 | 94 | FR-054 | 시멘틱 검색 | `memory/hybrid_memory.py` | `HybridMemory` | `search_semantic(query, limit)` | ChromaDB 단독 쿼리 (RRF 없이) | [ ] |
@@ -761,7 +761,8 @@ Reflector.reflect_on_position(position_id, db, ticker)
 | GET | `/live/{ticker}/events` | — | 실시간 에이전트 이벤트 (?limit) |
 | GET | `/reflections/search` | — | 매매검증 검색 (?q, ?mode=keyword\|semantic, ?limit) (FR-054) |
 | POST | `/rag-validator/run` | Bearer | RAG Validator 수동 실행 (retrospective_id 또는 전체) (FR-053) |
-| GET | `/rag-validator/reports` | — | RAG 효과 분석 리포트 조회 (?cursor, ?limit) (FR-053) |
+| GET | `/rag-validator/reports` | — | RAG 효과 분석 리포트 목록 (?cursor, ?limit) (FR-053) |
+| GET | `/rag-validator/reports/{retrospective_id}` | — | RAG 효과 분석 상세 (문서별 verdict + justification) (FR-053) |
 
 ### WebSocket
 
@@ -1054,7 +1055,7 @@ elif ticker.endswith(".KQ"):
 ### 10.12 RAG Validator 상세 (FR-053, check에서 보완)
 
 #### LLM 모델
-`quick_think_llm` 사용. 평가 작업은 분석보다 단순하며, 문서당 1회 호출이라 비용 효율 우선.
+`quick_think_llm` 사용. K=1(초기)일 때 판정 대상 문서가 1개뿐이라 컨텍스트가 단순하므로 충분. `RAG_TOP_K`가 2~3으로 증가하면 deep_think_llm 전환 재검토 필요.
 
 #### 평가 결과 테이블 — `rag_validation_results`
 
@@ -1108,6 +1109,24 @@ response:
     created_at: str
 ```
 
+**GET /rag-validator/reports/{retrospective_id}** (공개) — 개별 상세
+```yaml
+response:
+  retrospective_id: int
+  ticker: str
+  summary:
+    evaluated_count: int
+    reflected_count: int
+    not_reflected_count: int
+    ambiguous_count: int
+  details:
+    - reflection_id: int
+      verdict: str
+      justification: str
+      score_delta: int
+      created_at: str
+```
+
 **GET /reflections/search** (공개)
 ```yaml
 params: q (필수), mode (keyword|semantic), limit (기본 20)
@@ -1120,6 +1139,7 @@ response:
       key_lessons: str
       outcome: str
       return_pct: float
+      usefulness_score: float
       created_at: str
 ```
 
