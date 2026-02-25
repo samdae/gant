@@ -2,25 +2,54 @@
 
 ## Cursor Cloud specific instructions
 
-### Project overview
+### Project Overview
 
-G-ANT is an AI-powered stock trading analysis system with 12 AI agents. See `README.md` for full details.
+G-ANT is a multi-agent AI trading analysis system. Monorepo with:
+- **Backend (BE):** `packages/tradingagents/` — Python 3.11, FastAPI, LangGraph, psycopg (raw SQL), ChromaDB
+- **Frontend (FE):** `apps/web/` — Svelte 4, TypeScript, Vite
 
-### Services
+### Prerequisites
 
-| Service | Port | How to start |
-|---------|------|-------------|
-| PostgreSQL 17 | 5432 | `docker compose -f infra/docker-compose.local.yml up -d` (or `scripts/run-db.sh`) |
-| FastAPI Backend | 8000 | `scripts/run_api.sh` (auto-runs `uv sync` + uvicorn) |
-| Svelte Frontend | 5173 | `scripts/run-fe.sh` (auto-runs `npm install` + vite dev) |
+- **Docker** must be running for PostgreSQL 17 (container: `tradingagents-postgres`)
+- **uv** manages Python dependencies (lockfile: `uv.lock`, venv: `.venv` with Python 3.11)
+- **npm** manages FE dependencies (lockfile: `apps/web/package-lock.json`)
 
-### Key gotchas
+### Starting Services
 
-- **Docker daemon**: Must start `dockerd` before running PostgreSQL. In nested container environments (Cloud Agent VMs), Docker requires `fuse-overlayfs` storage driver and `iptables-legacy`. See daemon config at `/etc/docker/daemon.json`.
-- **Environment variables**: Copy `.env.example` to `.env` and set at minimum `TRADINGAGENTS_ADMIN_TOKEN`. Local Postgres defaults: `POSTGRES_USER=trading`, `POSTGRES_PASSWORD=tradingpass`, `POSTGRES_DB=tradingagents`.
-- **DB schema init**: Schema auto-initializes on API startup. Manual init: `.venv/bin/python scripts/init_db.py`.
-- **`PYTHONPATH`**: The `run_api.sh` script sets `PYTHONPATH` to include both the repo root and `packages/` dir. When running uvicorn manually: `PYTHONPATH=/workspace:/workspace/packages`.
-- **LLM provider**: Requires Google Gemini OAuth. For headless/CI, set `GEMINI_CLI_REFRESH_TOKEN` in `.env`. Without it, the 12 AI agents cannot run analysis, but the API and dashboard still function for CRUD operations.
-- **No dedicated lint/test config**: The project has no eslint, pytest, or ruff configuration. Frontend lint is via `svelte-check` (`npm run check` in `apps/web/`). There is one pre-existing TS error in `Live.svelte`.
-- **API routes have no `/api/` prefix**: Routes are at root (e.g., `/positions`, `/schedules`, `/metrics`), not `/api/positions`.
-- **Package managers**: Backend uses `uv` (lockfile: `uv.lock`), frontend uses `npm` (lockfile: `package-lock.json`).
+1. **PostgreSQL:** `docker compose -f infra/docker-compose.local.yml up -d` (port 5432). See `scripts/run-db.sh`.
+2. **Init DB schema** (first time or after schema changes):
+   ```
+   PYTHONPATH="packages" .venv/bin/python scripts/init_db.py
+   ```
+   **Gotcha:** If `init_db.py` hangs, check for stale Postgres connections holding locks. Terminate them via:
+   ```
+   docker exec tradingagents-postgres psql -U trading -d tradingagents -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='tradingagents' AND pid != pg_backend_pid();"
+   ```
+3. **Backend API:** Source `.env` first, then:
+   ```
+   set -a && . .env && set +a && PYTHONPATH="packages" .venv/bin/python -m uvicorn tradingagents.api.app:app --host 0.0.0.0 --port 8000
+   ```
+   Requires `TRADINGAGENTS_ADMIN_TOKEN` env var (set in `.env`).
+4. **Frontend dev server:** `cd apps/web && npm run dev` (default port 5173)
+
+### Lint / Check / Build
+
+- **FE type check:** `cd apps/web && npx svelte-check --tsconfig ./tsconfig.json` (2 pre-existing TS errors, 11 a11y warnings)
+- **FE build:** `cd apps/web && npm run build`
+- **BE:** No formal linter configured. Verify with `PYTHONPATH="packages" .venv/bin/python -c "import tradingagents"` for import sanity.
+- **No test suite** exists in this repo currently.
+
+### Environment Variables
+
+`.env` in workspace root is used by both `scripts/run_api.sh` and direct uvicorn startup. Key vars:
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_HOST`, `POSTGRES_PORT`
+- `TRADINGAGENTS_ADMIN_TOKEN` (required for write API endpoints)
+- `TRADINGAGENTS_SCHEDULER_ENABLED` (set `false` for dev to avoid triggering LLM calls)
+- `LLM_PROVIDER` — `gemini-cli` (default), `antigravity`, or `codex`. Requires OAuth setup.
+
+### Key Gotchas
+
+- The `run_api.sh` script targets `apps.api.app:app` (an older path). Use `tradingagents.api.app:app` for the current module path.
+- Backend startup initializes the DB schema automatically, so `init_db.py` is only needed when running outside the API.
+- ChromaDB data is stored locally at `packages/tradingagents/memory/chroma/` by default.
+- Scheduler is disabled by default in `.env` (`TRADINGAGENTS_SCHEDULER_ENABLED=false`). Running a full analysis cycle requires LLM OAuth credentials.
