@@ -293,11 +293,7 @@
               <span class={status.className}>{status.label}</span>
             </div>
             <div class="schedule-details">
-              {#if cycles[schedule.ticker]}
-                <span>{formatInterval(schedule.interval_days)}{#if schedule.next_run_time} · 다음 {formatNextRun(schedule.next_run_time)}{/if} · {cycles[schedule.ticker]?.scheduled_cycle}회차</span>
-              {:else}
-                <span>{formatInterval(schedule.interval_days)}{#if schedule.next_run_time} · 다음 {formatNextRun(schedule.next_run_time)}{/if}</span>
-              {/if}
+              <span>{formatInterval(schedule.interval_days)}{#if schedule.next_run_time} · {formatNextRun(schedule.next_run_time)} 예정{/if}</span>
             </div>
           </div>
         {/each}
