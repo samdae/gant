@@ -511,6 +511,8 @@ scripts/
 | 93 | FR-054 | 키워드 검색 | `storage/reflection_repo.py` | `ReflectionRepository` | `search_keyword(query, limit)` | `ILIKE '%{query}%'` on reflection + key_lessons | [ ] |
 | 94 | FR-054 | 시멘틱 검색 | `memory/hybrid_memory.py` | `HybridMemory` | `search_semantic(query, limit)` | ChromaDB 단독 쿼리 (RRF 없이) | [ ] |
 | 95 | FR-054 | 검색 API | `api/routes.py` | — | `GET /reflections/search?q=...&mode=keyword|semantic&limit=20` | 모드별 전략 디스패치. 공개 READ | [ ] |
+| 96 | FR-053 | 평가 결과 테이블 | `storage/database.py` | `Database` | `init_schema` | `rag_validation_results` CREATE TABLE + UNIQUE 인덱스 | [ ] |
+| 97 | FR-053 | ValidationResultRepository | `storage/rag_validation_repo.py` | `RAGValidationRepository` | `create`, `exists(retro_id, reflection_id)`, `list_by_retrospective`, `get_summary` | CRUD + 멱등성 체크 + 집계 | [ ] |
 
 ---
 
@@ -1049,6 +1051,84 @@ elif ticker.endswith(".KQ"):
 
 ---
 
+### 10.12 RAG Validator 상세 (FR-053, check에서 보완)
+
+#### LLM 모델
+`quick_think_llm` 사용. 평가 작업은 분석보다 단순하며, 문서당 1회 호출이라 비용 효율 우선.
+
+#### 평가 결과 테이블 — `rag_validation_results`
+
+```sql
+CREATE TABLE IF NOT EXISTS rag_validation_results (
+    id                BIGSERIAL PRIMARY KEY,
+    retrospective_id  BIGINT NOT NULL REFERENCES retrospective_analyses(id),
+    reflection_id     BIGINT NOT NULL REFERENCES reflections(id),
+    verdict           TEXT NOT NULL,          -- reflected | not_reflected | ambiguous
+    justification     TEXT,                   -- LLM 판정 근거
+    score_delta       INTEGER NOT NULL,       -- +1, -1, 0
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(retrospective_id, reflection_id)   -- 멱등성 보장
+);
+CREATE INDEX IF NOT EXISTS idx_rag_validation_retro ON rag_validation_results(retrospective_id);
+```
+
+#### verdict JSON 스키마 (LLM 구조화 출력)
+```json
+{
+  "reflection_id": 123,
+  "verdict": "reflected",
+  "justification": "PA가 반도체 모멘텀 경험을 진입 타이밍 근거로 인용함"
+}
+```
+
+#### API 스키마
+
+**POST /rag-validator/run** (Bearer 인증)
+```yaml
+request:
+  body:
+    retrospective_ids: [int] | null   # null이면 미평가 전체 대상
+response:
+  success: { enqueued: int, skipped: int }
+  errors:
+    - { status: 401, message: "Unauthorized" }
+```
+
+**GET /rag-validator/reports** (공개)
+```yaml
+params: cursor, limit (기본 10)
+response:
+  - retrospective_id: int
+    ticker: str
+    position_sequence: int
+    evaluated_count: int
+    reflected_count: int
+    not_reflected_count: int
+    ambiguous_count: int
+    created_at: str
+```
+
+**GET /reflections/search** (공개)
+```yaml
+params: q (필수), mode (keyword|semantic), limit (기본 20)
+response:
+  mode: str
+  results:
+    - id: int
+      ticker: str
+      reflection: str (truncated)
+      key_lessons: str
+      outcome: str
+      return_pct: float
+      created_at: str
+```
+
+#### 트리거 시점
+수동만 (`POST /rag-validator/run`). 자동 트리거는 데이터 축적 후 판단.
+
+#### LLM 타임아웃
+기존 시스템 정책 그대로 — MAX_RETRIES=5, 429→30s 대기, 503→모델 폴백.
+
 ### ⚠️ TBD (Skipped)
 
 | 항목 | 사유 |
@@ -1057,3 +1137,5 @@ elif ticker.endswith(".KQ"):
 | CORS origins 제한 | Cloudflare 도메인 확보 후 설정 |
 | interval_days 격일 스케줄 | 당분간 1(매일) 고정. 향후 `current_cycle % interval_days != 0` 스킵 방식 |
 | 사용자 initial_capital 설정 UI | 현재 고정값 (USD $5,000 / KRW ₩5,000,000). 향후 확장 대비 DB 저장 |
+| reflections.usefulness_score 인덱스 | 초기 데이터 소량. 대량 축적 시 부분 인덱스 (`WHERE usefulness_score >= 40`) 검토 |
+| RAG Validator 자동 트리거 | 수동만 지원. 회고분석 완료 후 자동 실행은 데이터 축적 후 판단 |
