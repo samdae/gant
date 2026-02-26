@@ -60,6 +60,13 @@
 | FR-052     | Memory     | RAG 검색 파이프라인 재설계 — FTS top-3 + ChromaDB top-3 → 중복제거 + RRF top-3 → usefulness < 40 하드 배제 → usefulness DESC → top-K. `reflections.usefulness_score` 컬럼 추가(기본값 50). `RAG_TOP_K` 환경변수(기본 1, 추후 2~3) | Critical     | Implemented          |
 | FR-053     | Learning   | RAG Validator — 회고분석 결과 기반 RAG 문서별 usefulness_score ±1 자동 조정. RAG 문서는 반성(매매검증) 출신으로 한정. 효과 분석 리포트 생성 (사람이 읽고 판단)                                                  | High         | Implemented          |
 | FR-054     | Frontend   | 매매검증 검색 — 키워드(FTS LIKE/ILIKE) + 시멘틱(ChromaDB) 이중 검색. UI 검색창 + 모드 토글. `GET /reflections/search?q=...&mode=keyword\|semantic`                                                              | Medium       | Implemented          |
+| FR-055     | Learning   | 회고분석 배점 — analysis_accuracy(분석 정확도) + rag_contribution(RAG 기여도) 0~100 수치화. retrospective_analyses 컬럼 추가, 프롬프트/파싱, 대시보드 표시                                                      | High         | Designed             |
+| FR-056     | Portfolio  | 포트폴리오 모드 인프라 — 전용 테이블 5개(configs, decisions, trades, holdings, reflections), 활성화/비활성화 설정, 전체 스케줄 완료 후 자동 실행 트리거                                                           | High         | Designed             |
+| FR-057     | Portfolio  | 비서 에이전트 — 전체 티커 reports 요약 컬럼 + portfolio_holdings → 자유 텍스트 브리핑. deep_think_llm. 출력이 포트폴리오 RAG 쿼리로 사용. portfolio_decisions에 저장                                              | High         | Designed             |
+| FR-058     | Portfolio  | PortfolioManagerAgent — 비서 요약 + RAG 경험 + 현재 포트폴리오 → 리밸런싱 결정(텍스트 + JSON 매매 지시). 전체 HOLD도 유효. 자동 청산 없음(PA 판단 위임)                                                          | High         | Designed             |
+| FR-059     | Portfolio  | 포트폴리오 공유 자금 풀 — 분석검증 자금과 완전 분리, 사용자 총액 입력, 혼합 통화(USD+KRW), yfinance 환율 조회(`USDKRW=X`), 시장별 거래 수수료(US 0.1%, KR 0.25%+세금, Crypto 0.1%)                               | High         | Designed             |
+| FR-060     | Memory     | 포트폴리오 RAG 교차 참조 — 분석PA→포폴반성 ❌ 차단, 포폴PA→분석반성+포폴반성 ✅ 양방향(각 K개). 모드별 ChromaDB 컬렉션 분리                                                                                     | High         | Designed             |
+| FR-061     | Portfolio  | 포트폴리오 주간 반성 — CronTrigger KST 일요일 12:00. 입력: 주간 매매+비서요약, 종목별 수익률, 자산 변동, holdings. portfolio_reflections + ChromaDB 이중 저장                                                     | High         | Designed             |
 
 > **Status**: `Implemented` = 코드 존재, `Designed` = 설계 완료 (미구현), `Draft` = proposal.md에서 추출
 > **Req ID Rule**: `FR-{number}` format. New = max + 1. Never reuse deleted numbers.
@@ -90,7 +97,7 @@ Financial Analysis / AI-driven Investment Decision Support
 
 - **실제 매매 실행 안 함**: 가상 매매로 분석 정확도를 검증할 뿐, 증권사 API 연동이나 자동 주문 기능 없음
 - **데이터 적재 안 함**: 시장 데이터는 분석 시점에 1회성으로 fetch하며, 별도 DB에 저장하지 않음
-- **실제 자산 관리 안 함**: 가상 매매는 분석 검증 수단이며, 실제 자산 배분이나 리밸런싱 기능 없음
+- **실제 자산 관리 안 함**: 가상 매매는 분석 검증 수단이며, 포트폴리오 모드(FR-056~061)도 가상 자금 시뮬레이션. 실제 증권사 연동이나 실제 자금 운용 없음
 - ~~에이전트 진행현황 영속화 안 함~~ → **에이전트 이벤트 DB 영속화 (FR-037)**: schedule_job_events 테이블에 저장, WS 스트리밍 + 이력 조회 동시 지원
 - ~~웹 UI/대시보드 (CLI 기반 유지)~~ → **웹 API (FR-025) + Svelte SPA (FR-035) 제공**
 
@@ -112,7 +119,7 @@ Financial Analysis / AI-driven Investment Decision Support
 | Scheduled Analysis (FR-016, FR-036)                 | 티커별 주기적 반복 분석, 중복 실행 방지(last_data_date), 연속 분석으로 전략 유효성 추적                   | ✅ Medium  |
 | Position-Aware Analysis (FR-017, FR-021)            | 분석플로우는 포지션 정보 없이 객관적 수행, PA만 포지션 인식 판단                                          | ✅ Medium  |
 | Structured Learning (FR-018, FR-019, FR-029)        | 구조화된 반성 입력 + 부트스트랩 태깅 + outcome/market/sector/industry 메타데이터 태깅으로 기억 오염 방지 | ✅ High    |
-| Storage Architecture (FR-030, FR-033, FR-039)       | Postgres 7테이블 + GIN FTS + ChromaDB (벡터). 파일 기반 전면 폐기                                        | ✅ Critical |
+| Storage Architecture (FR-030, FR-033, FR-039)       | Postgres 9테이블 + GIN FTS + ChromaDB (벡터). 파일 기반 전면 폐기                                        | ✅ Critical |
 | Web API (FR-025, FR-026)                            | FastAPI 백엔드 + READ 공개/WRITE 인증 + WebSocket 스트리밍                                               | ✅ High    |
 | UI Metrics API (FR-034)                             | 현재가 기반 PnL/수익률 계산 API 제공 (대시보드 지표용, DB 미저장)                                        | ✅ Medium  |
 | Frontend SPA (FR-035)                               | Svelte 4 기반 모바일 최적화 대시보드, 실시간 WebSocket 모니터링, localStorage 캐싱                        | ✅ High    |
@@ -126,6 +133,13 @@ Financial Analysis / AI-driven Investment Decision Support
 | Closed Positions UI (FR-046)                        | active/closed 탭 분리, 과거 포지션 승패·수익률·보유기간 표시                                              | ✅ High    |
 | Reflections Web UI (FR-049)                         | 회고 목록 페이지, win/loss 필터, cursor 페이지네이션, 마크다운 렌더링                                     | ✅ Medium  |
 | Codex LLM Provider (FR-050)                         | OpenAI Codex(GPT-5.3) OAuth PKCE 기반 LangChain 래퍼                                                     | ✅ Medium  |
+| Retrospective Scoring (FR-055)                      | 회고분석 배점 — analysis_accuracy + rag_contribution 0~100 수치화, 대시보드 표시                          | ✅ High    |
+| Portfolio Mode Infrastructure (FR-056)              | 포트폴리오 모드 전용 테이블 5개, 활성화 설정, 전체 스케줄 완료 후 자동 실행                               | ✅ High    |
+| Portfolio Briefing Agent (FR-057)                   | 전체 티커 분석 결과 압축 → 포트폴리오 PA 입력 브리핑 생성 (deep_think_llm)                                | ✅ High    |
+| PortfolioManagerAgent (FR-058)                      | 리밸런싱 결정 — 비서 요약 + RAG + 현재 포트폴리오 → 텍스트 + JSON 매매 지시                               | ✅ High    |
+| Portfolio Shared Fund Pool (FR-059)                 | 공유 자금 풀 — 혼합 통화, yfinance 환율, 시장별 거래 수수료                                               | ✅ High    |
+| Portfolio RAG Cross-Reference (FR-060)              | 포트폴리오 RAG 교차 참조 정책, 모드별 ChromaDB 컬렉션 분리                                                | ✅ High    |
+| Portfolio Weekly Reflection (FR-061)                | 주간 정기 반성 — KST 일요일 12:00, 배분 품질 평가, RAG 저장                                               | ✅ High    |
 
 ### 3.2 Detailed Features
 
@@ -240,6 +254,132 @@ Market Analyst → [Msg Clear] → Social Analyst → [Msg Clear]
 - **Closed 포지션** (FR-046): Positions 페이지 active/closed 탭 분리, closed 목록에 승패·수익률·보유기간
 - **회고 페이지** (FR-049): `/reflections` 라우트, win/loss 필터, cursor 페이지네이션, 마크다운 렌더링
 
+#### 3.2.8 Retrospective Analysis Scoring (FR-055)
+
+> **선행 조건**: v5 (RAG 검색 파이프라인 개편, RAG Validator) 운영 안정화
+
+회고분석 에이전트가 분석 정확도와 RAG 기여도를 0~100으로 수치화한다. 승률(wins/losses)은 결과만 보지만, 배점은 **과정의 타당성**을 평가한다.
+
+- **analysis_accuracy** (0~100): 12에이전트 파이프라인의 분석이 실제 시장 움직임과 얼마나 일치했는가
+  - 90~100: 방향, 타이밍, 근거 모두 정확
+  - 70~89: 방향 맞았으나 타이밍/근거 부분 오류
+  - 50~69: 방향 맞았으나 근거 부실 (우연)
+  - 30~49: 방향 틀렸으나 일부 분석 유효
+  - 0~29: 전반적 부정확
+- **rag_contribution** (0~100, RAG 미사용 시 NULL): RAG 경험이 PA 판단에 얼마나 기여했는가
+  - 90~100: RAG가 판단의 핵심 근거
+  - 70~89: 유의미 반영 (확신도/비중 영향)
+  - 50~69: 언급됐으나 결정적이지 않음
+  - 30~49: 거의 무시됨
+  - 0~29: 판단 방해 또는 무관
+- **스키마**: `retrospective_analyses` 테이블에 `analysis_accuracy INTEGER`, `rag_contribution INTEGER` 컬럼 추가
+- **프롬프트**: 기존 회고분석 프롬프트 출력 형식에 두 점수 추가
+- **파싱**: 정규식으로 추출, 실패 시 NULL 저장 (회고분석 결과 자체는 정상 저장)
+- **대시보드**: `GET /metrics` 응답에 `analysis_accuracy_avg`, `rag_contribution_avg` 평균값 추가
+
+#### 3.2.9 Portfolio Mode (FR-056~061)
+
+> **선행 조건**: 분석검증 승률 확인 → 균등 배분 테스트 → 그 이후 구현
+> **핵심 원칙**: 포트폴리오 모드는 기존 분석검증 시스템과 **완전히 독립된 별도 시스템**
+
+##### 분석검증모드 vs 포트폴리오 모드
+
+| 항목 | 분석검증모드 (기존) | 포트폴리오 모드 (신규) |
+|------|-------------------|---------------------|
+| 목적 | 분석 정확도 순수 측정 | 실전 포트폴리오 시뮬레이션 |
+| PA 역할 | 실행자 (고정 결론 실행) | 펀드매니저 (배분 전략 결정) |
+| 자금 | 포지션별 독립 (USD $5,000 / KRW ₩5,000,000) | 공유 풀 (사용자 입력) |
+| 실행 단위 | 종목별 순차 | 전체 티커 완료 후 1회 |
+| PA 클래스 | `PortfolioAgent` | `PortfolioManagerAgent` |
+| 반성 주기 | 청산 시 | 주 1회 정기 (KST 일요일 12:00) |
+| 자동 청산 | ±30% 폴백 (FR-042) | 없음 (PA 판단 위임) |
+| 테이블 | 기존 9테이블 공유 | 전용 5테이블 |
+
+두 시스템이 공유하는 것은 **12에이전트 파이프라인의 분석 결과**(reports 테이블)뿐이다.
+
+##### 전체 흐름
+
+```
+[매일 — 분석검증모드, 변경 없음]
+CronTrigger → NVDA 분석+PA+요약 → TSLA 분석+PA+요약 → ... → 전부 완료
+
+[매일 — 포트폴리오 모드, 전체 스케줄 완료 후]
+오늘치 전체 스케줄 완료 감지
+  → 비서 에이전트: reports 요약 컬럼 + portfolio_holdings → 자유 텍스트 브리핑
+  → RAG 검색: 비서 출력으로 분석검증 반성 K개 + 포트폴리오 반성 K개 조회
+  → 포트폴리오 PA: 비서 요약 + RAG 경험 + 현재 포트폴리오 → 리밸런싱 결정 (텍스트 + JSON)
+  → 매매 실행: portfolio_trades 저장 + portfolio_holdings 스냅샷
+  → portfolio_decisions에 비서 요약 + PA 판단 저장
+
+[주간 — 포트폴리오 반성, KST 일요일 12:00]
+CronTrigger (KST Sun 12:00)
+  → 주간 매매기록 + 비서요약, 종목별 수익률, 자산 변동, holdings
+  → 반성에이전트: "이번 주 배분이 적절했는가?" 판단
+  → portfolio_reflections 저장 + ChromaDB 벡터 저장
+```
+
+##### FR-056: 포트폴리오 모드 인프라
+
+- **전용 테이블 5개**: `portfolio_configs`, `portfolio_decisions`, `portfolio_trades`, `portfolio_holdings`, `portfolio_reflections` — 기존 스케줄 시스템(schedule_configs 등)에 mode 컬럼 추가하지 않음
+- **활성화**: 환경변수 또는 설정으로 on/off. 활성화 시 오늘치 스케줄 전부 완료 후 자동 포트폴리오 큐잉
+- **12에이전트 파이프라인**: 양 모드에서 동일. 모드 차이는 PA 이후에만 발생
+
+##### FR-057: 비서 에이전트
+
+- **입력**: 각 티커의 reports 테이블 요약 컬럼(`market_report` + `final_trade_decision`) + 현재 `portfolio_holdings`
+- **출력**: 자유 텍스트 (오늘 시장 전체 흐름 + 종목별 핵심 신호 + 포트폴리오 현황)
+- **모델**: `deep_think_llm` — 21개 티커 요약 압축 시 핵심 신호 누락 방지
+- **출력 = RAG 쿼리**: 비서 자유 텍스트가 그대로 포트폴리오 RAG 검색 쿼리로 사용
+- **저장**: `portfolio_decisions` 테이블에 저장 (주간 반성 시 맥락으로 사용)
+
+##### FR-058: PortfolioManagerAgent
+
+- **역할**: 자산운용가/펀드매니저 — 개별 종목 타점이 아니라 적절한 배분(밸런싱)
+- **별도 클래스**: 프롬프트 분기가 아닌 `PortfolioManagerAgent` 별도 클래스. 입력 데이터, 판단 로직, 출력 포맷이 전부 다름
+- **출력**: 텍스트(리밸런싱 판단 근거) + JSON(종목별 매매 지시: ticker, action, allocation_pct, shares)
+- **전체 HOLD 유효**: 아무 종목도 건드리지 않는 결정도 유효 (펀드매니저의 "오늘은 유지" 판단)
+- **자동 청산 없음**: 분석검증모드의 자동 청산(FR-042)은 그대로 유지하되, 포트폴리오 모드에서는 PA 판단에 위임
+- **요약 안 함**: 요약된 reports를 받아서 읽는 소비자. 요약에이전트 미사용
+
+##### FR-059: 포트폴리오 공유 자금 풀
+
+- **총 자금**: 사용자 입력 (`portfolio_configs`에 저장). 분석검증 자금과 완전 분리
+- **혼합 통화**: USD 종목 + KRW 종목 혼합 보유. 환율 변동도 성과에 반영
+- **기준 통화**: 사용자 설정 (USD 또는 KRW)
+- **환율 조회**: `yf.Ticker("USDKRW=X")` — 전체 자산 합산, 주간 반성 자산 변동, 대시보드 총 자산 표시 시
+- **거래 수수료**: 불필요한 리밸런싱 억제 효과
+
+| 시장 | 매수 수수료 | 매도 수수료 | 비고 |
+|------|-----------|-----------|------|
+| US (나스닥/NYSE) | 0.1% | 0.1% | 일반 브로커 기준 |
+| KR (코스피/코스닥) | 0.25% | 0.25% + 증권거래세 0.18% | 매도 시 세금 고정 |
+| Crypto | 0.1% | 0.1% | 테이커 기준 |
+
+- 수수료율 `portfolio_configs`에 저장 (사용자 조정 가능)
+- 매매 실행 시 `price × shares × fee_rate` 차감
+- `portfolio_trades`에 `fee_amount` 컬럼으로 기록
+
+##### FR-060: 포트폴리오 RAG 교차 참조
+
+| 에이전트 | 읽는 RAG | 안 읽는 RAG | 이유 |
+|----------|----------|-------------|------|
+| 분석검증 PA | 분석검증 반성 K개 | 포트폴리오 반성 ❌ | 변수 통제 — "포트폴리오 편중" 경험이 분석 정확도 측정 오염 |
+| 포트폴리오 PA | 분석검증 반성 K개 + 포트폴리오 반성 K개 | — | 종목 교훈 + 배분 교훈 모두 필요 |
+
+- K = `RAG_TOP_K` 환경변수 (기본 1). 각 소스에서 K개씩
+- ChromaDB 컬렉션 모드별 분리: 분석검증 반성 컬렉션 + 포트폴리오 반성 컬렉션
+
+##### FR-061: 포트폴리오 주간 반성
+
+- **트리거**: 주 1회 정기, 별도 CronTrigger **KST 일요일 12:00** (비트코인 스케줄 후, 한 주 데이터 확정)
+- **반성 입력** (4가지):
+  1. 이번 주 매매 기록 + 비서 요약 (`portfolio_trades` + `portfolio_decisions.briefing_summary`)
+  2. 각 종목의 주간 실제 수익률 (yfinance)
+  3. 포트폴리오 전체 자산 주간 변동 (`portfolio_holdings` 스냅샷 주초 vs 일요일)
+  4. 현재 포트폴리오 상태 (`portfolio_holdings` 종목별 비중, 현금 잔고)
+- **RAG 저장**: 포트폴리오 전용 ChromaDB 컬렉션 + `portfolio_reflections` 테이블 이중 저장
+- **별도 테이블**: `portfolio_reflections` — 기존 `reflections`와 FK 구조가 다름 (종목 단위가 아닌 전체 배분 단위)
+
 ## 4. Data Contracts
 
 ### 4.1 Main Entities
@@ -252,9 +392,9 @@ Market Analyst → [Msg Clear] → Social Analyst → [Msg Clear]
 | `HybridMemory` (was `FinancialSituationMemory`) | name, chroma_client, chroma_collection, reflection_repo, db — **Postgres FTS + ChromaDB Hybrid RAG**                                                                                                                                                       | Code (FR-015) |
 | `DEFAULT_CONFIG` (Dict)                         | llm_provider, deep_think_llm, quick_think_llm, backend_url, data_vendors, tool_vendors, project_dir, data_cache_dir, max_debate_rounds, max_risk_discuss_rounds, max_recur_limit, database_path, chroma_path, default_initial_capital, schedules, scheduler_enabled, stock_download_days, stock_download_buffer_days, stock_cache_stale_days | Code          |
 
-### 4.2 Database Schema (FR-030, FR-039, FR-040, FR-041, FR-042)
+### 4.2 Database Schema (FR-030, FR-039, FR-040, FR-041, FR-042, FR-053)
 
-> Postgres DB — 7테이블 (FR-039에서 `schedules` 제거, `schedule_configs` 확장). psycopg 드라이버 사용.
+> Postgres DB — 9테이블 (FR-039에서 `schedules` 제거 → 7테이블, v4에서 `retrospective_analyses` 추가, FR-053에서 `rag_validation_results` 추가 → 9테이블). psycopg 드라이버 사용.
 
 #### schedule_configs (티커별 설정 — 기존 + 확장)
 
@@ -311,6 +451,8 @@ Market Analyst → [Msg Clear] → Social Analyst → [Msg Clear]
 | schedule_job_id | BIGINT NOT NULL FK → schedule_jobs | **[CHANGED]** schedule_id → schedule_job_id (FR-039) |
 | position_id | BIGINT FK → positions | 미보유 시 NULL |
 | market_report ~ pipeline_strategy | TEXT 등 | 기존과 동일 (13개 요약 컬럼 + 결정/PA 컬럼) |
+| rag_used | BOOLEAN NOT NULL DEFAULT FALSE | **[NEW]** PA가 RAG 경험을 사용했는지 여부 (v4) |
+| rag_docs | JSONB | **[NEW]** PA에 주입된 RAG 문서 구조체 — `memories[*].reflection_id`로 문서 단위 추적 (v4) |
 | created_at | TIMESTAMPTZ NOT NULL | 레코드 생성 일시 |
 
 > 제외: sentiment_report (시의성), news_report (시의성, bull/bear 논거에 이미 반영)
@@ -329,7 +471,7 @@ Market Analyst → [Msg Clear] → Social Analyst → [Msg Clear]
 | currency | TEXT NOT NULL DEFAULT 'USD' | **[NEW]** 매매 통화 (FR-040) |
 | executed_at | TIMESTAMPTZ NOT NULL | **[CHANGED]** datetime.now() → yfinance 데이터 기준일 (FR-043) |
 
-#### reflections (청산 시 반성에이전트 산출물 — 변경 없음)
+#### reflections (청산 시 반성에이전트 산출물 — FR-052 usefulness_score 추가)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -342,6 +484,7 @@ Market Analyst → [Msg Clear] → Social Analyst → [Msg Clear]
 | market | TEXT | 거래소/시장 (nullable) |
 | sector | TEXT | 섹터 (nullable) |
 | industry | TEXT | 산업 (nullable) |
+| usefulness_score | DOUBLE PRECISION NOT NULL DEFAULT 50 | **[NEW]** RAG Validator ±1 조정, < 40 시 배제 (FR-052/053) |
 | created_at | TIMESTAMPTZ NOT NULL | 레코드 생성 일시 |
 
 #### schedule_job_events (에이전트 진행 이벤트 — FK 정리)
@@ -361,6 +504,42 @@ Market Analyst → [Msg Clear] → Social Analyst → [Msg Clear]
 > **[REMOVED]** `schedule_id` 컬럼 — `schedule_job_id`로 충분 (FR-039)
 > UNIQUE INDEX `idx_schedule_job_events_unique` ON (schedule_job_id, agent) — 동일 job+agent 조합은 UPSERT
 
+#### retrospective_analyses (회고분석 — v4 도입, FR-055 배점 컬럼 추가)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | BIGSERIAL PK | 자동 증가 |
+| position_id | BIGINT NOT NULL UNIQUE FK → positions | 1 포지션 = 1 행 보장 |
+| ticker | TEXT NOT NULL | 종목 코드 |
+| position_sequence | INTEGER NOT NULL | 해당 티커의 N번째 포지션 (1-based, ROW_NUMBER() 도출) |
+| position_status | TEXT NOT NULL | 'open' / 'closed' — 분석 요청 시 positions.status에서 세팅 |
+| status | TEXT NOT NULL DEFAULT 'pending' | 'pending' / 'running' / 'completed' / 'failed' — 분석 작업 상태 |
+| analysis_content | TEXT | LLM 회고분석 결과 본문 |
+| analysis_count | INTEGER NOT NULL DEFAULT 1 | 이 포지션에 대한 총 분석 횟수 |
+| analysis_accuracy | INTEGER | **[NEW]** 0~100, 12에이전트 분석의 시장 움직임 대비 정확도 (FR-055) |
+| rag_contribution | INTEGER | **[NEW]** 0~100 또는 NULL(RAG 미사용), RAG 경험의 PA 판단 기여도 (FR-055) |
+| position_open_date | TIMESTAMPTZ | 포지션 오픈일 |
+| position_close_date | TIMESTAMPTZ | 포지션 청산일 |
+| error_message | TEXT | status='failed' 시 에러 내용 |
+| created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | 레코드 생성 일시 |
+| updated_at | TIMESTAMPTZ NOT NULL DEFAULT now() | 레코드 수정 일시 |
+
+> UNIQUE(ticker, position_sequence). RAG 사용 여부 및 RAG 데이터는 `reports.rag_used`/`rag_docs`에 리포트별 기록되므로 중복 저장하지 않음.
+
+#### rag_validation_results (RAG 효과 검증 결과 — FR-053)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | BIGSERIAL PK | 자동 증가 |
+| retrospective_id | BIGINT NOT NULL FK → retrospective_analyses | 회고분석 행 |
+| reflection_id | BIGINT NOT NULL FK → reflections | 평가 대상 RAG 문서 |
+| verdict | TEXT NOT NULL | 'reflected' / 'not_reflected' / 'ambiguous' |
+| justification | TEXT | LLM 판정 근거 |
+| score_delta | INTEGER NOT NULL | +1, -1, 0 |
+| created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | 레코드 생성 일시 |
+
+> UNIQUE(retrospective_id, reflection_id) — 멱등성 보장
+
 #### Postgres FTS (BM25 검색용) — FR-033
 
 ```sql
@@ -371,7 +550,7 @@ CREATE INDEX idx_reflections_search
 
 > rank_bm25 라이브러리 제거, Postgres 내장 `to_tsvector` + `ts_rank_cd` + `plainto_tsquery` 사용
 
-#### 테이블 관계 (FR-039 이후)
+#### 테이블 관계 (9테이블)
 
 ```
 schedule_configs ─── 1:N ─── schedule_jobs ─── 1:N ─── schedule_job_events
@@ -379,23 +558,45 @@ schedule_configs ─── 1:N ─── schedule_jobs ─── 1:N ─── s
                                                        reports ──N:1── positions
                                                                         positions ─── 1:N ─── trades
                                                                         positions ─── 1:0..1 ── reflections
+                                                                        positions ─── 0..1 ── retrospective_analyses
                                                        reports ──1:N── trades (report_id FK)
+retrospective_analyses ─── 1:N ─── rag_validation_results
+rag_validation_results ──N:1── reflections
 ```
 
-#### 스키마 변경 요약 (FR-039~044 vs 기존)
+#### 스키마 변경 요약
 
 | 변경 | Before | After |
 |------|--------|-------|
-| `schedules` 테이블 | 존재 (8테이블) | **제거** (7테이블) |
+| `schedules` 테이블 | 존재 (8테이블) | **제거** (FR-039) |
 | `schedule_configs` | ticker, interval_days, last_data_date | + `current_cycle`, `currency`, `initial_capital`, `market` |
 | `schedule_jobs.schedule_id` | FK → schedules | `schedule_config_id` FK → schedule_configs + `scheduled_cycle` |
 | `reports.schedule_id` | FK → schedules | `schedule_job_id` FK → schedule_jobs |
+| `reports` | 13개 요약 컬럼 | + `rag_used`, `rag_docs` (v4) |
 | `schedule_job_events.schedule_id` | FK → schedules | **제거** (schedule_job_id로 충분) |
 | `positions` | ticker, status, shares, avg_cost | + `currency`, `stop_loss`, `target` |
 | `trades` | position_id, action, shares, price | + `currency`, executed_at 의미 변경 |
-| `reflections` | — | 변경 없음 |
+| `reflections` | — | + `usefulness_score` (FR-052) |
+| `retrospective_analyses` | — | **신규** (v4). FR-055에서 `analysis_accuracy`, `rag_contribution` 추가 예정 |
+| `rag_validation_results` | — | **신규** (FR-053) |
+| 테이블 수 | 8 → 7 (schedules 제거) | 7 → **9** (retrospective_analyses, rag_validation_results 추가) |
 
 > ⚠️ 폐기 대상: `eval_results/`, `memory/experience/{agent}.jsonl`, `memory/data/{agent}.jsonl`, `virtual_trade/tickers/`
+
+#### 포트폴리오 전용 테이블 (FR-056~061, Designed — 구체 DDL은 arch-be.md §2 참조)
+
+포트폴리오 모드는 기존 9테이블과 별도로 **5개 전용 테이블**을 사용한다. 기존 테이블에 mode 컬럼을 추가하지 않는다.
+
+| 테이블 | 역할 | 비고 |
+|--------|------|------|
+| `portfolio_configs` | 포트폴리오 설정 (1 row) — 초기자금(사용자 입력), 기준 통화, 활성화 여부, 시장별 수수료율 | 사용자 조정 가능 |
+| `portfolio_decisions` | 포트폴리오 PA 1회 결정 단위 — 날짜, 비서 요약(briefing_summary), PA 판단 텍스트 | 주간 반성 시 맥락으로 사용 |
+| `portfolio_trades` | 개별 종목 매매 — decision_id FK, ticker, action, shares, price, fee_amount | portfolio_decisions 하위 |
+| `portfolio_holdings` | 포트폴리오 일별 스냅샷 — ticker, shares, avg_cost, allocation_pct, snapshot_date. 매일 INSERT, 14일 이전 자동 삭제 | 주초 vs 일요일 비교용 |
+| `portfolio_reflections` | 주간 반성 — reflection, key_lessons, 주간 수익률 등 | 기존 reflections와 FK 구조 다름 (전체 배분 단위) |
+
+> `portfolio_decisions`가 1회 결정을 묶는 단위, 하위에 여러 `portfolio_trades`가 붙는 구조.
+> 두 시스템이 공유하는 것은 **기존 `reports` 테이블의 분석 결과**뿐 (비서 에이전트가 읽음).
 
 ### 4.3 Configuration
 
@@ -438,20 +639,30 @@ DEFAULT_CONFIG = {
 > **Note**: `database_path`는 `SUPABASE_DB_URL`, `TRADINGAGENTS_DB_URL`, `DATABASE_URL` 또는 `POSTGRES_*` 환경변수에서 자동 구성.
 > **Note**: fallback 벤더 목록은 config에 없음. `interface.py`의 `VENDOR_LIST` 순서로 자동 적용됨.
 
-### 4.4 Storage Architecture (FR-030, FR-039)
+### 4.4 Storage Architecture (FR-030, FR-039, FR-053, FR-056)
 
 ```
-Postgres DB (Supabase 호환)     ← 7 테이블 + GIN FTS 인덱스 (FR-039: schedules 제거)
+Postgres DB (Supabase 호환)     ← 9 테이블 + GIN FTS 인덱스
     ├── schedule_configs        ← + current_cycle, currency, initial_capital, market
     ├── schedule_jobs           ← schedule_config_id FK, scheduled_cycle 추가
     ├── schedule_job_events
     ├── positions               ← + currency, stop_loss, target
-    ├── reports                 ← schedule_job_id FK
+    ├── reports                 ← schedule_job_id FK, + rag_used, rag_docs
     ├── trades                  ← + currency
-    └── reflections
+    ├── reflections             ← + usefulness_score
+    ├── retrospective_analyses  ← 회고분석 (v4). FR-055에서 analysis_accuracy, rag_contribution 추가 예정
+    └── rag_validation_results  ← RAG 효과 검증 (FR-053)
+
+Postgres DB (포트폴리오 전용)    ← 5 테이블 (FR-056~061, Designed)
+    ├── portfolio_configs
+    ├── portfolio_decisions
+    ├── portfolio_trades
+    ├── portfolio_holdings
+    └── portfolio_reflections
 
 ChromaDB (PersistentClient)     ← 벡터 검색 전용
-    └── memory/chroma/
+    ├── memory/chroma/          ← 분석검증 반성 컬렉션
+    └── (포트폴리오 반성 컬렉션) ← FR-060: 모드별 컬렉션 분리
 ```
 
 > `virtual_trade/`, `eval_results/`, `memory/experience/*.jsonl`, `memory/data/*.jsonl` → 전면 폐기 (FR-030)
@@ -494,6 +705,8 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 | 5    | Scheduled Analysis (FR-016)                 | 반복 분석 자동화                             |
 | 6    | Position-Aware Analysis (FR-017)            | 기존 에이전트 수정 필요, 가장 마지막         |
 | 7    | Data Fetching / LLM Resilience (FR-010~012) | 안정적 실행 보장 (구현 완료)                 |
+| 8    | Retrospective Scoring (FR-055)              | v5 안정화 후 즉시 착수 가능. 독립적          |
+| 9    | Portfolio Mode (FR-056~061)                 | 분석검증 승률 확인 → 균등 배분 테스트 → 이후 |
 
 ---
 
@@ -501,6 +714,8 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 
 | Date       | Type            | Changes                                                                                                                                                                 |
 | ---------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-02-27 | add_requirement | proposal_v6 → FR-055~061 추가 (7개). FR-055: 회고분석 배점. FR-056~061: 포트폴리오 모드 (인프라, 비서, PA, 자금풀, RAG 교차참조, 주간 반성). DB 스키마 7→9테이블 (retrospective_analyses + rag_validation_results 추가, reports.rag_used/rag_docs, reflections.usefulness_score 보완). 포트폴리오 전용 테이블 5개 역할 기술 (DDL은 /arch). Non-goals 포트폴리오 시뮬레이션 명시 |
+| 2026-02-27 | arch_design     | FR-055~061 Status: Draft→Designed. arch-be.md에 포트폴리오 5테이블 DDL(14테이블 총), Phase 5 코드 매핑(#98~#124, 27항목), 일일/주간 시퀀스 다이어그램, 9개 API 엔드포인트, 환경변수 5개, 에러 케이스 6건, 설계 토론 결과(DA 채택, 5개 쟁점) 반영 |
 | 2026-02-25 | code_sync       | FR-051~054 Status: Designed→Implemented (코드 매핑 17/17, API 런타임 5/5 검증 완료). arch-be.md Phase 4 구현 완료 마킹. 경미 이슈 2건 수정 (ON CONFLICT DO NOTHING, usefulness 이중 조회 제거) |
 | 2026-02-24 | code_sync       | FR-038~050 Status: Designed→Implemented (코드 전수 검증). metrics/positions `?currency=` 서버필터 → FE 클라이언트 필터링으로 정정. position.opened_at을 yfinance 데이터 기준일로 통일 (FR-043). 하단 6탭(회고 추가). CronTrigger timezone 파라미터 명시. deep_think_llm/quick_think_llm codex 조건 분기 반영 |
 | 2026-02-24 | code_fix        | A-1: `_get_latest_close()` 전일종가 가드 제거 → 항상 최신 확정 종가 사용. A-2: FE 통화 표시 `formatAmount`/`formatSignedAmount` 공용화, KRW ₩ 지원. A-3: PA 프롬프트 MODIFY 제거(BUY/SELL/HOLD만). B-1~6: 데드코드 정리(`_get_current_price`, `_ticker_intervals`, reflection DEPRECATED 메서드), `_requeued_job_ids` discard, console.log 삭제, Reflections 필터 리셋. C-2: stop_loss≥target 역전 검증 |
@@ -529,6 +744,6 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 | Item           | Content                                      |
 | -------------- | -------------------------------------------- |
 | Generated      | 2026-02-11                                   |
-| Last synced    | 2026-02-24 (코드 전수 검증 — FR-038~050 Implemented 확인) |
+| Last synced    | 2026-02-27 (FR-055~061 Designed, 포트폴리오 5테이블 DDL + Phase 5 코드 매핑 완료) |
 | Analysis scope | `packages/tradingagents/` + `apps/` (Python + Svelte) |
 | Skill version  | reverse 2.0.0                                |

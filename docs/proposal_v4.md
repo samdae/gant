@@ -2,7 +2,7 @@
 
 > 기반: proposal_v3.md (Paper Trading 설계 확정), 현재 운영 중인 PostgreSQL 17 + ChromaDB 시스템
 > 일자: 2026-02-24
-> 상태: 설계 확정 (구현 전)
+> 상태: 설계 확정 구현 완료
 
 ---
 
