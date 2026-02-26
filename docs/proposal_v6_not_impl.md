@@ -225,6 +225,31 @@ JSON: 종목별 매매 지시 리스트
 - 분석검증 모드의 자금(종목당 $5,000 / ₩5,000,000)과는 아무 관련 없음
 - 포트폴리오 PA가 이 풀에서 종목 간 배분을 결정
 
+#### 혼합 통화 지원
+
+포트폴리오는 USD 종목과 KRW 종목을 **혼합 보유**한다. 실제 포트폴리오처럼 운용하는 게 목적이므로, 환율 변동도 성과의 일부로 반영한다.
+
+- **기준 통화**: 사용자가 `portfolio_configs`에 설정 (USD 또는 KRW)
+- **환율 조회**: `yf.Ticker("USDKRW=X")` — yfinance 실시간 환율
+- **환율이 필요한 시점**: 전체 자산 합산, 주간 반성 자산 변동 계산, 대시보드 총 자산 표시
+- 반대 통화 종목은 환율로 기준 통화에 환산하여 합산
+
+#### 거래 수수료
+
+실제 포트폴리오 시뮬레이션에 사실성을 부여하기 위해 거래 수수료를 적용한다. 수수료가 있으면 불필요한 리밸런싱을 자연스럽게 억제하는 효과도 있다.
+
+| 시장 | 매수 수수료 | 매도 수수료 | 비고 |
+|------|-----------|-----------|------|
+| US (나스닥/NYSE) | 0.1% | 0.1% | 일반 브로커 기준 |
+| KR (코스피/코스닥) | 0.25% | 0.25% + 증권거래세 0.18% | 일반 증권사 기준. 매도 시 세금 고정 |
+| Crypto | 0.1% | 0.1% | 일반 거래소 테이커 기준 |
+
+- `portfolio_configs`에 시장별 수수료율 저장 (사용자 조정 가능)
+- 매매 실행 시 `price × shares × fee_rate` 차감
+- 매도 시 KR은 증권거래세 0.18% 별도 추가 차감
+- `portfolio_trades`에 `fee_amount` 컬럼으로 수수료 금액 기록
+- 주간 반성 시 누적 수수료도 성과 평가에 포함
+
 ### 3-3. RAG 교차 참조 정책
 
 #### 분석검증 PA → 포트폴리오 반성: ❌ 차단
@@ -288,13 +313,13 @@ ChromaDB 컬렉션도 모드별 분리: 분석검증 반성 컬렉션 + 포트�
 portfolio_configs             ← 포트폴리오 설정 (1 row): 초기자금(사용자 입력), 활성화 여부
 portfolio_decisions           ← 포폴PA 1회 결정 단위 (날짜, 비서 요약, PA 판단 텍스트)
 portfolio_trades              ← 개별 종목 매매 (decision_id FK, ticker, action, shares, price)
-portfolio_holdings            ← 현재 포트폴리오 상태 (ticker, shares, avg_cost, allocation_pct)
+portfolio_holdings            ← 포트폴리오 일별 스냅샷 (ticker, shares, avg_cost, allocation_pct, snapshot_date). 매일 INSERT, 14일 이전 자동 삭제
 portfolio_reflections         ← 주간 반성 (reflection, key_lessons, 주간 수익률 등)
 ```
 
 `portfolio_decisions`가 1회 결정을 묶는 단위가 되고, 하위에 여러 `portfolio_trades`가 붙는 구조.
 
-`portfolio_holdings`는 매일 포폴PA 실행 후 업데이트. 주간 반성 시 이번 주 스냅샷과 비교 가능.
+`portfolio_holdings`는 매일 포폴PA 실행 후 **스냅샷 INSERT**. 14일 이전 데이터는 INSERT 전에 자동 삭제. 주간 반성 시 주초 스냅샷 vs 일요일 스냅샷으로 자산 변동 비교 가능.
 
 두 시스템이 공유하는 것은 **기존 `reports` 테이블의 분석 결과**뿐이다 (비서 에이전트가 읽음).
 
@@ -348,6 +373,9 @@ CronTrigger (KST Sun 12:00)
 | 포트폴리오 반성 입력 | 주간 매매기록+비서요약, 종목별 주간 수익률, 전체 자산 변동, 현재 holdings | ✅ 결정 |
 | 포트폴리오 반성 RAG | RAG에 태움. 포폴PA가 참조. 분석PA는 참조 안 함 | ✅ 결정 |
 | 포트폴리오 테이블 구조 | 5개 전용 테이블 (configs, decisions, trades, holdings, reflections) | ✅ 결정 |
+| 혼합 통화 지원 | `yf.Ticker("USDKRW=X")` 환율 조회, 기준 통화로 환산 합산 | ✅ 결정 |
+| 거래 수수료 | US 0.1%, KR 0.25%+세금0.18%, Crypto 0.1%. portfolio_configs에 저장, 사용자 조정 가능 | ✅ 결정 |
+| portfolio_holdings 스냅샷 | 매일 INSERT, 14일 이전 자동 삭제 | ✅ 결정 |
 | 포트폴리오 모드 구현 시점 | 분석검증 승률 확인 → 균등 배분 테스트 → 그 이후 | ✅ 결정 |
 
 ```
