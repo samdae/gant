@@ -81,6 +81,13 @@ TRADINGAGENTS_LOG_LEVEL=INFO
 
 # RAG 주입 경험 수 (기본: 1, 추후 2~3으로 확장)
 RAG_TOP_K=1
+
+# 포트폴리오 모드 (기본: false)
+PORTFOLIO_ENABLED=false
+PORTFOLIO_INITIAL_CAPITAL=100000000   # 초기 자금 (KRW, 기본 1억원)
+PORTFOLIO_FEE_ENABLED=true            # 거래 수수료 적용
+EXCHANGE_RATE_CACHE_TTL=3600          # 환율 캐시 TTL (초)
+EXCHANGE_RATE_FALLBACK=1380.0         # 환율 조회 실패 시 폴백값
 ```
 
 ### 2.3 PostgreSQL 준비
@@ -192,6 +199,80 @@ curl -X DELETE http://localhost:8000/schedules/NVDA \
 6. (청산 시) 반성에이전트 — 전 사이클 기반 반성문 작성 → Postgres + ChromaDB 저장
 ```
 
+## 5.1 포트폴리오 모드 (v6)
+
+분석검증 모드와 별도로, 전체 티커 분석 결과를 종합하여 포트폴리오를 관리하는 모드입니다.
+
+### 활성화
+
+```bash
+PORTFOLIO_ENABLED=true
+```
+
+### 동작 방식
+
+**일일 파이프라인** — 전체 티커 분석 완료 후 자동 실행:
+
+```
+1. 전체 티커 최신 reports 수집
+2. BriefingAgent — 종목별 분석 결과를 압축 브리핑
+3. PortfolioManagerAgent — 현재 보유 + 가용 자금 + 과거 경험(RAG) → 리밸런싱 결정
+4. 매매 실행 — 종목별 현재가 조회 → 수수료 계산 → holdings 갱신
+```
+
+**주간 회고** — 매주 토요일 02:00 자동 실행:
+
+```
+1. 해당 주 decisions + trades 수집
+2. PortfolioReflector — 배분 품질 평가 (0~100)
+3. 반성문 + 핵심 교훈 → Postgres + ChromaDB 이중 저장
+```
+
+### 포트폴리오 API
+
+```bash
+# 설정 조회
+curl http://localhost:8000/portfolio/config
+
+# 설정 생성/수정 (인증 필요)
+curl -X POST http://localhost:8000/portfolio/config \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"initial_capital": 100000000, "fee_enabled": true}'
+
+# 일시정지 / 재개
+curl -X POST http://localhost:8000/portfolio/config/pause \
+  -H "Authorization: Bearer <ADMIN_TOKEN>"
+curl -X POST http://localhost:8000/portfolio/config/resume \
+  -H "Authorization: Bearer <ADMIN_TOKEN>"
+
+# 보유 현황 조회
+curl http://localhost:8000/portfolio/holdings
+
+# 일일 결정 목록
+curl http://localhost:8000/portfolio/decisions
+
+# 매매 기록
+curl http://localhost:8000/portfolio/trades
+
+# 주간 회고
+curl http://localhost:8000/portfolio/reflections
+```
+
+### 수수료 구조
+
+| 시장 | 매수 | 매도 |
+|------|------|------|
+| US | 0.1% (최소 $1) | 0.1% (최소 $1) |
+| KR | 0.015% | 0.015% + 0.18% 세금 |
+| Crypto | 0.04% | 0.04% |
+
+### RAG 교차 참조
+
+- 분석PA → 분석 반성만 참조 (포트폴리오 반성 차단)
+- 포트폴리오PA → 포트폴리오 반성 + 분석 반성 양방향 참조
+- ChromaDB 컬렉션 분리: `analysis_reflections`, `portfolio_reflections`
+
 ## 6. 주요 API 엔드포인트
 
 ### 공개 READ (인증 불필요)
@@ -209,6 +290,12 @@ curl -X DELETE http://localhost:8000/schedules/NVDA \
 | GET | `/reflections/search` | 매매검증 검색 (?q, ?mode=keyword\|semantic) |
 | GET | `/rag-validator/reports` | RAG 효과 분석 리포트 목록 |
 | GET | `/activity` | 최근 활동 피드 |
+| GET | `/portfolio/config` | 포트폴리오 설정 |
+| GET | `/portfolio/decisions` | 일일 결정 목록 |
+| GET | `/portfolio/decisions/{id}` | 결정 상세 + trades |
+| GET | `/portfolio/holdings` | 보유 현황 |
+| GET | `/portfolio/trades` | 매매 기록 |
+| GET | `/portfolio/reflections` | 주간 회고 목록 |
 
 ### 인증 필요 WRITE
 
@@ -218,6 +305,9 @@ curl -X DELETE http://localhost:8000/schedules/NVDA \
 | DELETE | `/schedules/{ticker}` | 스케줄 삭제 |
 | POST | `/schedules/{ticker}/retry` | 실패 스케줄 재시도 |
 | POST | `/rag-validator/run` | RAG Validator 실행 |
+| POST | `/portfolio/config` | 포트폴리오 설정 생성/수정 |
+| POST | `/portfolio/config/pause` | 포트폴리오 일시정지 |
+| POST | `/portfolio/config/resume` | 포트폴리오 재개 |
 
 ### 실시간
 
@@ -247,18 +337,26 @@ uv run python scripts/reset_db.py --confirm --keep-chroma
 
 > `--confirm` 플래그 없이는 실행되지 않습니다 (안전장치).
 
-### DB 구조 (7 테이블)
+### DB 구조 (14 테이블)
 
 ```
-schedule_configs    — 티커별 설정 (통화, 자금, 시장, 주기)
-schedule_jobs       — 사이클별 실행 기록
-schedule_job_events — 에이전트별 진행 이벤트
-positions           — 포지션 (active/closed)
-reports             — 분석 리포트 (13개 요약 컬럼)
-trades              — 개별 BUY/SELL 기록
-reflections             — 청산 시 반성문 (Postgres FTS + ChromaDB 벡터 + usefulness_score)
-retrospective_analyses  — 회고분석 결과 (v4)
-rag_validation_results  — RAG Validator 평가 결과 (v5)
+[기본 9테이블]
+schedule_configs       — 티커별 설정 (통화, 자금, 시장, 주기)
+schedule_jobs          — 사이클별 실행 기록
+schedule_job_events    — 에이전트별 진행 이벤트
+positions              — 포지션 (active/closed)
+reports                — 분석 리포트 (13개 요약 컬럼 + rag_used/rag_docs)
+trades                 — 개별 BUY/SELL 기록
+reflections            — 청산 시 반성문 (Postgres FTS + ChromaDB 벡터 + usefulness_score)
+retrospective_analyses — 회고분석 결과 (v4, v6에서 analysis_accuracy/rag_contribution 추가)
+rag_validation_results — RAG Validator 평가 결과 (v5)
+
+[포트폴리오 5테이블 — v6]
+portfolio_configs      — 포트폴리오 설정 (자금, 통화, 수수료, 활성화)
+portfolio_decisions    — 일일 리밸런싱 결정 (브리핑 + 배분 계획)
+portfolio_trades       — 포트폴리오 매매 기록 (환율·수수료 포함)
+portfolio_holdings     — 티커별 보유 현황 (비중, KRW 시가)
+portfolio_reflections  — 주간 회고 (배분 품질 평가)
 ```
 
 ## 8. 프로젝트 구조
@@ -268,15 +366,15 @@ rag_validation_results  — RAG Validator 평가 결과 (v5)
 │   ├── api/app.py              # FastAPI 진입점
 │   └── web/                    # Svelte SPA 프론트엔드
 ├── packages/tradingagents/
-│   ├── api/                    # REST 23개 + WS + 인증
-│   ├── graph/                  # LangGraph 에이전트 파이프라인
-│   ├── agents/                 # 12에이전트 + 요약에이전트
-│   ├── virtual_trade/          # TradeManager + PortfolioAgent
-│   ├── scheduler/              # APScheduler + CronTrigger
-│   ├── storage/                # Postgres 8 Repository (rag_validation_results 추가)
-│   ├── memory/                 # HybridMemory (FTS + ChromaDB + usefulness 필터)
+│   ├── api/                    # REST 32개 + WS + 인증 (포트폴리오 9개 포함)
+│   ├── graph/                  # LangGraph 에이전트 파이프라인 + PortfolioReflector
+│   ├── agents/                 # 12에이전트 + 요약에이전트 + BriefingAgent
+│   ├── virtual_trade/          # TradeManager + PortfolioAgent + PortfolioManagerAgent + FeeCalculator + ExchangeRate
+│   ├── scheduler/              # APScheduler + CronTrigger + PortfolioPipeline
+│   ├── storage/                # Postgres 13 Repository (기본 8 + 포트폴리오 5)
+│   ├── memory/                 # HybridMemory (FTS + ChromaDB + usefulness 필터 + 컬렉션 분리)
 │   ├── rag_validator/          # RAG Validator (usefulness_score ±1 평가)
-│   ├── retrospective/          # 회고분석 서비스
+│   ├── retrospective/          # 회고분석 서비스 (v6: analysis_accuracy/rag_contribution 배점)
 │   ├── llm_clients/            # gemini-cli, antigravity, codex
 │   ├── dataflows/              # yfinance, Alpha Vantage
 │   ├── default_config.py       # 기본 설정
