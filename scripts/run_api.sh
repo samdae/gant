@@ -42,4 +42,6 @@ cd "$ROOT_DIR"
 unset VIRTUAL_ENV
 uv sync --python "$VENV_DIR/bin/python"
 
-exec "$VENV_DIR/bin/python" -m uvicorn apps.api.app:app --host 0.0.0.0 --port 8000
+mkdir -p "$ROOT_DIR/logs"
+exec "$VENV_DIR/bin/python" -m uvicorn apps.api.app:app --host 0.0.0.0 --port 8000 \
+  --log-config "$SCRIPT_DIR/log_config.json"

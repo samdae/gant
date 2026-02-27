@@ -299,9 +299,9 @@ class PortfolioAgent:
                 # Format report summary
                 history_text += f"\n- Cycle (created: {created_str})"
                 if r.get('final_trade_decision'):
-                    history_text += f"\n  Decision: {r['final_trade_decision'][:150]}..."
+                    history_text += f"\n  Decision: {r['final_trade_decision'][:800]}..."
                 if r.get('pa_opinion'):
-                    history_text += f"\n  PA: {r['pa_opinion'][:150]}..."
+                    history_text += f"\n  PA: {r['pa_opinion'][:800]}..."
         else:
             history_text = "\n(No prior analysis)"
 

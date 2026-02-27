@@ -1,6 +1,7 @@
 # Docs
 #.cursor
 *.log
+logs/
 *.sqlite
 __pycache__/
 .env

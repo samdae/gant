@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "default": {
+      "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    }
+  },
+  "handlers": {
+    "file": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "filename": "logs/runtime.log",
+      "maxBytes": 512000,
+      "backupCount": 5,
+      "formatter": "default"
+    },
+    "console": {
+      "class": "logging.StreamHandler",
+      "formatter": "default"
+    }
+  },
+  "root": {
+    "level": "INFO",
+    "handlers": ["file", "console"]
+  }
+}
