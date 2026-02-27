@@ -8,8 +8,6 @@
 </script>
 
 <header class="app-header">
-  <a href="#/" class="logo" use:link>GANT</a>
-
   <div class="currency-selector">
     {#each currencies as c}
       <button
@@ -19,6 +17,8 @@
       >{c}</button>
     {/each}
   </div>
+
+  <a href="#/about" class="header-link" use:link>about</a>
 </header>
 
 <style>
@@ -49,5 +49,14 @@
     background: rgba(255, 255, 255, 0.06);
     color: var(--text);
     border-color: var(--border);
+  }
+  .header-link {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--primary);
+    transition: all 0.15s ease;
+  }
+  .header-link:hover {
+    color: var(--primary-hover);
   }
 </style>

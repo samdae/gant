@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0f13" />
+  <title>G-ANT · How it works</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css" rel="stylesheet" />
+  <style>
+    :root {
+      --font: "Pretendard Variable", "Pretendard", "SUIT", "Noto Sans KR", sans-serif;
+      --bg: #0d0f13;
+      --bg-gradient: linear-gradient(180deg, #0d0f13 0%, #0f1115 48%, #101317 100%);
+      --surface: #1f2023;
+      --surface-hover: #26282d;
+      --border: #23262d;
+      --border-hover: #2d323c;
+      --text: #e8edf5;
+      --text-secondary: #c2c9d6;
+      --text-dim: #8b96a8;
+      --primary: #5b8bff;
+      --primary-hover: #4b7dff;
+      --primary-bg: rgba(91, 139, 255, 0.18);
+      --gain: #ff5d5d;
+      --gain-bg: rgba(255, 93, 93, 0.18);
+      --loss: #4c7dff;
+      --loss-bg: rgba(76, 125, 255, 0.2);
+      --info: #6aa4ff;
+      --info-bg: rgba(106, 164, 255, 0.18);
+      --muted: #7e8aa1;
+      --radius: 18px;
+      --radius-sm: 12px;
+      --radius-xs: 8px;
+      --shadow: 0 14px 28px rgba(5, 7, 10, 0.55);
+      --shadow-sm: 0 3px 10px rgba(5, 7, 10, 0.35);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      background: var(--bg-gradient);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+      padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+    }
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 56px;
+      background: rgba(10, 12, 16, 0.92);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(16px);
+    }
+    .header-left {
+      display: flex;
+      gap: 2px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2px;
+    }
+    .currency-placeholder {
+      padding: 4px 12px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      border-radius: 6px;
+    }
+    .currency-placeholder:first-child {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+    }
+    .header-link {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--primary);
+      text-decoration: none;
+    }
+    .header-link:hover { color: var(--primary-hover); }
+    .container {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 24px 16px 80px;
+    }
+    .section { margin-bottom: 28px; }
+    .section-title {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      transition: 0.18s ease;
+    }
+    .card:hover {
+      border-color: var(--border-hover);
+      box-shadow: var(--shadow);
+    }
+    .card-body { padding: 18px 20px; }
+    .headline {
+      font-size: 1.25rem;
+      font-weight: 700;
+      line-height: 1.4;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+    .body-text {
+      font-size: 0.9375rem;
+      color: var(--text-secondary);
+      line-height: 1.65;
+    }
+    .body-text + .body-text { margin-top: 10px; }
+    .body-text strong { color: var(--text); }
+    .flow-diagram {
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: var(--radius-sm);
+      padding: 20px;
+      margin: 16px 0;
+      overflow-x: auto;
+    }
+    .flow-diagram svg {
+      display: block;
+      margin: 0 auto;
+      max-width: 100%;
+      height: auto;
+    }
+    .cycle-diagram {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin: 16px 0;
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: var(--radius-sm);
+    }
+    .cycle-node {
+      padding: 8px 14px;
+      background: var(--primary-bg);
+      border: 1px solid rgba(91, 139, 255, 0.32);
+      border-radius: var(--radius-xs);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--primary);
+    }
+    .cycle-node.highlight {
+      background: var(--gain-bg);
+      border-color: rgba(255, 93, 93, 0.35);
+      color: var(--gain);
+    }
+    .cycle-arrow {
+      display: flex;
+      align-items: center;
+      color: var(--text-dim);
+      font-size: 0.75rem;
+    }
+    .map-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    .map-table th,
+    .map-table td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .map-table th {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .map-table td:first-child {
+      font-weight: 600;
+      color: var(--text);
+    }
+    .map-table td:last-child { color: var(--text-secondary); }
+    .map-table tr:last-child td { border-bottom: none; }
+    .map-table tr:hover td { background: rgba(255, 255, 255, 0.02); }
+    /* Details */
+    details {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    details[open] { border-color: var(--border-hover); }
+    summary {
+      padding: 14px 18px;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.02);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::after {
+      content: "▼";
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      transition: transform 0.2s;
+    }
+    details[open] summary::after { transform: rotate(180deg); }
+    details .details-body {
+      padding: 14px 18px 18px;
+      border-top: 1px solid var(--border);
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      line-height: 1.65;
+    }
+    .mode-card {
+      padding: 16px 18px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: var(--radius-sm);
+      margin-bottom: 12px;
+      border-left: 4px solid var(--primary);
+    }
+    .mode-card.portfolio { border-left-color: var(--info); }
+    .mode-card h4 {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .mode-card .mode-goal {
+      font-size: 0.8125rem;
+      color: var(--primary);
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .mode-card.portfolio .mode-goal { color: var(--info); }
+    .mode-card p {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+    .split-box {
+      display: grid;
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .split-item {
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: var(--radius-xs);
+      border: 1px solid var(--border);
+    }
+    .split-item h5 {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 6px;
+    }
+    .split-item p {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-left">
+      <span class="currency-placeholder">ALL</span>
+      <span class="currency-placeholder">KRW</span>
+      <span class="currency-placeholder">USD</span>
+    </div>
+    <a href="#" class="header-link">about</a>
+  </header>
+
+  <main class="container">
+    <!-- 1. 헤드라인 -->
+    <section class="section">
+      <div class="card">
+        <div class="card-body">
+          <h1 class="headline">
+            12개 AI가 주식을 분석하고, 가상 매매로 검증하며, 실패에서 스스로 배우는 시스템.
+          </h1>
+          <p class="body-text" style="margin-top:12px">
+            AI 에이전트가 경험을 축적하여 스스로 판단을 개선할 수 있는가를 검증하는 실험 플랫폼입니다.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 모드 구분 -->
+    <section class="section">
+      <h2 class="section-title">두 가지 모드</h2>
+      <div class="card">
+        <div class="card-body">
+          <p class="body-text">
+            이 시스템은 <strong>분석검증 모드</strong>와 <strong>포트폴리오 모드</strong> 두 가지로 동작합니다. 12에이전트 파이프라인은 동일하고, PA(판단·실행) 이후만 다릅니다.
+          </p>
+          <div class="mode-card">
+            <h4>분석검증 모드</h4>
+            <div class="mode-goal">지향: 분석 정확도 순수 측정</div>
+            <p>종목별 독립 자금(USD $5,000 / KRW ₩5,000,000). PA는 실행자 — 파이프라인 결론을 그대로 실행. 변수를 최소화해 "분석이 맞았는지"만 검증합니다.</p>
+          </div>
+          <div class="mode-card portfolio">
+            <h4>포트폴리오 모드</h4>
+            <div class="mode-goal">지향: 배분(밸런싱) 품질</div>
+            <p>공유 가상 자금 풀. 비서 에이전트가 전체 티커 분석을 압축하고, PortfolioManagerAgent가 리밸런싱을 결정. 주간 정기 반성으로 배분 품질을 평가합니다.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 핵심 원리 -->
+    <section class="section">
+      <h2 class="section-title">핵심 원리</h2>
+      <div class="card">
+        <div class="card-body">
+          <p class="body-text">
+            대부분의 AI 분석 도구는 <strong>분석하고 끝</strong>입니다. 결과를 내놓고, 맞았는지 틀렸는지는 확인하지 않습니다.
+          </p>
+          <p class="body-text">
+            이 시스템은 <strong>분석 → 가상 매매 → 결과 확인 → 매매검증(반성) → 경험(RAG) 저장 → 다음 판단에 반영</strong>하는 루프를 돌립니다.
+          </p>
+          <p class="body-text">
+            <strong>실패에서 배운다</strong>가 핵심입니다. 청산된 포지션마다 매매검증(반성)으로 교훈을 추출하고, 그 경험(RAG)을 저장한 뒤, 다음 분석 시 PA가 40% 비중으로 참고합니다.
+          </p>
+          <p class="body-text">
+            실제 매매는 수행하지 않습니다. 모든 매매는 가상이며, 분석의 정확도를 검증하기 위한 수단입니다.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 분석 파이프라인 -->
+    <section class="section">
+      <h2 class="section-title">분석 파이프라인</h2>
+      <div class="card">
+        <div class="card-body">
+          <p class="body-text">
+            4명의 분석가가 시장·소셜·뉴스·재무를 독립 분석한 뒤, Bull↔Bear 토론, Research Manager 판결, Trader 제안, 3자 리스크 토론, Risk Judge 최종 결정을 거쳐 Portfolio Agent가 매매 수량을 결정합니다.
+          </p>
+          <div class="flow-diagram">
+            <svg viewBox="0 0 420 120" width="100%" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                  <path d="M0,0 L6,3 L0,6" fill="#8b96a8" opacity="0.6" />
+                </marker>
+              </defs>
+              <rect x="10" y="40" width="70" height="36" rx="6" fill="rgba(91,139,255,0.18)" stroke="rgba(91,139,255,0.4)" stroke-width="1" />
+              <text x="45" y="62" text-anchor="middle" fill="#8b96a8" font-size="9" font-weight="600">데이터 수집</text>
+              <text x="45" y="70" text-anchor="middle" fill="#8b96a8" font-size="9" font-weight="600">(4명)</text>
+              <line x1="85" y1="58" x2="115" y2="58" stroke="#8b96a8" stroke-width="1.5" fill="none" opacity="0.6" marker-end="url(#arrow)" />
+              <rect x="120" y="40" width="70" height="36" rx="6" fill="rgba(91,139,255,0.18)" stroke="rgba(91,139,255,0.4)" stroke-width="1" />
+              <text x="155" y="62" text-anchor="middle" fill="#8b96a8" font-size="9" font-weight="600">투자 토론</text>
+              <text x="155" y="70" text-anchor="middle" fill="#8b96a8" font-size="9" font-weight="600">Bull↔Bear</text>
+              <line x1="195" y1="58" x2="225" y2="58" stroke="#8b96a8" stroke-width="1.5" fill="none" opacity="0.6" marker-end="url(#arrow)" />
+              <rect x="230" y="40" width="70" height="36" rx="6" fill="rgba(91,139,255,0.18)" stroke="rgba(91,139,255,0.4)" stroke-width="1" />
+              <text x="265" y="62" text-anchor="middle" fill="#8b96a8" font-size="9" font-weight="600">Trader</text>
+              <line x1="305" y1="58" x2="335" y2="58" stroke="#8b96a8" stroke-width="1.5" fill="none" opacity="0.6" marker-end="url(#arrow)" />
+              <rect x="340" y="40" width="70" height="36" rx="6" fill="rgba(255,93,93,0.18)" stroke="rgba(255,93,93,0.4)" stroke-width="1" />
+              <text x="375" y="62" text-anchor="middle" fill="#8b96a8" font-size="9" font-weight="600">리스크 토론</text>
+              <text x="375" y="70" text-anchor="middle" fill="#8b96a8" font-size="9" font-weight="600">→ PA</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. 학습 사이클 — 매매검증 vs 회고분석 -->
+    <section class="section">
+      <h2 class="section-title">학습 사이클</h2>
+      <div class="card">
+        <div class="card-body">
+          <p class="body-text">
+            가상 매매로 결과를 추적하고, 청산 시 <strong>매매검증(반성)</strong>과 <strong>회고분석</strong>이 각각 다른 역할을 합니다.
+          </p>
+          <div class="split-box">
+            <div class="split-item">
+              <h5>매매검증(반성)</h5>
+              <p>교훈 생성 → RAG 저장. "이 포지션에서 무엇을 배웠나?" 반성문과 핵심 레슨을 추출해 경험(RAG)으로 저장합니다. 다음 PA 판단 시 40% 비중으로 참조됩니다.</p>
+            </div>
+            <div class="split-item">
+              <h5>회고분석</h5>
+              <p>과정의 타당성 수치화. <strong>분석 정확도</strong>(0~100): 12에이전트 분석이 시장 움직임과 얼마나 일치했는가. <strong>RAG 기여도</strong>(0~100): 경험(RAG)이 PA 판단에 얼마나 기여했는가. 사용자 요청 시 별도 실행되며, 대시보드에 평균 배점이 표시됩니다.</p>
+            </div>
+          </div>
+          <div class="cycle-diagram">
+            <span class="cycle-node">분석</span>
+            <span class="cycle-arrow">→</span>
+            <span class="cycle-node">매매</span>
+            <span class="cycle-arrow">→</span>
+            <span class="cycle-node highlight">청산 시 매매검증</span>
+            <span class="cycle-arrow">→</span>
+            <span class="cycle-node">RAG 저장</span>
+            <span class="cycle-arrow">→</span>
+            <span class="cycle-node">다음 판단 반영</span>
+            <span class="cycle-arrow">↺</span>
+          </div>
+          <p class="body-text" style="margin-top:12px;font-size:0.8125rem;color:var(--text-dim)">
+            회고분석 배점은 자동 루프가 아닙니다. 수동 요청 시 실행됩니다.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. 앱에서 보이는 것 -->
+    <section class="section">
+      <h2 class="section-title">이 앱에서 보이는 것</h2>
+      <div class="card">
+        <div class="card-body" style="padding: 0">
+          <table class="map-table">
+            <thead>
+              <tr>
+                <th>화면</th>
+                <th>의미</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>포지션</td>
+                <td>가상 매매 결과 — 보유 중이거나 청산된 투자 (분석검증 모드)</td>
+              </tr>
+              <tr>
+                <td>스케줄</td>
+                <td>티커별 분석 주기 — 언제 어떤 종목을 분석하는지</td>
+              </tr>
+              <tr>
+                <td>리포트</td>
+                <td>12에이전트 분석 요약 — 시장/투자/리스크 논의 결과</td>
+              </tr>
+              <tr>
+                <td>회고</td>
+                <td>매매검증(반성) 결과 — 청산 시 생성된 교훈과 핵심 레슨</td>
+              </tr>
+              <tr>
+                <td>회고분석</td>
+                <td>배점 — 분석 정확도, RAG 기여도 0~100. 대시보드에 평균 표시</td>
+              </tr>
+              <tr>
+                <td>실시간</td>
+                <td>분석 진행 상황 — 에이전트 단계별 상태</td>
+              </tr>
+              <tr>
+                <td>포트폴리오</td>
+                <td>공유 자금 풀 — 비서 브리핑, 리밸런싱 결정, 주간 반성 (포트폴리오 모드)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. 상세 (접기) -->
+    <section class="section">
+      <h2 class="section-title">더 알아보기</h2>
+      <details>
+        <summary>RAG Validator란?</summary>
+        <div class="details-body">
+          회고분석 결과를 바탕으로 RAG 문서별 유용성을 평가합니다. PA가 해당 경험(RAG)을 실제로 반영했는지 문서 단위로 판정하고, usefulness_score를 ±1 조정합니다. 40 미만이면 검색에서 배제되어 쓰레기 경험이 점진적으로 걸러집니다.
+        </div>
+      </details>
+      <details>
+        <summary>포트폴리오 RAG 교차 참조</summary>
+        <div class="details-body">
+          분석검증 PA는 포트폴리오 반성을 참조하지 않습니다 (변수 통제). 포트폴리오 PA는 분석검증 반성 + 포트폴리오 반성 모두 참조합니다. ChromaDB 컬렉션도 모드별로 분리되어 있습니다.
+        </div>
+      </details>
+    </section>
+  </main>
+</body>
+</html>

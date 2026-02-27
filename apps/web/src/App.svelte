@@ -14,6 +14,7 @@
   import Reflections from "./routes/Reflections.svelte";
   import Retrospective from "./routes/Retrospective.svelte";
   import RetroDetail from "./routes/RetroDetail.svelte";
+  import About from "./routes/About.svelte";
   import Auth from "./routes/Auth.svelte";
   import NotFoundRedirect from "./routes/NotFoundRedirect.svelte";
   import { loadTickerNames } from "./stores/tickerNames";
@@ -30,6 +31,7 @@
     "/reflections": Reflections,
     "/retrospective": Retrospective,
     "/retrospective/:ticker": RetroDetail,
+    "/about": About,
     "/auth": Auth,
     "*": NotFoundRedirect,
   };
