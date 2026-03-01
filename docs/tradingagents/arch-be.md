@@ -406,7 +406,7 @@ CREATE INDEX idx_reflections_search
 
 #### Postgres Schema — Portfolio (FR-056~061)
 
-> 포트폴리오 모드 전용 5테이블. 기존 `positions` 테이블과 FK 연결.
+> 포트폴리오 모드 전용 5테이블. 기존 `positions` 테이블과 **완전 분리**(공유는 `reports` 읽기만).
 > 금액: DOUBLE PRECISION (기존 패턴 일관성), 통화 변환은 application layer에서 처리.
 > 마이그레이션: `init_schema()` + `_ensure_column` 패턴 동일 적용.
 
@@ -452,7 +452,6 @@ CREATE UNIQUE INDEX idx_portfolio_decisions_date ON portfolio_decisions(portfoli
 CREATE TABLE portfolio_trades (
     id                    BIGSERIAL PRIMARY KEY,
     portfolio_decision_id BIGINT    NOT NULL REFERENCES portfolio_decisions(id),
-    position_id           BIGINT    REFERENCES positions(id),       -- 기존 positions와 연결
     ticker                TEXT      NOT NULL,
     action                TEXT      NOT NULL,                       -- buy / sell / hold
     shares                DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -517,7 +516,6 @@ rag_validation_results ──N:1── reflections
 portfolio_configs ─── 1:N ─── portfolio_decisions ─── 1:N ─── portfolio_trades
                  ─── 1:N ─── portfolio_holdings
                  ─── 1:N ─── portfolio_reflections
-portfolio_trades ──N:0..1── positions (기존 positions 테이블과 연결)
 ```
 
 #### 폐기 대상 (FR-030, FR-039)
@@ -685,7 +683,7 @@ scripts/
 | 105 | FR-056 | PortfolioHoldingRepository | `storage/portfolio_holding_repo.py` | `PortfolioHoldingRepository` | `create_snapshot(config_id, snapshot_date, ticker, shares, avg_cost, allocation_pct, …)`, `list_latest(config_id)`, `list_by_date_range(config_id, from, to)`, `cleanup_old_snapshots(days=14)` | **new** |
 | 106 | FR-056 | PortfolioReflectionRepository | `storage/portfolio_reflection_repo.py` | `PortfolioReflectionRepository` | `create`, `get_by_week(config_id, week_start)`, `list_recent(config_id, limit)` | **new** |
 | 107 | FR-056 | 포트폴리오 파이프라인 오케스트레이터 | `scheduler/portfolio_pipeline.py` | `PortfolioPipeline` | `run_daily(config_id)` — (1) 전체 티커 reports 수집 → (2) BriefingAgent → (3) PortfolioManagerAgent → (4) 매매 실행 → (5) holdings 갱신 | **new** |
-| 108 | FR-056 | 스케줄러 연동 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_on_all_tickers_complete()` — 전체 티커 분석 완료 이벤트 감지 후 `PortfolioPipeline.run_daily` 큐 등록 | modify |
+| 108 | FR-056 | 스케줄러 연동 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_on_all_tickers_complete()` — 이벤트 기반 집계. `done+skipped==total_active && failed==0`일 때만 `portfolio_daily` 큐 등록, 멱등성 키로 중복 차단 | modify |
 | 109 | FR-056 | 큐 워커 포트폴리오 분기 | `api/app.py` | — | `_queue_worker` — `item['type'] == 'portfolio_daily'` (priority=3), `'portfolio_weekly'` (priority=4) | modify |
 | 110 | FR-057 | BriefingAgent | `agents/briefing_agent.py` | `BriefingAgent` | `generate_briefing(reports: list[dict]) → BriefingSummary` — 전체 티커 리포트 압축 → JSONB (ticker별 action/confidence/요약) | **new** |
 | 111 | FR-057 | BriefingAgent 프롬프트 | `agents/briefing_agent.py` | — | `_BRIEFING_PROMPT` — 시스템 프롬프트: "투자 비서로서 12-agent 분석 결과를 간결히 요약하되, 각 종목의 최종 판단(buy/sell/hold)·신뢰도·핵심 근거를 유지하라" | **new** |
@@ -1284,7 +1282,7 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | portfolio_holdings (config_id, ticker, snapshot_date) UNIQUE | 일별 snapshot INSERT 시 | ON CONFLICT 방지 — 동일 일자 중복 스냅샷 차단 |
 | portfolio_holdings 보관기간 14일 | daily pipeline 종료 시 | `snapshot_date < current_date - 14d` 자동 삭제 |
 | portfolio_reflections (config_id, week_start) UNIQUE | reflection INSERT 시 | ON CONFLICT 방지 — 주 1회 회고 보장 |
-| portfolio_trades → positions FK nullable | trade INSERT 시 | hold 액션은 position_id=NULL 허용 |
+| portfolio_trades 독립성 | trade INSERT 시 | `positions` FK 미사용. 포트폴리오 모드는 전용 5테이블에서만 상태 관리 |
 | portfolio available_cash ≥ 0 | 매매 실행 시 application-level | 잔액 부족 시 해당 종목 skip |
 | exchange_rate > 0 | 환율 조회 시 application-level | 0 이하면 폴백값 사용 |
 
@@ -1632,7 +1630,16 @@ DB 연결은 프로세스 종료 시 psycopg가 자동 정리. ChromaDB Persiste
 
 - **일일 의사결정 멱등성 키**: `(portfolio_config_id, decision_date)` UNIQUE 유지
 - **상태 머신**: `pending -> executing -> completed | partial_failed | failed`
-- **전체 티커 완료 트리거 조건**: active schedule 기준 `done + skipped`가 총 대상 수와 일치할 때만 일일 포트폴리오 큐잉
+- **전체 티커 완료 트리거 조건(엄격 모드)**:
+  - active schedule 기준 `done + skipped == total_active`
+  - 같은 날짜의 `failed == 0`
+  - 위 두 조건을 모두 만족할 때만 일일 포트폴리오 큐잉
+- **`_on_all_tickers_complete()` 상세(이벤트 기반, 폴링 아님)**:
+  1. `schedule_jobs` 상태 변경 이벤트(완료/스킵/실패) 수신
+  2. active 티커 목록과 당일 상태 집계(`done`, `skipped`, `failed`) 계산
+  3. 엄격 모드 조건 충족 시에만 `portfolio_daily` 작업 enqueue
+  4. enqueue 전 `(config_id, decision_date)` 멱등성 키로 중복 실행 차단
+  5. 조건 불충족 시 큐잉하지 않고 다음 이벤트를 대기
 - **재실행 규칙**:
   - `completed`: 동일 일자 재실행 금지
   - `partial_failed`: 실패 종목만 수동 재실행 허용
@@ -1652,6 +1659,107 @@ DB 연결은 프로세스 종료 시 psycopg가 자동 정리. ChromaDB Persiste
 - 출력 검증:
   - 점수형 필드(analysis_accuracy, rag_contribution, allocation_accuracy)는 0~100 클램핑
   - 배분 합계, 잔액 초과 여부를 실행 전 검증
+
+### 10.21 Portfolio API Request/Response Schemas
+
+#### POST `/portfolio/config` (Bearer)
+
+```yaml
+request:
+  body:
+    initial_capital: number            # 필수, > 0
+    base_currency: "KRW" | "USD"       # 필수
+    fee_enabled: boolean               # 선택, 기본 true
+    fee_rates:                         # 선택, 미지정 시 DB 기본값 사용
+      us_fee_rate: number              # 예: 0.001 (0.1%)
+      kr_buy_fee_rate: number          # 예: 0.0025 (0.25%)
+      kr_sell_fee_rate: number         # 예: 0.0025 (0.25%)
+      kr_sell_tax_rate: number         # 예: 0.0018 (0.18%)
+      crypto_fee_rate: number          # 예: 0.001 (0.1%)
+
+response:
+  200:
+    schema_version: "v1"
+    config:
+      id: integer
+      initial_capital: number
+      total_fund: number
+      available_cash: number
+      base_currency: "KRW" | "USD"
+      fee_enabled: boolean
+      fee_rates:
+        us_fee_rate: number
+        kr_buy_fee_rate: number
+        kr_sell_fee_rate: number
+        kr_sell_tax_rate: number
+        crypto_fee_rate: number
+      status: "active" | "paused"
+      created_at: string
+      updated_at: string
+errors:
+  - 400 INVALID_INPUT
+  - 401 UNAUTHORIZED
+```
+
+#### GET `/portfolio/holdings`
+
+```yaml
+response:
+  200:
+    schema_version: "v1"
+    base_currency: "KRW" | "USD"
+    snapshot_date: "YYYY-MM-DD"
+    holdings:
+      - ticker: string
+        shares: number
+        avg_cost: number               # ticker 원통화 기준
+        currency: "KRW" | "USD"
+        current_price: number | null   # ticker 원통화 기준 (조회 실패 시 null)
+        current_value_local: number    # 원통화 기준 평가금액
+        current_value_base: number     # base_currency 환산 평가금액
+        allocation_pct: number
+```
+
+> 정책: `current_value_local`은 종목 원통화 기준, `current_value_base`는 기준통화(`base_currency`) 환산 값.
+
+#### GET `/portfolio/decisions/{id}`
+
+```yaml
+response:
+  200:
+    schema_version: "v1"
+    decision:
+      id: integer
+      decision_date: "YYYY-MM-DD"
+      status: "pending" | "executing" | "completed" | "partial_failed" | "failed"
+      briefing_summary: object | null
+      rationale: string | null
+      allocation_plan:
+        - ticker: string
+          action: "BUY" | "SELL" | "HOLD"
+          allocation_pct: number
+          shares: number
+          rationale: string | null
+      total_fund_snapshot: number
+      available_cash_snapshot: number
+      exchange_rate_snapshot: number | null
+      error_message: string | null
+      created_at: string
+    trades:
+      - id: integer
+        ticker: string
+        action: "buy" | "sell" | "hold"
+        shares: number
+        price: number
+        currency: "KRW" | "USD"
+        fee_rate: number
+        fee_amount: number
+        amount_local: number
+        amount_krw: number
+        executed_at: string
+errors:
+  - 404 NOT_FOUND
+```
 
 ### ⚠️ TBD (Skipped)
 
