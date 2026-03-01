@@ -504,12 +504,19 @@ class TickerScheduler:
         position_summary = self.trade_manager.get_position_summary(ticker)
 
         try:
+            logger.info(f"{ticker}: Collecting macro context...")
+            from tradingagents.dataflows.macro_collector import collect_macro_context
+            macro_ctx = collect_macro_context(ticker, cfg.get("market", "us"))
+            if macro_ctx:
+                logger.info(f"{ticker}: Macro context collected ({len(macro_ctx)} chars)")
+
             logger.info(f"{ticker}: Running G-ANT pipeline...")
             try:
                 final_state, (pipeline_decision, pipeline_strategy) = self.graph.propagate(
                     company_name=ticker,
                     trade_date=trade_date,
-                    current_position=""
+                    current_position="",
+                    macro_context=macro_ctx,
                 )
             except (DecisionParseError, DataVendorError):
                 raise

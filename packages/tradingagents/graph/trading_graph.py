@@ -181,7 +181,8 @@ class TradingAgentsGraph:
             ),
         }
 
-    def propagate(self, company_name, trade_date, depth=None, current_position=""):
+    def propagate(self, company_name, trade_date, depth=None, current_position="",
+                  macro_context=""):
         """Run the trading agents graph for a company on a specific date.
 
         Args:
@@ -192,6 +193,7 @@ class TradingAgentsGraph:
                    If None, uses config defaults.
             current_position: (DEPRECATED - FR-021) No longer used by 12 agents.
                              Keep for backward compatibility but value is ignored.
+            macro_context: v7 macro indicators + sector health text for all agents.
 
         Returns:
             Tuple of (final_state, (decision, strategy)):
@@ -206,9 +208,8 @@ class TradingAgentsGraph:
 
         self.ticker = company_name
 
-        # Initialize state with current_position (FR-017)
         init_agent_state = self.propagator.create_initial_state(
-            company_name, trade_date, current_position
+            company_name, trade_date, current_position, macro_context=macro_context,
         )
         args = self.propagator.get_graph_args()
 
