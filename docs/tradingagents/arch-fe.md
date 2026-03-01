@@ -1,7 +1,7 @@
 # Frontend Design Doc: TradingAgents UI (GANT)
 
 > Created: 2026-02-15
-> Updated: 2026-02-25 (v5 동기화 — 스케줄 next_run_time, 회고분석 페이지, AnalysisTabs)
+> Updated: 2026-03-01 (코드 동기화 — About 페이지, 회고분석 API 매핑, 네비게이션 정합성)
 > Service: tradingagents
 > Type: Frontend
 > Requirements: docs/tradingagents/spec.md
@@ -28,7 +28,7 @@ Svelte 기반 SPA로 AI 트레이딩 분석 대시보드 구현. REST API + WebS
 ## 1. Scope
 
 ### In scope
-- Dashboard, Positions, Schedules, ScheduleDetail, TradeDetail, Reports, ReportDetail, Reflections, Live, Auth (10 페이지)
+- Dashboard, Positions, Schedules, ScheduleDetail, TradeDetail, Reports, ReportDetail, Reflections, Retrospective, RetroDetail, Live, About, Auth (13 페이지 + NotFoundRedirect)
 - SPA 라우팅 + Bearer token gating
 - PWA (manifest + service worker + autoUpdate)
 - 모바일 최적화 다크 테마 UI
@@ -141,7 +141,7 @@ component_structure:
     - path: "/"
       component: "Dashboard"
       file: "src/routes/Dashboard.svelte"
-      description: "시스템 상태, KPI, 포지션, 큐, 활동 요약"
+      description: "시스템 상태, KPI, 포지션, 큐 요약"
     - path: "/positions"
       component: "Positions"
       file: "src/routes/Positions.svelte"
@@ -182,6 +182,10 @@ component_structure:
       component: "Live"
       file: "src/routes/Live.svelte"
       description: "큐 + WS 라이브 피드"
+    - path: "/about"
+      component: "About"
+      file: "src/routes/About.svelte"
+      description: "서비스 소개, 모드 설명, 학습 사이클 안내"
     - path: "/auth"
       component: "Auth"
       file: "src/routes/Auth.svelte"
@@ -194,10 +198,10 @@ component_structure:
   shared:
     - name: "AppHeader"
       path: "src/components/AppHeader.svelte"
-      description: "상단 로고 + 통화 셀렉터(ALL/KRW/USD) 인라인 구현 (FR-040). currencyFilter store 연동"
+      description: "통화 셀렉터(ALL/KRW/USD) + about 링크 (FR-040). currencyFilter store 연동"
     - name: "BottomNav"
       path: "src/components/BottomNav.svelte"
-      description: "모바일 하단 6탭 네비게이션 (예약/실시간/홈/투자/AI분석/회고)"
+      description: "모바일 하단 5탭 네비게이션 (예약/실시간/홈/투자/AI분석). /reflections, /retrospective는 /reports 탭 활성 상태로 그룹화"
     - name: "SelectMenu"
       path: "src/components/SelectMenu.svelte"
       props: "value, options, placeholder, disabled"
@@ -210,7 +214,7 @@ component_structure:
     - name: "api/client.ts"
       description: "Fetch wrapper (BASE_URL, auth header, localStorage 캐싱, 401 리다이렉트)"
     - name: "api/endpoints.ts"
-      description: "API 호출 함수 20개 (fetchMetrics, fetchPositionsMarket, fetchPositionsClosed, fetchSchedules, fetchReflections, createSchedule 등)"
+      description: "API 호출 함수 26개 (기본 대시보드/스케줄/리포트 + 회고분석 fetchRetro*/requestRetroAnalysis 포함)"
     - name: "ws/liveStream.ts"
       description: "WebSocket 연결 (http→ws URL 변환, onMessage/onError)"
     - name: "utils/format.ts"
@@ -242,11 +246,12 @@ apps/web/
 │   │   ├── Retrospective.svelte   # [NEW] v4 회고분석 리스트
 │   │   ├── RetroDetail.svelte     # [NEW] v4 회고분석 상세
 │   │   ├── Live.svelte
+│   │   ├── About.svelte
 │   │   ├── Auth.svelte
 │   │   └── NotFoundRedirect.svelte
 │   ├── components/
 │   │   ├── AppHeader.svelte         # 통화 셀렉터 인라인 (FR-040)
-│   │   ├── BottomNav.svelte         # 5탭 (예약/실시간/홈/투자/AI분석)
+│   │   ├── BottomNav.svelte         # 5탭 (예약/실시간/홈/투자/AI분석), 분석 계열 라우트 그룹 활성화
 │   │   ├── AnalysisTabs.svelte      # [NEW] v4 서브탭 (레포트/매매검증/회고분석)
 │   │   └── SelectMenu.svelte
 │   ├── lib/
@@ -392,8 +397,23 @@ routes:
     component: "Reflections"
     auth_required: false
 
+  - path: "/retrospective"
+    component: "Retrospective"
+    auth_required: false
+
+  - path: "/retrospective/:ticker"
+    component: "RetroDetail"
+    params:
+      - name: "ticker"
+        type: "string"
+    auth_required: false
+
   - path: "/live"
     component: "Live"
+    auth_required: false
+
+  - path: "/about"
+    component: "About"
     auth_required: false
 
   - path: "/auth"
@@ -468,7 +488,7 @@ api_integration:
 
   - endpoint: "GET /activity"
     function: "fetchActivity"
-    used_by: ["Dashboard"]
+    used_by: ["(현재 미사용, API 함수만 제공)"]
 
   - endpoint: "GET /schedules"
     function: "fetchSchedules"
@@ -521,6 +541,37 @@ api_integration:
     used_by: ["Reflections"]
     note: "FR-049. ?outcome=win|loss 필터, ?cursor, ?limit"
 
+  - endpoint: "GET /retrospective/summary"
+    function: "fetchRetroSummary"
+    used_by: ["Retrospective"]
+    note: "FR-055. 티커별 완료 회고분석 집계"
+
+  - endpoint: "GET /retrospective/tickers"
+    function: "fetchRetroTickers"
+    used_by: ["Retrospective (요청 모달)"]
+    note: "FR-055. 분석 요청 가능 티커 목록"
+
+  - endpoint: "GET /retrospective/detail/{ticker}"
+    function: "fetchRetroByTicker"
+    used_by: ["RetroDetail"]
+    note: "FR-055. 티커별 회고분석 상세 결과"
+
+  - endpoint: "GET /retrospective/positions/{ticker}"
+    function: "fetchRetroPositions"
+    used_by: ["Retrospective (요청 모달)"]
+    note: "FR-055. 포지션별 회고분석 상태"
+
+  - endpoint: "POST /retrospective/analyze"
+    function: "requestRetroAnalysis"
+    used_by: ["Retrospective (요청 모달)"]
+    auth: false
+    note: "FR-055. 선택 티커/전체 티커 분석 요청 큐잉"
+
+  - endpoint: "GET /retrospective/{id}"
+    function: "fetchRetroResult"
+    used_by: ["(API 함수 제공, 현재 화면 직접 사용 없음)"]
+    note: "FR-055. 단일 회고분석 결과 조회"
+
   - endpoint: "GET /tickers/names"
     function: "(via stores/tickerNames.ts)"
     used_by: ["전체 (앱 시작 시 로드)"]
@@ -537,7 +588,7 @@ api_integration:
 
 | # | Spec Ref | Feature | File | Component/Function | Action | Impl |
 |---|----------|---------|------|----------------|--------|------|
-| 1 | FR-035 | SPA 라우팅 | src/App.svelte | Router | 11개 라우트 매핑 (10 페이지 + NotFoundRedirect) | [x] |
+| 1 | FR-035 | SPA 라우팅 | src/App.svelte | Router | 14개 라우트 매핑 (13 페이지 + NotFoundRedirect) | [x] |
 | 2 | FR-034 | 대시보드 메트릭 | src/routes/Dashboard.svelte | fetchMetrics, fetchScheduleSummary | KPI + 오늘 실행 렌더링 | [x] |
 | 3 | FR-025 | 큐 상태 | src/routes/Dashboard.svelte | fetchQueue | 실행중/대기중 표시 | [x] |
 | 4 | FR-034 | 포지션 현재가 | src/routes/Positions.svelte | fetchPositionsMarket | 테이블/카드 + PnL 렌더링 | [x] |
@@ -554,8 +605,8 @@ api_integration:
 | 15 | FR-035 | PWA | vite.config.ts | VitePWA | manifest + SW (autoUpdate) | [x] |
 | 16 | FR-025 | API 클라이언트 | src/lib/api/client.ts | request, getJson, postJson, deleteJson | localStorage 캐싱 + 401 처리 | [x] |
 | 17 | FR-025 | WS 클라이언트 | src/lib/ws/liveStream.ts | connectLiveStream | http→ws 변환 + JSON 파싱 | [x] |
-| 18 | FR-035 | 하단 네비게이션 | src/components/BottomNav.svelte | BottomNav | 6탭 (예약/실시간/홈/투자/AI분석/회고) + 스크롤 자동 숨김 | [x] |
-| 19 | FR-035/040 | 상단 헤더 | src/components/AppHeader.svelte | AppHeader | 로고 + 통화 셀렉터(ALL/KRW/USD) 인라인 | [x] |
+| 18 | FR-035 | 하단 네비게이션 | src/components/BottomNav.svelte | BottomNav | 5탭 (예약/실시간/홈/투자/AI분석). `/reports` 탭이 `/reflections`, `/retrospective`도 활성 처리 | [x] |
+| 19 | FR-035/040 | 상단 헤더 | src/components/AppHeader.svelte | AppHeader | 통화 셀렉터(ALL/KRW/USD) + `/about` 링크 | [x] |
 | 20 | FR-035 | 셀렉트 메뉴 | src/components/SelectMenu.svelte | SelectMenu | 커스텀 드롭다운 | [x] |
 | 21 | FR-035 | 글로벌 스토어 | src/stores/auth.ts, tickerNames.ts, ui.ts | tokenStore, tickerNames, liveTickerStore | localStorage 동기화 + API 로드 | [x] |
 | 22 | FR-035 | 포맷 유틸 | src/lib/utils/format.ts | `formatMoney`, `formatMoneyPlain`, `formatPercent`, `formatDateTime`, `formatAgo`, `formatErrorMessage`, `formatAmount(value, ticker)`, `formatSignedAmount(value, ticker)` | 통화/퍼센트/시간 포맷. `formatAmount`/`formatSignedAmount`는 ticker 접미사(.KS/.KQ)로 KRW/USD 자동 판단 | [x] |
@@ -568,7 +619,11 @@ api_integration:
 | 29 | FR-048 | History 뱃지 동적 색상 | src/routes/TradeDetail.svelte | `getDecisionClass(value)` | BUY/매수→`badge-gain`, SELL/매도→`badge-loss`, HOLD/관망→`badge-muted` | [x] |
 | 30 | FR-049 | 회고 페이지 | src/routes/Reflections.svelte | Reflections | win/loss 필터(`setFilter` — 전환 시 배열+cursor 초기화), cursor 페이지네이션(`hasMore`+더보기), `marked`+`DOMPurify` 마크다운 렌더링, 아코디언 확장 | [x] |
 | 31 | FR-049 | 회고 API | src/lib/api/endpoints.ts | `fetchReflections(limit, outcome?, cursor?)` | `GET /reflections?limit=&outcome=&cursor=` | [x] |
-| 32 | FR-049 | 네비게이션 업데이트 | src/components/BottomNav.svelte | navItems 배열 | "회고" 탭 추가 (`route: "/reflections"`, SVG 아이콘) — 6탭 완성 | [x] |
+| 32 | FR-049 | 분석 탭 그룹 활성화 | src/components/BottomNav.svelte | `analysisRoutes` + `isActive()` | 하단 네비는 5탭 유지, `/reports` 탭이 `/reports`/`/reflections`/`/retrospective`를 묶어 활성 표시 | [x] |
+| 33 | FR-055 | 회고분석 목록 화면 | src/routes/Retrospective.svelte | `fetchRetroSummary`, `requestRetroAnalysis` | 티커별 완료 현황 + 요청 모달(선택/전체 큐잉) + 상태별 재요청 제어 | [x] |
+| 34 | FR-055 | 회고분석 상세 화면 | src/routes/RetroDetail.svelte | `fetchRetroByTicker` | 티커별 completed 결과 필터 + 회차 선택 + 마크다운 렌더링 | [x] |
+| 35 | FR-055 | 회고분석 API 매핑 | src/lib/api/endpoints.ts | `fetchRetroTickers`, `fetchRetroPositions`, `fetchRetroResult` | 회고분석 요청/상세/보조 목록 API 함수 제공 | [x] |
+| 36 | FR-035 | About 화면 | src/routes/About.svelte | About | 서비스 소개, 모드 차이, 학습 루프/용어 안내 정적 페이지 | [x] |
 
 ---
 
@@ -590,8 +645,8 @@ api_integration:
 1. **Scaffold**: Vite + Svelte + TypeScript + vite-plugin-pwa
 2. **Styles**: prototype.css 이식 (다크 테마, Pretendard)
 3. **API Client + Stores**: client.ts (캐싱/인증) + auth/tickerNames/ui stores
-4. **Routes + Pages**: 11개 라우트 (10 페이지 + NotFoundRedirect) + svelte-spa-router
-5. **Dashboard**: 6개 API 병렬 호출 + KPI + 큐 + 활동
+4. **Routes + Pages**: 14개 라우트 (13 페이지 + NotFoundRedirect) + svelte-spa-router
+5. **Dashboard**: 5개 API 병렬 호출 + KPI + 큐
 6. **Schedules CRUD**: 자동완성 + 모달 + 스와이프 삭제
 7. **TradeDetail**: Canvas OHLC 차트 + 마크다운 리포트
 8. **Live**: WS 연결 + DB 이벤트 병합
@@ -698,7 +753,6 @@ styling_convention:
 - marked + DOMPurify로 마크다운 리포트 안전 렌더링
 
 ### Known Issues
-- ~~AppHeader 네비게이션의 "검색" 링크~~ → **해결됨**: AppHeader는 로고 + 통화 셀렉터만 표시 (FR-040)
 - Dashboard ScheduleSummaryBanner 클릭(`/archive`)이 라우트 미등록 → NotFound → `/` 리다이렉트
 
 ### Assumptions
@@ -745,5 +799,5 @@ styling_convention:
 | Item           | Content                                      |
 | -------------- | -------------------------------------------- |
 | Generated      | 2026-02-15                                   |
-| Last synced    | 2026-02-25 (v5 동기화 — Retrospective/RetroDetail 페이지, AnalysisTabs 컴포넌트, 스케줄 next_run_time 표시) |
-| Analysis scope | `apps/web/src/` (13 routes, 4 components, 8 lib/store files) |
+| Last synced    | 2026-03-01 (코드 동기화 — About 라우트, 회고분석 API 매핑, BottomNav 5탭/분석 그룹 활성화 반영) |
+| Analysis scope | `apps/web/src/` (14 routes, 4 shared components, 8 lib/store files) |

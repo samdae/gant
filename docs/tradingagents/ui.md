@@ -1,7 +1,7 @@
 # UI Specification: TradingAgents (GANT)
 
 > Created: 2026-02-13
-> Updated: 2026-02-25 (v5 동기화 — 스케줄 예정시간, 회고분석 페이지, 매매검증 검색)
+> Updated: 2026-03-01 (코드 동기화 — About 화면, 회고분석 라우트/요청 플로우, 하단 5탭 네비)
 > Service: tradingagents
 > Platform: responsive
 > Requirements: docs/tradingagents/spec.md
@@ -24,17 +24,20 @@ approach: "Mobile First"
 
 | #   | Screen          | Route                | Related Endpoints                                                                                              | Auth Required    | Spec Reference         |
 | --- | --------------- | -------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------- | ---------------------- |
-| 1   | Dashboard       | `/`                  | `GET /health`, `GET /queue`, `GET /positions/market`, `GET /metrics`, `GET /activity`, `GET /schedules/summary` | No               | FR-025, FR-034, FR-040, FR-045 |
-| 2   | Positions       | `/positions`         | `GET /positions/market`, `GET /positions/closed`, `GET /metrics`                                               | No               | FR-013, FR-025, FR-034, FR-046 |
+| 1   | Dashboard       | `/`                  | `GET /health`, `GET /queue`, `GET /positions/market`, `GET /metrics`, `GET /schedules/summary`              | No               | FR-025, FR-034, FR-040, FR-045 |
+| 2   | Positions       | `/positions`         | `GET /positions/market`, `GET /positions/closed`, `GET /metrics`                                              | No               | FR-013, FR-025, FR-034, FR-046 |
 | 3   | Schedules       | `/schedules`         | `GET /schedules`, `GET /queue`, `GET /schedules/{ticker}/cycles`, `GET /search/tickers`, `POST /schedules`, `DELETE /schedules/{ticker}` | POST/DELETE: Yes | FR-016, FR-025, FR-026 |
-| 4   | Schedule Detail | `/schedules/:ticker` | `GET /schedules/{ticker}/cycles`, `GET /schedules/{ticker}/cycles/{id}/events`                                 | No               | FR-025, FR-037         |
-| 5   | Trade Detail    | `/trade/:ticker`     | `GET /positions`, `GET /positions/{id}`, `GET /positions/market`, `GET /reports?ticker=`, `GET /position/{id}/graph` | No               | FR-013, FR-014, FR-020, FR-034, FR-048 |
+| 4   | Schedule Detail | `/schedules/:ticker` | `GET /schedules/{ticker}/cycles`, `GET /schedules/{ticker}/cycles/{id}/events`                               | No               | FR-025, FR-037         |
+| 5   | Trade Detail    | `/trade/:ticker`     | `GET /positions?status=`, `GET /positions/{id}`, `GET /positions/market`, `GET /reports?ticker=`, `GET /position/{id}/graph` | No | FR-013, FR-014, FR-020, FR-034, FR-048 |
 | 6   | Reports         | `/reports`           | `GET /reports/tickers`                                                                                         | No               | FR-025, FR-032         |
 | 7   | Report Detail   | `/reports/:ticker`   | `GET /reports?ticker=`                                                                                         | No               | FR-025, FR-032         |
 | 8   | Reflections     | `/reflections`       | `GET /reflections`                                                                                             | No               | FR-049                 |
-| 9   | Live Analysis   | `/live`              | `WS /ws/analyze/{ticker}`, `GET /queue`, `GET /live/{ticker}/events`                                           | No               | FR-025, FR-037         |
-| 10  | Auth            | `/auth`              | —                                                                                                              | No               | FR-026                 |
-| 11  | Not Found       | `*`                  | —                                                                                                              | No               | —                      |
+| 9   | Retrospective   | `/retrospective`     | `GET /retrospective/summary`, `GET /retrospective/tickers`, `GET /retrospective/positions/{ticker}`, `POST /retrospective/analyze` | No | FR-055 |
+| 10  | Retro Detail    | `/retrospective/:ticker` | `GET /retrospective/detail/{ticker}`                                                                      | No               | FR-055                 |
+| 11  | Live Analysis   | `/live`              | `WS /ws/analyze/{ticker}`, `GET /queue`, `GET /live/{ticker}/events`                                          | No               | FR-025, FR-037         |
+| 12  | About           | `/about`             | —                                                                                                              | No               | FR-035                 |
+| 13  | Auth            | `/auth`              | —                                                                                                              | No               | FR-026                 |
+| 14  | Not Found       | `*`                  | —                                                                                                              | No               | —                      |
 
 ---
 
@@ -42,7 +45,7 @@ approach: "Mobile First"
 
 ### 2.1 Dashboard (`/`)
 
-**Purpose**: 시스템 상태, 핵심 KPI, 오늘 실행 요약, 활성 포지션, 큐 상태, 최근 활동을 한 화면에 요약.
+**Purpose**: 시스템 상태, 핵심 KPI, 오늘 실행 요약, 활성 포지션, 큐 상태를 한 화면에 요약.
 
 **Mobile**:
 
@@ -68,13 +71,8 @@ approach: "Mobile First"
 │ │ ● TSLA         실행중       │ │
 │ │ ○ MSFT         대기중       │ │
 │ └─────────────────────────────┘ │
-│ ┌─ 최근 활동 ─────────────────┐ │
-│ │ ● NVDA 매수 10 @ $125.00   │ │
-│ │ ◆ AAPL 결정: 관망          │ │
-│ │ ● TSLA 매도 5 @ $245.00    │ │
-│ └─────────────────────────────┘ │
 ├─────────────────────────────────┤
-│ 예약 실시간 [홈] 투자 AI분석 회고│
+│ 예약 실시간 [홈] 투자 AI분석     │
 └─────────────────────────────────┘
 ```
 
@@ -82,7 +80,7 @@ approach: "Mobile First"
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ GANT    [ALL▾KRW|USD]                                         │
+│ [ALL▾KRW|USD]                                  about           │
 ├──────────────────────────────────────────────────────────────┤
 │ 홈                                        [● 온라인·대기]    │
 │                                                              │
@@ -96,17 +94,16 @@ approach: "Mobile First"
 │ ┌─ 내 투자 ─── 전체보기 ─┐  ┌─ 대기열 ─── 실시간보기 ────┐ │
 │ │ NVDA  $1,250 (+$50)    │  │ ● TSLA        실행중       │ │
 │ │ AAPL  $890   (-$12)    │  │ ○ MSFT        대기중       │ │
-│ │                        │  ├────────────────────────────┤ │
-│ │                        │  │ 최근 활동                  │ │
-│ │                        │  │ ● NVDA 매수 10 @ $125     │ │
-│ │                        │  │ ◆ AAPL 결정: 관망         │ │
+│ │                        │  │                            │ │
+│ │                        │  │                            │ │
+│ │                        │  │                            │ │
 │ └────────────────────────┘  └────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 **States**: loading / error (오프라인 배지) / loaded
 
-**API Calls**: `fetchMetrics`, `fetchPositionsMarket`, `fetchQueue`, `fetchActivity`, `fetchHealth`, `fetchScheduleSummary`
+**API Calls**: `fetchMetrics`, `fetchPositionsMarket`, `fetchQueue`, `fetchHealth`, `fetchScheduleSummary`
 
 ---
 
@@ -434,7 +431,41 @@ approach: "Mobile First"
 
 ---
 
-### 2.9 Live Analysis (`/live`)
+### 2.9 Retrospective (`/retrospective`) — FR-055
+
+**Purpose**: 티커별 회고분석 완료 현황 확인 + 회고분석 요청(선택 티커/전체 티커).
+
+**States**: loading / error / empty / loaded / modal(open) / analyzing
+
+**API Calls**:
+- `fetchRetroSummary()`
+- `fetchRetroTickers()`
+- `fetchRetroPositions(ticker)`
+- `requestRetroAnalysis({ mode: "ticker" | "all", position_ids? })`
+
+**특이사항**:
+- 상단 `AnalysisTabs` 우측 action 슬롯에 "요청" 버튼 배치
+- 모달에서 티커 선택 시 포지션별 분석 상태(`분석미완료`, `분석중`, `완료(open|closed)`, `실패`) 표시
+- `completed + closed`는 재요청 비활성화, `completed + open`/`failed`는 재요청 허용
+
+---
+
+### 2.10 Retro Detail (`/retrospective/:ticker`) — FR-055
+
+**Purpose**: 특정 티커의 완료된 회고분석 결과 상세(회차 선택 + 마크다운 본문).
+
+**States**: loading / error / empty / loaded
+
+**API Calls**: `fetchRetroByTicker(ticker)`
+
+**특이사항**:
+- 결과 목록에서 `status === "completed"`만 표시
+- `SelectMenu`로 회차 선택 시 해당 분석 본문 즉시 교체
+- 상단 뒤로가기 링크 `#/retrospective`
+
+---
+
+### 2.11 Live Analysis (`/live`)
 
 **Purpose**: WebSocket으로 에이전트 실행 상태를 실시간 스트리밍.
 
@@ -482,7 +513,21 @@ approach: "Mobile First"
 
 ---
 
-### 2.10 Auth (`/auth`)
+### 2.12 About (`/about`)
+
+**Purpose**: 서비스 목적/모드 구분/학습 사이클/RAG 개념을 설명하는 정적 안내 페이지.
+
+**States**: loaded (정적 콘텐츠)
+
+**API Calls**: 없음
+
+**특이사항**:
+- AppHeader 우측 `about` 링크로 접근
+- 분석검증 모드 vs 포트폴리오 모드 차이 및 용어 설명 제공
+
+---
+
+### 2.13 Auth (`/auth`)
 
 **Purpose**: WRITE 작업을 위한 Admin 토큰 입력. 성공 시 localStorage에 저장 + 원래 화면 복귀.
 
@@ -506,7 +551,7 @@ approach: "Mobile First"
 
 ---
 
-### 2.11 Not Found (`*`)
+### 2.14 Not Found (`*`)
 
 **Purpose**: 미등록 라우트 접근 시 대시보드로 자동 리다이렉트.
 
@@ -516,9 +561,10 @@ approach: "Mobile First"
 
 | Component       | Props / State                       | File                              | Usage                                         |
 | --------------- | ----------------------------------- | --------------------------------- | --------------------------------------------- |
-| AppHeader       | `$currencyFilter`, `$location`      | `components/AppHeader.svelte`     | 모든 페이지 상단 (로고 + 통화 셀렉터 ALL/KRW/USD 인라인) (FR-040) |
-| BottomNav       | navItems, `$location`               | `components/BottomNav.svelte`     | 모바일 하단 6탭 (예약/실시간/홈/투자/AI분석/회고) + 스크롤 자동 숨김 |
-| SelectMenu      | value, options, placeholder, disabled | `components/SelectMenu.svelte`  | ScheduleDetail, ReportDetail (사이클 선택)     |
+| AppHeader       | `$currencyFilter`                   | `components/AppHeader.svelte`     | 모든 페이지 상단 (통화 셀렉터 ALL/KRW/USD + `about` 링크) (FR-040) |
+| BottomNav       | navItems, `$location`               | `components/BottomNav.svelte`     | 모바일 하단 5탭 (예약/실시간/홈/투자/AI분석). `/reports` 탭이 `/reflections`, `/retrospective`도 활성 처리 |
+| AnalysisTabs    | `$location`, `slot="action"`        | `components/AnalysisTabs.svelte`  | Reports/Reflections/Retrospective 상단 서브탭 (레포트/매매검증/회고분석) |
+| SelectMenu      | value, options, placeholder, disabled | `components/SelectMenu.svelte`  | ScheduleDetail, ReportDetail, RetroDetail (회차 선택) |
 
 ### Utility Functions (`lib/utils/format.ts`)
 
@@ -562,14 +608,18 @@ colors:
 ## 5. Navigation Flow
 
 ```
-BottomNav: 예약(/schedules) ─ 실시간(/live) ─ [홈](/) ─ 투자(/positions) ─ AI분석(/reports) ─ 회고(/reflections)
-AppHeader: 로고(GANT) + [ALL▾KRW|USD] 통화 셀렉터 인라인 (FR-040) — 별도 네비게이션 링크 없음
+BottomNav: 예약(/schedules) ─ 실시간(/live) ─ [홈](/) ─ 투자(/positions) ─ AI분석(/reports)
+  └ AI분석 탭 활성 그룹: /reports, /reflections, /retrospective
+
+AppHeader: [ALL|KRW|USD] 통화 셀렉터 + about(/about) 링크
 
 Dashboard (/) ──→ Positions (/positions) ──→ TradeDetail (/trade/:ticker)
               ──→ Schedules (/schedules) ──→ ScheduleDetail (/schedules/:ticker)
               ──→ Live (/live)
               ──→ Reports (/reports) ──→ ReportDetail (/reports/:ticker)
               ──→ Reflections (/reflections) [FR-049]
+              ──→ Retrospective (/retrospective) ──→ RetroDetail (/retrospective/:ticker) [FR-055]
+              ──→ About (/about)
               ──→ Auth (/auth) [401/403 시 자동 리다이렉트]
 ```
 
@@ -612,5 +662,5 @@ pwa:
 | Item           | Content                                      |
 | -------------- | -------------------------------------------- |
 | Generated      | 2026-02-13                                   |
-| Last synced    | 2026-02-25 (v5 동기화 — 스케줄 예정시간 표시, 회고분석 페이지, AnalysisTabs, 매매검증 검색) |
-| Analysis scope | `apps/web/src/` (13 screens, 4 shared components: AppHeader, BottomNav, AnalysisTabs, SelectMenu) |
+| Last synced    | 2026-03-01 (코드 동기화 — About 화면, 회고분석 요청 플로우, BottomNav 5탭/분석 그룹 활성화) |
+| Analysis scope | `apps/web/src/` (14 screens, 4 shared components: AppHeader, BottomNav, AnalysisTabs, SelectMenu) |
