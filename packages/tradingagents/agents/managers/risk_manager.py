@@ -1,6 +1,8 @@
 import time
 import json
 
+from tradingagents.agents.utils.macro_mixin import get_macro_block
+
 
 def create_risk_manager(llm):
     def risk_manager_node(state) -> dict:
@@ -14,6 +16,7 @@ def create_risk_manager(llm):
         fundamentals_report = state["news_report"]
         sentiment_report = state["sentiment_report"]
         trader_plan = state["investment_plan"]
+        macro_block = get_macro_block(state)
 
         prompt = f"""As the Risk Management Judge and Debate Facilitator, your goal is to evaluate the debate between three risk analysts—Aggressive, Neutral, and Conservative—and determine the best course of action for the trader. Your decision must result in a clear recommendation: Buy, Sell, or Hold. Choose Hold only if strongly justified by specific arguments, not as a fallback when all sides seem valid. Strive for clarity and decisiveness.
 
@@ -46,7 +49,9 @@ Example:
 {{"action": "BUY", "conviction": "MEDIUM", "allocation_pct": 50}}
 ```
 
-You MUST include this block at the very end of your response. Do not omit it."""
+You MUST include this block at the very end of your response. Do not omit it.
+
+{macro_block}"""
 
         response = llm.invoke(prompt)
 

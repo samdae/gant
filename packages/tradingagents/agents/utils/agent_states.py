@@ -54,6 +54,9 @@ class AgentState(MessagesState):
     # FR-021: Removed current_position - 12 agents should not see position
     # Position context is only available to Portfolio Agent (outside graph)
 
+    # v7: Macro indicators + sector health (injected before pipeline)
+    macro_context: Annotated[str, "Macro indicators and sector health context"]
+
     # research step
     market_report: Annotated[str, "Report from the Market Analyst"]
     sentiment_report: Annotated[str, "Report from the Social Media Analyst"]

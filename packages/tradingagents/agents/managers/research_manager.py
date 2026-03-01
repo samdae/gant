@@ -1,6 +1,8 @@
 import time
 import json
 
+from tradingagents.agents.utils.macro_mixin import get_macro_block
+
 
 def create_research_manager(llm):
     def research_manager_node(state) -> dict:
@@ -11,6 +13,7 @@ def create_research_manager(llm):
         fundamentals_report = state["fundamentals_report"]
 
         investment_debate_state = state["investment_debate_state"]
+        macro_block = get_macro_block(state)
 
         prompt = f"""As the portfolio manager and debate facilitator, your role is to critically evaluate this round of debate and make a definitive decision: align with the bear analyst, the bull analyst, or choose Hold only if it is strongly justified based on the arguments presented.
 
@@ -24,7 +27,9 @@ Strategic Actions: Concrete steps for implementing the recommendation. Present y
 
 Here is the debate:
 Debate History:
-{history}"""
+{history}
+
+{macro_block}"""
         response = llm.invoke(prompt)
 
         new_investment_debate_state = {

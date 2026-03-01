@@ -350,8 +350,11 @@ class PortfolioAgent:
 전략 JSON의 allocation_pct가 있으면 그 값을 참고하되, 본인의 판단으로 조절 가능합니다.
 """
 
-        prompt = f"""당신은 가상 트레이딩 시스템의 포트폴리오 매니저입니다. 파이프라인의 최종결정과 전략을 기반으로 실행 가능한 매매 결정을 내려주세요.
+        macro_context = pipeline_state.get("macro_context", "")
+        macro_section = f"\n**매크로 & 섹터 컨텍스트:**\n{macro_context}\n" if macro_context else ""
 
+        prompt = f"""당신은 가상 트레이딩 시스템의 포트폴리오 매니저입니다. 파이프라인의 최종결정과 전략을 기반으로 실행 가능한 매매 결정을 내려주세요.
+{macro_section}
 **현재 포트폴리오 상태:**
 - 티커: {ticker}
 - 포지션: {position_summary}

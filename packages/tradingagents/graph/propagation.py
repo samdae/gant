@@ -16,7 +16,8 @@ class Propagator:
         self.max_recur_limit = max_recur_limit
 
     def create_initial_state(
-        self, company_name: str, trade_date: str, current_position: str = ""
+        self, company_name: str, trade_date: str, current_position: str = "",
+        macro_context: str = "",
     ) -> Dict[str, Any]:
         """Create the initial state for the agent graph.
 
@@ -24,13 +25,13 @@ class Propagator:
             company_name: Ticker symbol
             trade_date: Analysis date (YYYY-MM-DD)
             current_position: (DEPRECATED - FR-021) No longer used by 12 agents
-        
-        Note: current_position parameter kept for backward compatibility but not used.
+            macro_context: v7 macro indicators + sector health text
         """
         return {
             "messages": [("human", company_name)],
             "company_of_interest": company_name,
             "trade_date": str(trade_date),
+            "macro_context": macro_context,
             # FR-021: Removed current_position injection - 12 agents analyze objectively
             "investment_debate_state": InvestDebateState(
                 {"history": "", "current_response": "", "count": 0}
