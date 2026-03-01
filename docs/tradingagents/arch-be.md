@@ -420,6 +420,11 @@ CREATE TABLE portfolio_configs (
     available_cash   DOUBLE PRECISION NOT NULL DEFAULT 100000000,  -- 가용 현금 (KRW)
     base_currency    TEXT      NOT NULL DEFAULT 'KRW',
     fee_enabled      BOOLEAN   NOT NULL DEFAULT TRUE,
+    us_fee_rate      DOUBLE PRECISION NOT NULL DEFAULT 0.001,      -- 0.1%
+    kr_buy_fee_rate  DOUBLE PRECISION NOT NULL DEFAULT 0.0025,     -- 0.25%
+    kr_sell_fee_rate DOUBLE PRECISION NOT NULL DEFAULT 0.0025,     -- 0.25%
+    kr_sell_tax_rate DOUBLE PRECISION NOT NULL DEFAULT 0.0018,     -- 0.18%
+    crypto_fee_rate  DOUBLE PRECISION NOT NULL DEFAULT 0.001,      -- 0.1%
     status           TEXT      NOT NULL DEFAULT 'active',          -- active / paused
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -467,16 +472,17 @@ CREATE INDEX idx_portfolio_trades_ticker ON portfolio_trades(ticker);
 CREATE TABLE portfolio_holdings (
     id                  BIGSERIAL PRIMARY KEY,
     portfolio_config_id BIGINT    NOT NULL REFERENCES portfolio_configs(id),
+    snapshot_date       DATE      NOT NULL,                          -- 일별 스냅샷 기준일
     ticker              TEXT      NOT NULL,
     shares              DOUBLE PRECISION NOT NULL DEFAULT 0,
     avg_cost            DOUBLE PRECISION NOT NULL DEFAULT 0,        -- 현지 통화 기준 평단가
     currency            TEXT      NOT NULL DEFAULT 'USD',
     current_value_krw   DOUBLE PRECISION NOT NULL DEFAULT 0,        -- 최신 KRW 환산 시가
-    weight_pct          DOUBLE PRECISION NOT NULL DEFAULT 0,        -- 포트폴리오 내 비중 (%)
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    allocation_pct      DOUBLE PRECISION NOT NULL DEFAULT 0,        -- 포트폴리오 내 비중 (%)
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX idx_portfolio_holdings_unique ON portfolio_holdings(portfolio_config_id, ticker);
+CREATE UNIQUE INDEX idx_portfolio_holdings_unique ON portfolio_holdings(portfolio_config_id, ticker, snapshot_date);
+CREATE INDEX idx_portfolio_holdings_snapshot_date ON portfolio_holdings(snapshot_date);
 
 -- ⑭ portfolio_reflections: 주간 포트폴리오 회고 (FR-061)
 CREATE TABLE portfolio_reflections (
@@ -676,7 +682,7 @@ scripts/
 | 102 | FR-056 | PortfolioConfigRepository | `storage/portfolio_config_repo.py` | `PortfolioConfigRepository` | `get_active`, `create`, `update_fund(config_id, total_fund, available_cash)`, `pause`, `resume` | **new** |
 | 103 | FR-056 | PortfolioDecisionRepository | `storage/portfolio_decision_repo.py` | `PortfolioDecisionRepository` | `create`, `update_status`, `get_by_date(config_id, date)`, `list_recent(config_id, limit)` | **new** |
 | 104 | FR-056 | PortfolioTradeRepository | `storage/portfolio_trade_repo.py` | `PortfolioTradeRepository` | `create_batch(trades[])`, `list_by_decision(decision_id)`, `get_summary_by_ticker(config_id)` | **new** |
-| 105 | FR-056 | PortfolioHoldingRepository | `storage/portfolio_holding_repo.py` | `PortfolioHoldingRepository` | `upsert(config_id, ticker, shares, avg_cost, …)`, `get_all(config_id)`, `delete(config_id, ticker)` | **new** |
+| 105 | FR-056 | PortfolioHoldingRepository | `storage/portfolio_holding_repo.py` | `PortfolioHoldingRepository` | `create_snapshot(config_id, snapshot_date, ticker, shares, avg_cost, allocation_pct, …)`, `list_latest(config_id)`, `list_by_date_range(config_id, from, to)`, `cleanup_old_snapshots(days=14)` | **new** |
 | 106 | FR-056 | PortfolioReflectionRepository | `storage/portfolio_reflection_repo.py` | `PortfolioReflectionRepository` | `create`, `get_by_week(config_id, week_start)`, `list_recent(config_id, limit)` | **new** |
 | 107 | FR-056 | 포트폴리오 파이프라인 오케스트레이터 | `scheduler/portfolio_pipeline.py` | `PortfolioPipeline` | `run_daily(config_id)` — (1) 전체 티커 reports 수집 → (2) BriefingAgent → (3) PortfolioManagerAgent → (4) 매매 실행 → (5) holdings 갱신 | **new** |
 | 108 | FR-056 | 스케줄러 연동 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_on_all_tickers_complete()` — 전체 티커 분석 완료 이벤트 감지 후 `PortfolioPipeline.run_daily` 큐 등록 | modify |
@@ -686,14 +692,14 @@ scripts/
 | 112 | FR-058 | PortfolioManagerAgent | `virtual_trade/portfolio_manager_agent.py` | `PortfolioManagerAgent` | `decide_allocation(briefing, holdings, available_cash, exchange_rate) → AllocationPlan` | **new** |
 | 113 | FR-058 | PortfolioManagerAgent 프롬프트 | `virtual_trade/portfolio_manager_agent.py` | — | `_PM_PROMPT` — "포트폴리오 매니저로서 현재 보유 현황과 가용 자금을 고려하여 리밸런싱 계획을 수립하라. JSON [{ticker, action, weight, shares, rationale}] + 전체 근거 TEXT" | **new** |
 | 114 | FR-058 | PM JSON 파싱 + 검증 | `virtual_trade/portfolio_manager_agent.py` | `PortfolioManagerAgent` | `_parse_plan(response) → AllocationPlan`. weight 합 100% 검증, shares × price ≤ available_cash 검증, LLM fallback on parse error | **new** |
-| 115 | FR-059 | 수수료 계산기 | `virtual_trade/fee_calculator.py` | `FeeCalculator` | `calculate(market, action, amount) → FeeResult(rate, amount)`. us: 0.1% (min $1), kr: buy 0.015% / sell 0.015%+0.18% tax, crypto: 0.04% | **new** |
+| 115 | FR-059 | 수수료 계산기 | `virtual_trade/fee_calculator.py` | `FeeCalculator` | `calculate(market, action, amount) → FeeResult(rate, amount)`. 기본값: us 0.1%, kr buy 0.25% / sell 0.25%+0.18% tax, crypto 0.1%. `portfolio_configs` 사용자 설정값 우선 | **new** |
 | 116 | FR-059 | 환율 조회 | `virtual_trade/exchange_rate.py` | `ExchangeRateService` | `get_usd_krw() → float`. yfinance `USDKRW=X`, 1시간 TTL 인메모리 캐시. 실패 시 마지막 캐시값 반환 (None이면 1380.0 하드코딩 폴백) | **new** |
-| 117 | FR-059 | 매매 실행 엔진 | `scheduler/portfolio_pipeline.py` | `PortfolioPipeline` | `_execute_trades(plan, config, exchange_rate)` — plan 순회: 현가 조회 → 수수료 계산 → portfolio_trades INSERT → holdings UPSERT → available_cash 차감. 개별 종목 실패 시 해당 건 skip + 로그 | modify |
+| 117 | FR-059 | 매매 실행 엔진 | `scheduler/portfolio_pipeline.py` | `PortfolioPipeline` | `_execute_trades(plan, config, exchange_rate)` — plan 순회: 현가 조회 → 수수료 계산 → portfolio_trades INSERT → 일별 holdings snapshot INSERT → available_cash 차감. 실행 후 14일 이전 snapshot 정리 | modify |
 | 118 | FR-060 | HybridMemory 컬렉션 분리 | `memory/hybrid_memory.py` | `HybridMemory` | `__init__` 에 `collection_name` 파라미터 추가. 기존: `"analysis_reflections"`, 포트폴리오: `"portfolio_reflections"`. FTS 쿼리 대상 테이블도 파라미터화 | modify |
 | 119 | FR-060 | RAG 교차 참조 | `memory/hybrid_memory.py` | `HybridMemory` | `get_memories_cross(query, primary_collection, secondary_collection, primary_k, secondary_k)` — primary에서 top-K + secondary에서 top-1, 소스 태깅하여 반환 | **new** |
 | 120 | FR-060 | PM RAG 연동 | `virtual_trade/portfolio_manager_agent.py` | `PortfolioManagerAgent` | `_inject_rag(briefing)` — `get_memories_cross("portfolio_reflections", "analysis_reflections", 2, 1)` 호출 → PM 프롬프트에 "과거 경험" 섹션 주입 | modify |
 | 121 | FR-061 | PortfolioReflector | `graph/portfolio_reflection.py` | `PortfolioReflector` | `reflect_weekly(config_id, week_start, week_end) → ReflectionResult` — 해당 주 decisions + trades + holdings 변화 분석 → LLM 평가 → portfolio_reflections INSERT + ChromaDB 벡터 저장 | **new** |
-| 122 | FR-061 | 주간 스케줄러 트리거 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_init_weekly_schedule()` — CronTrigger(day_of_week='sat', hour=2). `PortfolioPipeline.run_weekly` 큐 등록 | modify |
+| 122 | FR-061 | 주간 스케줄러 트리거 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_init_weekly_schedule()` — `CronTrigger(day_of_week='sun', hour=12, minute=0, timezone='Asia/Seoul')`. `PortfolioPipeline.run_weekly` 큐 등록 | modify |
 | 123 | FR-061 | PortfolioReflector 프롬프트 | `graph/portfolio_reflection.py` | — | `_WEEKLY_REFLECTION_PROMPT` — "이번 주 포트폴리오 배분 결정을 복기하라. allocation_accuracy(0~100), 핵심 교훈, 개선 방향을 제시하라" | **new** |
 | 124 | FR-056 | 포트폴리오 API 라우터 | `api/portfolio_routes.py` | — | 9개 엔드포인트 (상세 §6 참조) | **new** |
 
@@ -789,13 +795,13 @@ scripts/
 14. **Step 14: 공유 자금 풀 + 수수료 (FR-059)**
     - `FeeCalculator` — 시장별 수수료 계산 (us/kr/crypto)
     - `ExchangeRateService` — yfinance USDKRW=X + 1시간 캐시
-    - `_execute_trades()` — plan 순회, 현가 조회, 수수료 적용, holdings UPSERT, cash 차감
+    - `_execute_trades()` — plan 순회, 현가 조회, 수수료 적용, holdings snapshot INSERT, cash 차감
     - 스케줄러 연동 — `_on_all_tickers_complete()` → 큐 등록 (priority=3)
 
 15. **Step 15: RAG 교차 참조 + 주간 회고 (FR-060, FR-061)**
     - `HybridMemory` — collection_name 파라미터화, `get_memories_cross()` 추가
     - `PortfolioReflector.reflect_weekly()` — 주간 decisions/trades 분석 → LLM → DB + ChromaDB
-    - CronTrigger(day_of_week='sat', hour=2) 주간 스케줄 등록
+    - `CronTrigger(day_of_week='sun', hour=12, minute=0, timezone='Asia/Seoul')` 주간 스케줄 등록
 
 16. **Step 16: 매크로/섹터 컨텍스트 주입 (FR-062, FR-063)**
     - `dataflows/macro_collector.py` 신규: 시장별 매크로 + 섹터 상대강도 수집, 일일 캐시, 폴백
@@ -1007,19 +1013,20 @@ _queue_worker → PortfolioPipeline.run_daily(config_id)
     │  FeeCalculator.calculate(market, action,  │
     │    shares × price)                         │
     │  portfolio_trades INSERT                   │
-    │  portfolio_holdings UPSERT                 │
+    │  portfolio_holdings snapshot INSERT        │
     │  portfolio_configs.available_cash 차감     │
     └────┬─────────────────────────────────────┘
          │
          ▼
     portfolio_decisions UPDATE status='completed'
+    + snapshot_date 기준 14일 이전 holdings 자동 정리
     WebSocket broadcast: {type: 'portfolio_daily_complete'}
 ```
 
 ### 5.6 Portfolio Weekly Reflection (FR-061)
 
 ```
-CronTrigger(day_of_week='sat', hour=2)
+CronTrigger(day_of_week='sun', hour=12, minute=0, timezone='Asia/Seoul')
          │ queue.put({type: 'portfolio_weekly', priority: 4})
          ▼
 _queue_worker → PortfolioPipeline.run_weekly(config_id)
@@ -1027,8 +1034,9 @@ _queue_worker → PortfolioPipeline.run_weekly(config_id)
     ┌────┴────────────────────────────────────────────┐
     │ DecisionRepo.list_by_week(config_id, week)      │
     │ TradeRepo.list_by_week(config_id, week)         │
-    │ HoldingRepo.get_all(config_id) → 주말 보유 현황 │
-    │ 주간 수익률 계산 (holdings KRW 시가 변화)       │
+    │ HoldingRepo.list_by_date_range(config_id, week) │
+    │   → 주초 snapshot vs 주말 snapshot 비교          │
+    │ 주간 수익률 계산 (snapshot KRW 시가 변화)        │
     └────┬────────────────────────────────────────────┘
          │
          ▼
@@ -1080,12 +1088,12 @@ _queue_worker → PortfolioPipeline.run_weekly(config_id)
 | GET | `/rag-validator/reports` | — | RAG 효과 분석 리포트 목록 (?cursor, ?limit) (FR-053) |
 | GET | `/rag-validator/reports/{retrospective_id}` | — | RAG 효과 분석 상세 (문서별 verdict + justification) (FR-053) |
 | GET | `/portfolio/config` | — | 포트폴리오 설정 조회 (FR-056) |
-| POST | `/portfolio/config` | Bearer | 포트폴리오 설정 생성/수정 (initial_capital, fee_enabled) (FR-056) |
+| POST | `/portfolio/config` | Bearer | 포트폴리오 설정 생성/수정 (initial_capital, base_currency, fee_enabled, 시장별 fee_rate) (FR-056, FR-059) |
 | POST | `/portfolio/config/pause` | Bearer | 포트폴리오 일시정지 (FR-056) |
 | POST | `/portfolio/config/resume` | Bearer | 포트폴리오 재개 (FR-056) |
 | GET | `/portfolio/decisions` | — | 일일 결정 목록 (?cursor, ?limit) — briefing_summary, allocation_plan 포함 (FR-057, FR-058) |
 | GET | `/portfolio/decisions/{id}` | — | 결정 상세 + 해당 trades 목록 (FR-058) |
-| GET | `/portfolio/holdings` | — | 현재 보유 현황 (weight_pct, current_value_krw 포함) (FR-059) |
+| GET | `/portfolio/holdings` | — | 최신 snapshot 기준 현재 보유 현황 (allocation_pct, current_value_krw 포함) (FR-059) |
 | GET | `/portfolio/trades` | — | 매매 기록 (?ticker, ?cursor, ?limit) — 수수료·환율 포함 (FR-059) |
 | GET | `/portfolio/reflections` | — | 주간 회고 목록 (?cursor, ?limit) (FR-061) |
 
@@ -1129,8 +1137,11 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | `PORTFOLIO_ENABLED` | 포트폴리오 모드 활성화 (FR-056) | `false` |
 | `PORTFOLIO_INITIAL_CAPITAL` | 포트폴리오 초기 자금 (KRW) (FR-059) | `100000000` |
 | `PORTFOLIO_FEE_ENABLED` | 거래 수수료 적용 여부 (FR-059) | `true` |
+| `PORTFOLIO_SNAPSHOT_RETENTION_DAYS` | portfolio_holdings snapshot 보관 일수 (일별 정리 기준) | `14` |
+| `PORTFOLIO_READ_AUTH_REQUIRED` | 포트폴리오 READ 엔드포인트 인증 강제 여부 (터널/운영 hardening) | `false` |
 | `EXCHANGE_RATE_CACHE_TTL` | 환율 캐시 TTL (초) (FR-059) | `3600` |
 | `EXCHANGE_RATE_FALLBACK` | 환율 조회 실패 시 폴백 값 (FR-059) | `1380.0` |
+| `API_RATE_LIMIT_PER_MIN` | 리버스 프록시/게이트웨이 기준 분당 요청 제한(문서 계약값) | `120` |
 
 ---
 
@@ -1168,7 +1179,7 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | 매크로 데이터 소스 | yfinance 단일 | 외부 매크로 API(FRED 등) | 의존성/운영 복잡도 최소화, 기존 데이터 흐름 재사용 (FR-062) |
 | 매크로 해석 방식 | 룰 기반 해석 없음 (수치 원문 주입) | 규칙 엔진 선해석 | 하드코딩 편향을 줄이고 LLM+RAG가 맥락적으로 판단 (FR-062, FR-063) |
 | 금액 타입 (포트폴리오) | DOUBLE PRECISION | DECIMAL(18,4) | 기존 9테이블 패턴 일관성. 가상 매매라 소수점 정밀도 이슈 무관 (FR-056, v6 설계 토론) |
-| 수수료 테이블 | application 상수 (FeeCalculator) | 별도 fee_rates 테이블 | 3종(us/kr/crypto) 고정 규칙. DB 관리 오버헤드 대비 이점 없음. 변경 시 코드 수정이 더 명확 (FR-059, v6 설계 토론) |
+| 수수료 테이블 | `portfolio_configs` 저장 + `FeeCalculator` 기본값 fallback | 별도 fee_rates 테이블 | 사용자 조정 가능성과 단순 스키마의 균형. 단일 사용자 운영에서도 실험 파라미터 추적 가능 |
 | 스케줄 완료 감지 | 이벤트 드리븐 (schedule_jobs 완료 카운트) | 폴링 | `_on_all_tickers_complete()` — 마지막 job 완료 시 active config 기준 전체 카운트 비교. 폴링 대비 즉시 반응 (FR-056, v6 설계 토론) |
 | 마이그레이션 (포트폴리오) | init_schema() + ensure_column | Alembic | 기존 패턴 일관성. 단일 사용자 시스템에서 Alembic 오버헤드 불필요 (v6 설계 토론) |
 | 포트폴리오 API 프리픽스 | `/portfolio/*` (9개) | `/api/v1/portfolio/*` | 기존 엔드포인트 프리픽스 없음. 일관성 우선. 리버스 프록시 필요 시 nginx에서 처리 (v6 설계 토론) |
@@ -1254,7 +1265,7 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | POST /portfolio/config | Bearer token | `api/auth.py` `check_admin_token` | 401 |
 | POST /portfolio/config/pause | Bearer token | `api/auth.py` `check_admin_token` | 401 |
 | POST /portfolio/config/resume | Bearer token | `api/auth.py` `check_admin_token` | 401 |
-| GET /portfolio/* | 없음 (공개) | — | — |
+| GET /portfolio/* | 기본 공개, `PORTFOLIO_READ_AUTH_REQUIRED=true` 시 Bearer 필수 | `api/auth.py` 조건부 검사 | 401 |
 
 ### Data Integrity Rules
 
@@ -1270,7 +1281,8 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | 큐 중복 방지 | enqueue 시 `_is_ticker_queued` 체크 | 스킵 (로그) |
 | 재큐잉 1회 제한 | `_requeued_job_ids` set (job 완료 시 `discard`) | 스킵 (로그) |
 | portfolio_decisions (config_id, date) UNIQUE | decision INSERT 시 | ON CONFLICT 방지 — 하루 1회 결정 보장 |
-| portfolio_holdings (config_id, ticker) UNIQUE | holdings UPSERT 시 | ON CONFLICT DO UPDATE |
+| portfolio_holdings (config_id, ticker, snapshot_date) UNIQUE | 일별 snapshot INSERT 시 | ON CONFLICT 방지 — 동일 일자 중복 스냅샷 차단 |
+| portfolio_holdings 보관기간 14일 | daily pipeline 종료 시 | `snapshot_date < current_date - 14d` 자동 삭제 |
 | portfolio_reflections (config_id, week_start) UNIQUE | reflection INSERT 시 | ON CONFLICT 방지 — 주 1회 회고 보장 |
 | portfolio_trades → positions FK nullable | trade INSERT 시 | hold 액션은 position_id=NULL 허용 |
 | portfolio available_cash ≥ 0 | 매매 실행 시 application-level | 잔액 부족 시 해당 종목 skip |
@@ -1284,10 +1296,11 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 
 | 항목 | 값 |
 |------|-----|
-| 방식 | **혼합**: `/schedules`는 offset 기반, 나머지는 id cursor 기반 |
+| 방식 | **혼합**: `/schedules`는 offset 기반, 나머지(포트폴리오 목록 포함)는 id cursor 기반 |
 | 기본 limit | 10건 |
 | 최대 limit | 100건 |
 | 파라미터 | `/schedules`: `?cursor={offset}&limit={n}` / 나머지: `?cursor={last_id}&limit={n}` |
+| 포트폴리오 예외 | `/portfolio/holdings`는 최신 snapshot 집합 조회라 pagination 미적용 |
 
 ### 10.2 POST /schedules 요청 스키마
 
@@ -1543,14 +1556,14 @@ DB 연결은 프로세스 종료 시 psycopg가 자동 정리. ChromaDB Persiste
 | 쟁점 | DA 결정 | BPA 대안 (기각) | 근거 |
 |------|---------|-----------------|------|
 | 금액 데이터 타입 | DOUBLE PRECISION | DECIMAL(18,4) | 기존 9테이블 패턴 일관성. 가상 매매 시뮬레이션이라 소수점 정밀도 이슈 무관 |
-| 수수료 관리 | application 상수 (FeeCalculator) | 별도 fee_rates 테이블 | 3종(us/kr/crypto) 고정 규칙. DB 관리 오버헤드 대비 이점 없음 |
+| 수수료 관리 | `portfolio_configs` 사용자 설정값 + `FeeCalculator` 기본값 | 별도 fee_rates 테이블 | 단일 사용자에서도 조정 가능성을 유지하면서 스키마 복잡도는 최소화 |
 | 스케줄 완료 감지 | 이벤트 드리븐 (카운트 기반) | 폴링 (interval check) | 마지막 job 완료 시 active config 전체 카운트 비교. 즉시 반응 |
 | 마이그레이션 | init_schema() + ensure_column | Alembic | 기존 패턴 일관성. 단일 사용자 시스템에서 Alembic 불필요 |
 | API 프리픽스 | `/portfolio/*` (프리픽스 없음) | `/api/v1/portfolio/*` | 기존 엔드포인트에 프리픽스 없음. 일관성 우선 |
 
 **BPA 유효 포인트 (DA 설계에 반영 완료):**
 - 환율 스냅샷: `portfolio_trades.exchange_rate` + `portfolio_decisions.exchange_rate_snapshot` 저장
-- fee_rates 검증: `FeeCalculator` 단위 테스트로 fee 계산 정확성 보장
+- fee_rates 검증: `portfolio_configs` 설정값 우선 + `FeeCalculator` 기본값 fallback 검증
 - hung job 대응: 종목별 try/except + skip + error_message 기록, lock acquire timeout(600s)
 
 ### 10.16 Macro & Sector Context Injection (FR-062, FR-063)
@@ -1580,6 +1593,65 @@ DB 연결은 프로세스 종료 시 psycopg가 자동 정리. ChromaDB Persiste
 - `_sector_cache`: ETF별 당일 1회 캐시
 - 지표 fetch 실패: 해당 지표 `N/A`
 - 전체 실패: 빈 컨텍스트 반환, 파이프라인은 정상 진행
+
+### 10.17 Portfolio API Governance (check+arch 반영)
+
+#### 인증 경계
+- 기본 정책: 단일 사용자 로컬 운영 기준으로 `/portfolio/*` READ 공개 유지
+- hardening 옵션: `PORTFOLIO_READ_AUTH_REQUIRED=true`일 때 `/portfolio/*` GET에도 Bearer 인증 강제
+- WRITE는 기존과 동일하게 Bearer 필수
+
+#### 페이지네이션/정렬 규약
+- `/portfolio/decisions`, `/portfolio/trades`, `/portfolio/reflections`: `id DESC` 기준 cursor 페이지네이션
+- 기본 `limit=10`, 최대 `limit=100`
+- `/portfolio/holdings`: 최신 snapshot(당일 또는 마지막 유효일) 집합 조회 API로 페이지네이션 없음
+
+#### 버저닝/응답 호환성
+- 엔드포인트 경로는 unversioned 유지 (`/portfolio/*`)
+- 주요 JSON 응답에 `schema_version` 필드 추가 권장 (초기값 `"v1"`)
+- breaking change는 필드 삭제 대신 필드 추가 방식으로 점진 확장
+
+#### Rate Limit
+- 앱 내부 강제 대신 게이트웨이/프록시 정책으로 관리
+- 문서 계약값: `API_RATE_LIMIT_PER_MIN=120` (분당/IP 또는 토큰 기준)
+
+### 10.18 External API Resilience for Portfolio
+
+- **환율 조회** (`USDKRW=X`):
+  - timeout 10초, 2회 재시도(지수 백오프)
+  - 실패 시 마지막 캐시값 사용, 캐시 없음이면 `EXCHANGE_RATE_FALLBACK`
+  - 24시간 이상 stale 캐시만 남은 경우 경고 로그 + decision 상태를 `partial_failed`로 표기 가능
+- **종목 현재가 조회**:
+  - timeout 10초, 2회 재시도
+  - 종목 단위 실패는 skip + `error_message` 누적, 파이프라인 전체는 지속
+- **실행 안전성**:
+  - 외부 시세 실패가 발생해도 이미 완료된 종목 매매는 롤백하지 않음
+  - 실패 목록은 decision 단위로 저장해 당일 재실행 시 참조
+
+### 10.19 Portfolio Idempotency & Recovery Contract
+
+- **일일 의사결정 멱등성 키**: `(portfolio_config_id, decision_date)` UNIQUE 유지
+- **상태 머신**: `pending -> executing -> completed | partial_failed | failed`
+- **전체 티커 완료 트리거 조건**: active schedule 기준 `done + skipped`가 총 대상 수와 일치할 때만 일일 포트폴리오 큐잉
+- **재실행 규칙**:
+  - `completed`: 동일 일자 재실행 금지
+  - `partial_failed`: 실패 종목만 수동 재실행 허용
+  - `failed`: 전체 재실행 허용
+- **snapshot 정합성**:
+  - 일일 실행 완료 시점에만 snapshot INSERT
+  - 14일 이전 snapshot 정리는 실행 완료 후 수행
+
+### 10.20 LLM Guardrails for v6 Agents
+
+- 적용 대상: `BriefingAgent`, `PortfolioManagerAgent`, `PortfolioReflector`, `RetrospectiveService`
+- timeout 기본값: 120초 (deep_think 호출은 180초까지 허용 가능)
+- retry budget: parse 실패/일시 오류 최대 1회 재시도
+- fallback:
+  - JSON 파싱 실패 시 stricter prompt로 1회 재호출
+  - 최종 실패 시 `failed` 또는 `partial_failed` 상태로 종료 (무한 재시도 금지)
+- 출력 검증:
+  - 점수형 필드(analysis_accuracy, rag_contribution, allocation_accuracy)는 0~100 클램핑
+  - 배분 합계, 잔액 초과 여부를 실행 전 검증
 
 ### ⚠️ TBD (Skipped)
 
