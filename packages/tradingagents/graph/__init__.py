@@ -5,6 +5,7 @@ from .conditional_logic import ConditionalLogic
 from .setup import GraphSetup
 from .propagation import Propagator
 from .reflection import Reflector
+from .portfolio_reflection import PortfolioReflector
 from .signal_processing import SignalProcessor
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     "GraphSetup",
     "Propagator",
     "Reflector",
+    "PortfolioReflector",
     "SignalProcessor",
 ]

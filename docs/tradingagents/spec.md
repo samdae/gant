@@ -60,13 +60,13 @@
 | FR-052     | Memory     | RAG 검색 파이프라인 재설계 — FTS top-3 + ChromaDB top-3 → 중복제거 + RRF top-3 → usefulness < 40 하드 배제 → usefulness DESC → top-K. `reflections.usefulness_score` 컬럼 추가(기본값 50). `RAG_TOP_K` 환경변수(기본 1, 추후 2~3) | Critical     | Implemented          |
 | FR-053     | Learning   | RAG Validator — 회고분석 결과 기반 RAG 문서별 usefulness_score ±1 자동 조정. RAG 문서는 반성(매매검증) 출신으로 한정. 효과 분석 리포트 생성 (사람이 읽고 판단)                                                  | High         | Implemented          |
 | FR-054     | Frontend   | 매매검증 검색 — 키워드(FTS LIKE/ILIKE) + 시멘틱(ChromaDB) 이중 검색. UI 검색창 + 모드 토글. `GET /reflections/search?q=...&mode=keyword\|semantic`                                                              | Medium       | Implemented          |
-| FR-055     | Learning   | 회고분석 배점 — analysis_accuracy(분석 정확도) + rag_contribution(RAG 기여도) 0~100 수치화. retrospective_analyses 컬럼 추가, 프롬프트/파싱, 대시보드 표시                                                      | High         | Designed             |
-| FR-056     | Portfolio  | 포트폴리오 모드 인프라 — 전용 테이블 5개(configs, decisions, trades, holdings, reflections), 활성화/비활성화 설정, 전체 스케줄 완료 후 자동 실행 트리거                                                           | High         | Designed             |
-| FR-057     | Portfolio  | 비서 에이전트 — 전체 티커 reports 요약 컬럼 + portfolio_holdings → 자유 텍스트 브리핑. deep_think_llm. 출력이 포트폴리오 RAG 쿼리로 사용. portfolio_decisions에 저장                                              | High         | Designed             |
-| FR-058     | Portfolio  | PortfolioManagerAgent — 비서 요약 + RAG 경험 + 현재 포트폴리오 → 리밸런싱 결정(텍스트 + JSON 매매 지시). 전체 HOLD도 유효. 자동 청산 없음(PA 판단 위임)                                                          | High         | Designed             |
-| FR-059     | Portfolio  | 포트폴리오 공유 자금 풀 — 분석검증 자금과 완전 분리, 사용자 총액 입력, 혼합 통화(USD+KRW), yfinance 환율 조회(`USDKRW=X`), 시장별 거래 수수료(US 0.1%, KR 0.25%+세금, Crypto 0.1%)                               | High         | Designed             |
-| FR-060     | Memory     | 포트폴리오 RAG 교차 참조 — 분석PA→포폴반성 ❌ 차단, 포폴PA→분석반성+포폴반성 ✅ 양방향(각 K개). 모드별 ChromaDB 컬렉션 분리                                                                                     | High         | Designed             |
-| FR-061     | Portfolio  | 포트폴리오 주간 반성 — CronTrigger KST 일요일 12:00. 입력: 주간 매매+비서요약, 종목별 수익률, 자산 변동, holdings. portfolio_reflections + ChromaDB 이중 저장                                                     | High         | Designed             |
+| FR-055     | Learning   | 회고분석 배점 — analysis_accuracy(분석 정확도) + rag_contribution(RAG 기여도) 0~100 수치화. retrospective_analyses 컬럼 추가, 프롬프트/파싱, 대시보드 표시                                                      | High         | Implemented          |
+| FR-056     | Portfolio  | 포트폴리오 모드 인프라 — 전용 테이블 5개(configs, decisions, trades, holdings, reflections), 활성화/비활성화 설정, 전체 스케줄 완료 후 자동 실행 트리거                                                           | High         | Implemented          |
+| FR-057     | Portfolio  | 비서 에이전트 — 전체 티커 reports 요약 컬럼 + portfolio_holdings → 자유 텍스트 브리핑. deep_think_llm. 출력이 포트폴리오 RAG 쿼리로 사용. portfolio_decisions에 저장                                              | High         | Implemented          |
+| FR-058     | Portfolio  | PortfolioManagerAgent — 비서 요약 + RAG 경험 + 현재 포트폴리오 → 리밸런싱 결정(텍스트 + JSON 매매 지시). 전체 HOLD도 유효. 자동 청산 없음(PA 판단 위임)                                                          | High         | Implemented          |
+| FR-059     | Portfolio  | 포트폴리오 공유 자금 풀 — 분석검증 자금과 완전 분리, 사용자 총액 입력, 혼합 통화(USD+KRW), yfinance 환율 조회(`USDKRW=X`), 시장별 거래 수수료(US 0.1%, KR 0.25%+세금, Crypto 0.1%)                               | High         | Implemented          |
+| FR-060     | Memory     | 포트폴리오 RAG 교차 참조 — 분석PA→포폴반성 ❌ 차단, 포폴PA→분석반성+포폴반성 ✅ 양방향(각 K개). 모드별 ChromaDB 컬렉션 분리                                                                                     | High         | Implemented          |
+| FR-061     | Portfolio  | 포트폴리오 주간 반성 — CronTrigger KST 일요일 12:00. 입력: 주간 매매+비서요약, 종목별 수익률, 자산 변동, holdings. portfolio_reflections + ChromaDB 이중 저장                                                     | High         | Implemented          |
 | FR-062     | Analysis   | 매크로 컨텍스트 주입 — 시장별(us/kr/crypto) 거시 지표(VIX/금리/환율/추세/변동성)를 yfinance로 수집해 12에이전트 + PA 프롬프트에 공통 주입                                                                          | High         | Implemented          |
 | FR-063     | Analysis   | 섹터 호황도 주입 — 섹터 자동 판별 + US/KR ETF 매핑, 상대강도(약 20거래일) + 50일선 추세 계산, 일일 캐시/폴백 포함                                                                                                 | High         | Implemented          |
 
@@ -599,13 +599,13 @@ rag_validation_results ──N:1── reflections
 | `positions` | ticker, status, shares, avg_cost | + `currency`, `stop_loss`, `target` |
 | `trades` | position_id, action, shares, price | + `currency`, executed_at 의미 변경 |
 | `reflections` | — | + `usefulness_score` (FR-052) |
-| `retrospective_analyses` | — | **신규** (v4). FR-055에서 `analysis_accuracy`, `rag_contribution` 추가 예정 |
+| `retrospective_analyses` | — | **신규** (v4). FR-055에서 `analysis_accuracy`, `rag_contribution` 구현 완료 |
 | `rag_validation_results` | — | **신규** (FR-053) |
 | 테이블 수 | 8 → 7 (schedules 제거) | 7 → **9** (retrospective_analyses, rag_validation_results 추가) |
 
 > ⚠️ 폐기 대상: `eval_results/`, `memory/experience/{agent}.jsonl`, `memory/data/{agent}.jsonl`, `virtual_trade/tickers/`
 
-#### 포트폴리오 전용 테이블 (FR-056~061, Designed — 구체 DDL은 arch-be.md §2 참조)
+#### 포트폴리오 전용 테이블 (FR-056~061, Implemented — 구체 DDL은 arch-be.md §2 참조)
 
 포트폴리오 모드는 기존 9테이블과 별도로 **5개 전용 테이블**을 사용한다. 기존 테이블에 mode 컬럼을 추가하지 않는다.
 
@@ -672,10 +672,10 @@ Postgres DB (Supabase 호환)     ← 9 테이블 + GIN FTS 인덱스
     ├── reports                 ← schedule_job_id FK, + rag_used, rag_docs
     ├── trades                  ← + currency
     ├── reflections             ← + usefulness_score
-    ├── retrospective_analyses  ← 회고분석 (v4). FR-055에서 analysis_accuracy, rag_contribution 추가 예정
+    ├── retrospective_analyses  ← 회고분석 (v4). FR-055 analysis_accuracy, rag_contribution 구현 완료
     └── rag_validation_results  ← RAG 효과 검증 (FR-053)
 
-Postgres DB (포트폴리오 전용)    ← 5 테이블 (FR-056~061, Designed)
+Postgres DB (포트폴리오 전용)    ← 5 테이블 (FR-056~061, Implemented)
     ├── portfolio_configs
     ├── portfolio_decisions
     ├── portfolio_trades

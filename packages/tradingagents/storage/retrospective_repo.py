@@ -94,12 +94,43 @@ class RetrospectiveRepository:
             connection.commit()
         logger.info(f"Updated retrospective {retro_id} status={status}")
 
+    def update_scores(
+        self,
+        retro_id: int,
+        analysis_accuracy: Optional[int],
+        rag_contribution: Optional[int],
+        commit: bool = True,
+        conn=None,
+    ) -> None:
+        """Update FR-055 score fields."""
+        now = datetime.now().isoformat()
+        connection = conn or self.db.get_connection()
+        connection.execute(
+            """
+            UPDATE retrospective_analyses
+            SET analysis_accuracy = %s,
+                rag_contribution = %s,
+                updated_at = %s
+            WHERE id = %s
+            """,
+            (analysis_accuracy, rag_contribution, now, retro_id),
+        )
+        if commit:
+            connection.commit()
+        logger.info(
+            "Updated retrospective %s scores: analysis_accuracy=%s, rag_contribution=%s",
+            retro_id,
+            analysis_accuracy,
+            rag_contribution,
+        )
+
     def get_by_id(self, retro_id: int) -> Optional[Dict[str, Any]]:
         cursor = self.db.get_connection().execute(
             """
             SELECT id, position_id, ticker, position_sequence,
                    position_status, status, analysis_content,
                    analysis_count, position_open_date, position_close_date,
+                   analysis_accuracy, rag_contribution,
                    error_message, created_at, updated_at
             FROM retrospective_analyses
             WHERE id = %s
@@ -127,6 +158,7 @@ class RetrospectiveRepository:
             SELECT id, position_id, ticker, position_sequence,
                    position_status, status, analysis_content,
                    analysis_count, position_open_date, position_close_date,
+                   analysis_accuracy, rag_contribution,
                    error_message, created_at, updated_at
             FROM retrospective_analyses
             WHERE position_id = %s
@@ -221,7 +253,7 @@ class RetrospectiveRepository:
             SELECT ra.id, ra.position_id, ra.ticker,
                    ra.position_sequence, ra.position_status,
                    ra.status, ra.analysis_content,
-                   ra.analysis_count,
+                   ra.analysis_count, ra.analysis_accuracy, ra.rag_contribution,
                    ra.position_open_date, ra.position_close_date,
                    ra.error_message, ra.created_at, ra.updated_at,
                    p.return_pct, p.status AS pos_status

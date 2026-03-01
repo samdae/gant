@@ -33,6 +33,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from tradingagents.errors import DataVendorError, DecisionParseError, AgentExecutionError
 from tradingagents.runtime_context import set_schedule_context, reset_schedule_context
+from tradingagents.scheduler.portfolio_pipeline import PortfolioPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,8 @@ analysis_queue: Optional[asyncio.PriorityQueue] = None
 PRIORITY_SCHEDULED = 0
 PRIORITY_RETROSPECTIVE = 1
 PRIORITY_RAG_VALIDATION = 2
+PRIORITY_PORTFOLIO_DAILY = 3
+PRIORITY_PORTFOLIO_WEEKLY = 4
 _enqueue_seq: int = 0
 
 
@@ -57,6 +60,7 @@ class TickerScheduler:
         self._analysis_queue: Optional[asyncio.PriorityQueue] = analysis_queue
         self._queue_loop: Optional[asyncio.AbstractEventLoop] = None
         self._requeued_job_ids: set[int] = set()
+        self._portfolio_daily_enqueued_dates: set[str] = set()
 
         from tradingagents.storage import Database
         from tradingagents.virtual_trade import TradeManager, PortfolioAgent
@@ -76,6 +80,12 @@ class TickerScheduler:
             db=self.db,
             hybrid_memory=graph.memory,
             initial_capital=initial_capital,
+        )
+        self.portfolio_pipeline = PortfolioPipeline(
+            db=self.db,
+            config=self.config,
+            llm=graph.deep_thinking_llm,
+            hybrid_memory=graph.memory,
         )
 
         logger.info("TickerScheduler initialized (DB-based)")
@@ -231,6 +241,7 @@ class TickerScheduler:
 
     def start(self):
         self._self_heal()
+        self._init_weekly_schedule()
         self.scheduler.start()
         logger.info("TickerScheduler started")
         import pytz
@@ -270,6 +281,129 @@ class TickerScheduler:
                     "next_run_time": next_run_time,
                 })
         return schedules
+
+    def _is_portfolio_enabled(self) -> bool:
+        if not self.config.get("portfolio_enabled", False):
+            return False
+        try:
+            from tradingagents.storage import PortfolioConfigRepository
+
+            return PortfolioConfigRepository(self.db).get_active() is not None
+        except Exception:
+            return False
+
+    def _today_kst_date(self) -> str:
+        try:
+            import pytz
+
+            now = datetime.now(pytz.timezone("Asia/Seoul"))
+            return now.date().isoformat()
+        except Exception:
+            return datetime.now().date().isoformat()
+
+    def _enqueue_portfolio_weekly(self) -> None:
+        if not self._is_portfolio_enabled():
+            return
+        self._enqueue_item(
+            {
+                "type": "portfolio_weekly",
+                "ticker": "__portfolio_weekly__",
+            },
+            priority=PRIORITY_PORTFOLIO_WEEKLY,
+            skip_dedup=True,
+        )
+
+    def _init_weekly_schedule(self) -> None:
+        if not self._is_portfolio_enabled():
+            return
+        job_id = "portfolio_weekly"
+        if self.scheduler.get_job(job_id):
+            self.scheduler.remove_job(job_id)
+        self.scheduler.add_job(
+            func=self._enqueue_portfolio_weekly,
+            trigger=CronTrigger(day_of_week="sun", hour=12, minute=0, timezone="Asia/Seoul"),
+            id=job_id,
+            name="Portfolio weekly reflection",
+            replace_existing=True,
+        )
+        logger.info("Added portfolio weekly schedule (Sun 12:00 KST)")
+
+    def _on_all_tickers_complete(self) -> None:
+        """Enqueue portfolio daily job when strict completion rule is satisfied."""
+        if not self._is_portfolio_enabled():
+            return
+
+        from tradingagents.storage import (
+            PortfolioConfigRepository,
+            ScheduleConfigRepository,
+            ScheduleJobRepository,
+        )
+
+        active_portfolio = PortfolioConfigRepository(self.db).get_active()
+        if not active_portfolio:
+            return
+
+        config_repo = ScheduleConfigRepository(self.db)
+        job_repo = ScheduleJobRepository(self.db)
+        schedule_configs = config_repo.get_all()
+        total_active = len(schedule_configs)
+        if total_active == 0:
+            return
+
+        today = self._today_kst_date()
+        done = skipped = failed = 0
+
+        for cfg in schedule_configs:
+            latest = job_repo.get_latest_by_config(int(cfg["id"]))
+            if not latest:
+                continue
+
+            created_at = latest.get("created_at")
+            if hasattr(created_at, "date"):
+                created_date = created_at.date().isoformat()
+            else:
+                created_date = str(created_at)[:10]
+            status = str(latest.get("status") or "").lower()
+
+            if created_date == today:
+                if status == "done":
+                    done += 1
+                elif status == "skipped":
+                    skipped += 1
+                elif status == "failed":
+                    failed += 1
+                continue
+
+            # No today's job row: treat as completed if last_data_date already advanced to today.
+            last_data_date = cfg.get("last_data_date")
+            if hasattr(last_data_date, "isoformat"):
+                last_data_date = last_data_date.isoformat()
+            if str(last_data_date)[:10] == today:
+                skipped += 1
+
+        logger.info(
+            "Portfolio trigger check: total=%s done=%s skipped=%s failed=%s",
+            total_active,
+            done,
+            skipped,
+            failed,
+        )
+
+        if (done + skipped) == total_active and failed == 0:
+            if today in self._portfolio_daily_enqueued_dates:
+                return
+            self._portfolio_daily_enqueued_dates.add(today)
+            self._enqueue_item(
+                {
+                    "type": "portfolio_daily",
+                    "ticker": "__portfolio_daily__",
+                    "config_id": int(active_portfolio["id"]),
+                    "decision_date": today,
+                },
+                priority=PRIORITY_PORTFOLIO_DAILY,
+                skip_dedup=True,
+            )
+            logger.info("Enqueued portfolio_daily for date=%s", today)
 
     # ── self-heal ──
 
@@ -413,6 +547,10 @@ class TickerScheduler:
         finally:
             if schedule_job_id is not None:
                 self._requeued_job_ids.discard(schedule_job_id)
+            try:
+                self._on_all_tickers_complete()
+            except Exception as e:
+                logger.warning(f"Portfolio completion check failed: {e}")
             lock.release()
 
     def _run_analysis_cycle_impl(

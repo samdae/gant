@@ -220,6 +220,8 @@ class Database:
             analysis_count      INTEGER   NOT NULL DEFAULT 1,
             position_open_date  TIMESTAMPTZ,
             position_close_date TIMESTAMPTZ,
+            analysis_accuracy   INTEGER,
+            rag_contribution    INTEGER,
             error_message       TEXT,
             created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -240,6 +242,96 @@ class Database:
         );
         CREATE INDEX IF NOT EXISTS idx_rag_validation_retro
             ON rag_validation_results(retrospective_id);
+
+        CREATE TABLE IF NOT EXISTS portfolio_configs (
+            id               BIGSERIAL PRIMARY KEY,
+            name             TEXT      NOT NULL DEFAULT 'default',
+            initial_capital  DOUBLE PRECISION NOT NULL DEFAULT 100000000,
+            total_fund       DOUBLE PRECISION NOT NULL DEFAULT 100000000,
+            available_cash   DOUBLE PRECISION NOT NULL DEFAULT 100000000,
+            base_currency    TEXT      NOT NULL DEFAULT 'KRW',
+            fee_enabled      BOOLEAN   NOT NULL DEFAULT TRUE,
+            us_fee_rate      DOUBLE PRECISION NOT NULL DEFAULT 0.001,
+            kr_buy_fee_rate  DOUBLE PRECISION NOT NULL DEFAULT 0.0025,
+            kr_sell_fee_rate DOUBLE PRECISION NOT NULL DEFAULT 0.0025,
+            kr_sell_tax_rate DOUBLE PRECISION NOT NULL DEFAULT 0.0018,
+            crypto_fee_rate  DOUBLE PRECISION NOT NULL DEFAULT 0.001,
+            status           TEXT      NOT NULL DEFAULT 'active',
+            created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS portfolio_decisions (
+            id                      BIGSERIAL PRIMARY KEY,
+            portfolio_config_id     BIGINT    NOT NULL REFERENCES portfolio_configs(id),
+            decision_date           DATE      NOT NULL,
+            briefing_summary        JSONB,
+            allocation_plan         JSONB     NOT NULL,
+            rationale               TEXT,
+            total_fund_snapshot     DOUBLE PRECISION NOT NULL,
+            available_cash_snapshot DOUBLE PRECISION NOT NULL,
+            exchange_rate_snapshot  DOUBLE PRECISION,
+            status                  TEXT      NOT NULL DEFAULT 'pending',
+            error_message           TEXT,
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_portfolio_decisions_config
+            ON portfolio_decisions(portfolio_config_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_decisions_date
+            ON portfolio_decisions(portfolio_config_id, decision_date);
+
+        CREATE TABLE IF NOT EXISTS portfolio_trades (
+            id                    BIGSERIAL PRIMARY KEY,
+            portfolio_decision_id BIGINT    NOT NULL REFERENCES portfolio_decisions(id),
+            ticker                TEXT      NOT NULL,
+            action                TEXT      NOT NULL,
+            shares                DOUBLE PRECISION NOT NULL DEFAULT 0,
+            price                 DOUBLE PRECISION NOT NULL,
+            currency              TEXT      NOT NULL DEFAULT 'USD',
+            exchange_rate         DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+            fee_rate              DOUBLE PRECISION NOT NULL DEFAULT 0,
+            fee_amount            DOUBLE PRECISION NOT NULL DEFAULT 0,
+            amount_local          DOUBLE PRECISION NOT NULL DEFAULT 0,
+            amount_krw            DOUBLE PRECISION NOT NULL DEFAULT 0,
+            executed_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_portfolio_trades_decision
+            ON portfolio_trades(portfolio_decision_id);
+        CREATE INDEX IF NOT EXISTS idx_portfolio_trades_ticker
+            ON portfolio_trades(ticker);
+
+        CREATE TABLE IF NOT EXISTS portfolio_holdings (
+            id                  BIGSERIAL PRIMARY KEY,
+            portfolio_config_id BIGINT    NOT NULL REFERENCES portfolio_configs(id),
+            snapshot_date       DATE      NOT NULL,
+            ticker              TEXT      NOT NULL,
+            shares              DOUBLE PRECISION NOT NULL DEFAULT 0,
+            avg_cost            DOUBLE PRECISION NOT NULL DEFAULT 0,
+            currency            TEXT      NOT NULL DEFAULT 'USD',
+            current_value_krw   DOUBLE PRECISION NOT NULL DEFAULT 0,
+            allocation_pct      DOUBLE PRECISION NOT NULL DEFAULT 0,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_holdings_unique
+            ON portfolio_holdings(portfolio_config_id, ticker, snapshot_date);
+        CREATE INDEX IF NOT EXISTS idx_portfolio_holdings_snapshot_date
+            ON portfolio_holdings(snapshot_date);
+
+        CREATE TABLE IF NOT EXISTS portfolio_reflections (
+            id                  BIGSERIAL PRIMARY KEY,
+            portfolio_config_id BIGINT    NOT NULL REFERENCES portfolio_configs(id),
+            week_start_date     DATE      NOT NULL,
+            week_end_date       DATE      NOT NULL,
+            reflection_content  TEXT,
+            allocation_accuracy INTEGER,
+            total_return_pct    DOUBLE PRECISION,
+            key_lessons         TEXT,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_portfolio_reflections_config
+            ON portfolio_reflections(portfolio_config_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_reflections_week
+            ON portfolio_reflections(portfolio_config_id, week_start_date);
         """
 
         for statement in (s.strip() for s in schema_sql.split(";")):
@@ -255,6 +347,8 @@ class Database:
         self._ensure_column("reports", "rag_used", "BOOLEAN NOT NULL DEFAULT FALSE")
         self._ensure_column("reports", "rag_docs", "JSONB")
         self._ensure_column("reflections", "usefulness_score", "DOUBLE PRECISION NOT NULL DEFAULT 50")
+        self._ensure_column("retrospective_analyses", "analysis_accuracy", "INTEGER")
+        self._ensure_column("retrospective_analyses", "rag_contribution", "INTEGER")
 
         logger.info("Schema initialization complete")
 

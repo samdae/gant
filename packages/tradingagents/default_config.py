@@ -67,6 +67,15 @@ DEFAULT_CONFIG = {
         os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")), "memory", "chroma")
     ),
     "rag_top_k": int(os.getenv("RAG_TOP_K", "1")),
+    # Portfolio mode (FR-056~061)
+    "portfolio_enabled": _get_env_bool("PORTFOLIO_ENABLED", False),
+    "portfolio_initial_capital": float(os.getenv("PORTFOLIO_INITIAL_CAPITAL", "100000000")),
+    "portfolio_fee_enabled": _get_env_bool("PORTFOLIO_FEE_ENABLED", True),
+    "portfolio_snapshot_retention_days": int(os.getenv("PORTFOLIO_SNAPSHOT_RETENTION_DAYS", "14")),
+    "portfolio_read_auth_required": _get_env_bool("PORTFOLIO_READ_AUTH_REQUIRED", False),
+    "exchange_rate_cache_ttl": int(os.getenv("EXCHANGE_RATE_CACHE_TTL", "3600")),
+    "exchange_rate_fallback": float(os.getenv("EXCHANGE_RATE_FALLBACK", "1380.0")),
+    "api_rate_limit_per_min": int(os.getenv("API_RATE_LIMIT_PER_MIN", "120")),
     "default_initial_capital": 5000.0,
     # FR-016: Scheduler
     "schedules": [],  # List[{"ticker": str, "interval_days": int}]

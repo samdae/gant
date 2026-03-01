@@ -13,6 +13,14 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 logger = logging.getLogger(__name__)
 
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def check_admin_token(credentials: HTTPAuthorizationCredentials = Security(security)) -> bool:
@@ -45,4 +53,20 @@ def check_admin_token(credentials: HTTPAuthorizationCredentials = Security(secur
             detail="Invalid or missing token"
         )
 
+    return True
+
+
+def check_portfolio_read_access(
+    credentials: HTTPAuthorizationCredentials | None = Security(security_optional),
+) -> bool:
+    """Conditionally enforce auth for portfolio read endpoints."""
+    if not _env_bool("PORTFOLIO_READ_AUTH_REQUIRED", False):
+        return True
+
+    admin_token = os.getenv("TRADINGAGENTS_ADMIN_TOKEN")
+    if not admin_token:
+        raise HTTPException(status_code=500, detail="Server authentication not configured")
+
+    if credentials is None or credentials.credentials != admin_token:
+        raise HTTPException(status_code=401, detail="Invalid or missing token")
     return True

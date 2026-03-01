@@ -21,7 +21,14 @@ logger = logging.getLogger(__name__)
 class HybridMemory:
     """Memory system combining Postgres FTS lexical search and ChromaDB vector search."""
 
-    def __init__(self, name: str, config: dict = None, db=None):
+    def __init__(
+        self,
+        name: str,
+        config: dict = None,
+        db=None,
+        collection_name: str = "analysis_reflections",
+        source_table: Optional[str] = None,
+    ):
         """Initialize the hybrid memory system.
 
         Args:
@@ -29,9 +36,13 @@ class HybridMemory:
                  (kept for backward compatibility, not used in FR-033)
             config: Configuration dict containing database_path and chroma_path
             db: Optional Database instance (if None, creates new connection)
+            collection_name: ChromaDB collection name
+            source_table: FTS/row lookup table ('reflections' or 'portfolio_reflections')
         """
         self.name = name
         self.config = config or {}
+        self.collection_name = collection_name or "analysis_reflections"
+        self.source_table = source_table or self._source_table_from_collection(self.collection_name)
 
         # Get database URL from config
         project_dir = self.config.get("project_dir", os.path.abspath("."))
@@ -47,9 +58,11 @@ class HybridMemory:
             self.db = db
             self._owns_db = False
 
-        # Initialize ReflectionRepository for FTS search
-        from tradingagents.storage import ReflectionRepository
+        # Initialize repositories for source tables
+        from tradingagents.storage import ReflectionRepository, PortfolioReflectionRepository
+
         self.reflection_repo = ReflectionRepository(self.db)
+        self.portfolio_reflection_repo = PortfolioReflectionRepository(self.db)
 
         # ChromaDB path (derived data)
         chroma_path = self.config.get(
@@ -66,7 +79,18 @@ class HybridMemory:
         # Query tracking flag for bootstrap tagging (FR-019)
         self.last_query_had_results = False
 
-        logger.info(f"HybridMemory initialized (name={name}, FTS + ChromaDB)")
+        logger.info(
+            "HybridMemory initialized (name=%s, collection=%s, source_table=%s)",
+            name,
+            self.collection_name,
+            self.source_table,
+        )
+
+    @staticmethod
+    def _source_table_from_collection(collection_name: str) -> str:
+        if str(collection_name or "").strip().lower() == "portfolio_reflections":
+            return "portfolio_reflections"
+        return "reflections"
 
     def _lazy_init_vector(self):
         """Lazy initialization of ChromaDB.
@@ -94,9 +118,8 @@ class HybridMemory:
             )
 
             # Get or create collection (default embedding: all-MiniLM-L6-v2)
-            # FR-033: Single collection for all reflections (no per-agent split)
             self.chroma_collection = self.chroma_client.get_or_create_collection(
-                name="reflections",  # Single collection name
+                name=self.collection_name,
                 metadata={"hnsw:space": "cosine"}  # Cosine similarity
             )
 
@@ -165,22 +188,26 @@ class HybridMemory:
             metadata: Optional metadata dict to attach to all entries
                      Required keys: position_id, outcome, return_pct
         """
-        # Extract required fields from metadata
-        position_id = metadata.get("position_id") if metadata else None
-        if not position_id:
-            logger.error("add_situations requires position_id in metadata")
+        if not situations_and_advice:
             return
 
-        outcome = metadata.get("outcome") if metadata else None
-        return_pct = metadata.get("return_pct", 0.0) if metadata else 0.0
-        market = metadata.get("market") if metadata else None
-        sector = metadata.get("sector") if metadata else None
-        industry = metadata.get("industry") if metadata else None
+        metadata = metadata or {}
+        position_id = metadata.get("position_id")
+        outcome = metadata.get("outcome")
+        return_pct = metadata.get("return_pct", 0.0)
+        market = metadata.get("market")
+        sector = metadata.get("sector")
+        industry = metadata.get("industry")
 
-        if outcome not in {"win", "loss"}:
-            logger.error("add_situations requires outcome=win|loss in metadata")
+        # Ensure vector client is ready before inserts.
+        if not self.chroma_available and self.chroma_client is None:
+            self._lazy_init_vector()
+
+        if store_sqlite and self.source_table != "reflections":
+            logger.error(
+                "store_sqlite=True is only supported for source_table='reflections'"
+            )
             return
-        outcome = str(outcome)
 
         if not store_sqlite:
             if reflection_id is None:
@@ -189,6 +216,14 @@ class HybridMemory:
             if len(situations_and_advice) != 1:
                 logger.error("store_sqlite=False supports a single situation only")
                 return
+        else:
+            if not position_id:
+                logger.error("add_situations requires position_id in metadata")
+                return
+            if outcome not in {"win", "loss"}:
+                logger.error("add_situations requires outcome=win|loss in metadata")
+                return
+            outcome = str(outcome)
 
         for situation, recommendation in situations_and_advice:
             # FR-033: Use ReflectionRepository to store in Postgres
@@ -215,14 +250,16 @@ class HybridMemory:
                 try:
                     # Use reflection_id as ChromaDB doc ID
                     doc_id = f"reflection_{reflection_id}"
+                    metadata_payload = {
+                        "reflection_id": reflection_id,
+                        "recommendation": recommendation,
+                        "source_collection": self.collection_name,
+                        **metadata,
+                    }
                     self.chroma_collection.add(
                         documents=[situation],  # Embed key_lessons for semantic search
                         ids=[doc_id],
-                        metadatas=[{
-                            "reflection_id": reflection_id,
-                            "recommendation": recommendation,
-                            **(metadata or {})
-                        }]
+                        metadatas=[metadata_payload],
                     )
                     logger.info(f"Added reflection {reflection_id} to ChromaDB")
 
@@ -232,6 +269,89 @@ class HybridMemory:
                         f"continuing with FTS-only: {e}"
                     )
                     self.chroma_available = False
+
+    def add_external_document(
+        self,
+        document_id: int,
+        matched_situation: str,
+        recommendation: str,
+        collection_name: str,
+        source_table: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Store externally managed reflection-like document to Chroma collection."""
+        if self.chroma_client is None:
+            self._lazy_init_vector()
+        if self.chroma_client is None:
+            return
+        metadata = metadata or {}
+        try:
+            collection = self.chroma_client.get_or_create_collection(
+                name=collection_name,
+                metadata={"hnsw:space": "cosine"},
+            )
+            collection.add(
+                documents=[matched_situation],
+                ids=[f"reflection_{int(document_id)}"],
+                metadatas=[
+                    {
+                        "reflection_id": int(document_id),
+                        "recommendation": recommendation,
+                        "source_table": source_table,
+                        "source_collection": collection_name,
+                        **metadata,
+                    }
+                ],
+            )
+        except Exception as exc:
+            logger.warning("Failed to add external document to ChromaDB: %s", exc)
+
+    def _get_document_by_id(
+        self,
+        reflection_id: int,
+        source_table: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        table = source_table or self.source_table
+        if table == "portfolio_reflections":
+            row = self.portfolio_reflection_repo.get_by_id(reflection_id)
+            if not row:
+                return None
+            return {
+                "id": row.get("id"),
+                "position_id": None,
+                "reflection": row.get("reflection_content", ""),
+                "key_lessons": row.get("key_lessons", ""),
+                "outcome": None,
+                "return_pct": row.get("total_return_pct"),
+                "market": None,
+                "sector": None,
+                "industry": None,
+                "usefulness_score": 50.0,
+                "created_at": row.get("created_at"),
+            }
+        return self.reflection_repo.get_by_id(reflection_id)
+
+    def _search_portfolio_fts(self, query: str, limit: int = 10) -> List[Tuple[int, float]]:
+        try:
+            rows = self.db.get_connection().execute(
+                """
+                SELECT id,
+                       ts_rank_cd(
+                           to_tsvector('simple', coalesce(reflection_content, '') || ' ' || coalesce(key_lessons, '')),
+                           plainto_tsquery('simple', %s)
+                       ) AS ts_rank
+                FROM portfolio_reflections
+                WHERE to_tsvector('simple', coalesce(reflection_content, '') || ' ' || coalesce(key_lessons, ''))
+                      @@ plainto_tsquery('simple', %s)
+                ORDER BY ts_rank DESC
+                LIMIT %s
+                """,
+                (query, query, limit),
+            ).fetchall()
+            return [(int(r["id"]), float(r.get("ts_rank") or 0.0)) for r in rows]
+        except Exception as exc:
+            logger.warning("Portfolio FTS search failed: %s", exc)
+            return []
 
     def get_memories(
         self,
@@ -281,7 +401,10 @@ class HybridMemory:
 
         # FR-052: Keep top-3 by relevance (RRF), then filter/sort by usefulness.
         fused_results = fused_results[:3]
-        filtered_results, usefulness_map = self._apply_usefulness_filter(fused_results, top_k=n_matches)
+        filtered_results, usefulness_map = self._apply_usefulness_filter(
+            fused_results,
+            top_k=n_matches,
+        )
         if not filtered_results:
             self.last_query_had_results = False
             return []
@@ -290,7 +413,7 @@ class HybridMemory:
         results = []
         for reflection_id, rrf_score in filtered_results:
             # Get reflection from DB
-            reflection = self.reflection_repo.get_by_id(reflection_id)
+            reflection = self._get_document_by_id(reflection_id)
             if not reflection:
                 continue
 
@@ -300,6 +423,8 @@ class HybridMemory:
                 outcome_label = "[✅ 성공 사례]"
             elif outcome == "loss":
                 outcome_label = "[⚠️ 실패 사례]"
+            elif self.source_table == "portfolio_reflections":
+                outcome_label = "[📌 포트폴리오 사례]"
             else:
                 outcome_label = "[❓ 미정]"
 
@@ -322,6 +447,7 @@ class HybridMemory:
                     "usefulness_score": usefulness_map.get(
                         int(reflection.get("id")), 50.0
                     ),
+                    "source_collection": self.collection_name,
                 },
             })
 
@@ -344,12 +470,15 @@ class HybridMemory:
             return [], {}
 
         reflection_ids = [doc_id for doc_id, _ in fused_results]
-        usefulness_map = self.reflection_repo.get_usefulness_scores(reflection_ids)
+        if self.source_table == "reflections":
+            usefulness_map = self.reflection_repo.get_usefulness_scores(reflection_ids)
+        else:
+            usefulness_map = {int(reflection_id): 50.0 for reflection_id in reflection_ids}
 
         filtered = []
         for reflection_id, rrf_score in fused_results:
             usefulness = usefulness_map.get(reflection_id, 50.0)
-            if usefulness < 40:
+            if self.source_table == "reflections" and usefulness < 40:
                 continue
             filtered.append((reflection_id, rrf_score, usefulness))
 
@@ -371,6 +500,8 @@ class HybridMemory:
             Empty list if FTS search fails
         """
         try:
+            if self.source_table == "portfolio_reflections":
+                return self._search_portfolio_fts(query, limit=n_results)
             results_dicts = self.reflection_repo.search_fts(query, limit=n_results)
             return [(r["id"], float(r.get("ts_rank", 0.0))) for r in results_dicts]
 
@@ -437,7 +568,7 @@ class HybridMemory:
         vector_results = self._vector_retrieve(query, n_results=limit)
         results: List[Dict[str, Any]] = []
         for reflection_id, similarity in vector_results:
-            reflection = self.reflection_repo.get_by_id(reflection_id)
+            reflection = self._get_document_by_id(reflection_id)
             if not reflection:
                 continue
             results.append(
@@ -451,9 +582,120 @@ class HybridMemory:
                     "usefulness_score": reflection.get("usefulness_score", 50.0),
                     "semantic_score": similarity,
                     "created_at": reflection.get("created_at"),
+                    "source_collection": self.collection_name,
                 }
             )
         return results
+
+    def _vector_retrieve_from_collection(
+        self,
+        query: str,
+        n_results: int,
+        collection_name: str,
+    ) -> List[Tuple[int, float]]:
+        if self.chroma_client is None:
+            self._lazy_init_vector()
+        if self.chroma_client is None:
+            return []
+        try:
+            collection = self.chroma_client.get_or_create_collection(
+                name=collection_name,
+                metadata={"hnsw:space": "cosine"},
+            )
+            result = collection.query(query_texts=[query], n_results=n_results)
+            ids = result.get("ids", [[]])[0]
+            distances = result.get("distances", [[]])[0]
+            parsed: List[Tuple[int, float]] = []
+            for doc_id, distance in zip(ids, distances):
+                try:
+                    reflection_id = int(str(doc_id).split("_")[1])
+                    similarity = 1.0 - (float(distance) / 2.0)
+                    parsed.append((reflection_id, similarity))
+                except Exception:
+                    continue
+            return parsed
+        except Exception as exc:
+            logger.warning(
+                "Vector retrieval failed for collection=%s: %s",
+                collection_name,
+                exc,
+            )
+            return []
+
+    def get_memories_cross(
+        self,
+        query: str,
+        primary_collection: str,
+        secondary_collection: str,
+        primary_k: int,
+        secondary_k: int,
+    ) -> List[Dict[str, Any]]:
+        """Cross-collection retrieval for portfolio mode."""
+        primary = self._vector_retrieve_from_collection(
+            query=query,
+            n_results=max(int(primary_k), 0),
+            collection_name=primary_collection,
+        )
+        secondary = self._vector_retrieve_from_collection(
+            query=query,
+            n_results=max(int(secondary_k), 0),
+            collection_name=secondary_collection,
+        )
+
+        candidates = []
+        for source_collection, rows in (
+            (primary_collection, primary),
+            (secondary_collection, secondary),
+        ):
+            source_table = self._source_table_from_collection(source_collection)
+            for reflection_id, score in rows:
+                doc = self._get_document_by_id(reflection_id, source_table=source_table)
+                if not doc:
+                    continue
+                outcome = doc.get("outcome")
+                if outcome == "win":
+                    outcome_label = "[✅ 성공 사례]"
+                elif outcome == "loss":
+                    outcome_label = "[⚠️ 실패 사례]"
+                elif source_table == "portfolio_reflections":
+                    outcome_label = "[📌 포트폴리오 사례]"
+                else:
+                    outcome_label = "[❓ 미정]"
+
+                candidates.append(
+                    {
+                        "matched_situation": doc.get("key_lessons", ""),
+                        "recommendation": doc.get("reflection", ""),
+                        "rrf_score": score,
+                        "similarity_score": score,
+                        "metadata": {
+                            "reflection_id": doc.get("id"),
+                            "position_id": doc.get("position_id"),
+                            "outcome": doc.get("outcome"),
+                            "outcome_label": outcome_label,
+                            "return_pct": doc.get("return_pct"),
+                            "market": doc.get("market"),
+                            "sector": doc.get("sector"),
+                            "industry": doc.get("industry"),
+                            "usefulness_score": doc.get("usefulness_score", 50.0),
+                            "source_collection": source_collection,
+                        },
+                    }
+                )
+
+        # Deduplicate by reflection_id + source_collection keeping best score.
+        best: Dict[Tuple[Any, str], Dict[str, Any]] = {}
+        for item in candidates:
+            key = (
+                item["metadata"].get("reflection_id"),
+                str(item["metadata"].get("source_collection")),
+            )
+            prev = best.get(key)
+            if prev is None or float(item.get("rrf_score", 0.0)) > float(prev.get("rrf_score", 0.0)):
+                best[key] = item
+
+        merged = sorted(best.values(), key=lambda x: float(x.get("rrf_score", 0.0)), reverse=True)
+        return merged
 
     def clear(self):
         """Clear all stored memories (SQLite reflections + ChromaDB).
@@ -467,12 +709,12 @@ class HybridMemory:
         # Clear ChromaDB collection
         if self.chroma_available and self.chroma_client:
             try:
-                self.chroma_client.delete_collection("reflections")
-                logger.info("Cleared ChromaDB collection 'reflections'")
+                self.chroma_client.delete_collection(self.collection_name)
+                logger.info("Cleared ChromaDB collection '%s'", self.collection_name)
 
                 # Recreate empty collection
                 self.chroma_collection = self.chroma_client.create_collection(
-                    name="reflections",
+                    name=self.collection_name,
                     metadata={"hnsw:space": "cosine"}
                 )
             except Exception as e:

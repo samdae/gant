@@ -222,6 +222,8 @@ async def _queue_worker():
 
             is_retrospective = isinstance(item, dict) and item.get("type") == "retrospective"
             is_rag_validation = isinstance(item, dict) and item.get("type") == "rag_validation"
+            is_portfolio_daily = isinstance(item, dict) and item.get("type") == "portfolio_daily"
+            is_portfolio_weekly = isinstance(item, dict) and item.get("type") == "portfolio_weekly"
 
             try:
                 if is_retrospective:
@@ -248,6 +250,30 @@ async def _queue_worker():
                         "completed",
                         f"RAG validation complete for {ticker}",
                     )
+                elif is_portfolio_daily:
+                    config_id = item.get("config_id")
+                    await asyncio.to_thread(
+                        scheduler.portfolio_pipeline.run_daily,
+                        config_id,
+                    )
+                    broadcast_status(
+                        ticker,
+                        "portfolio_daily_complete",
+                        "completed",
+                        "Portfolio daily pipeline complete",
+                    )
+                elif is_portfolio_weekly:
+                    config_id = item.get("config_id")
+                    await asyncio.to_thread(
+                        scheduler.portfolio_pipeline.run_weekly,
+                        config_id,
+                    )
+                    broadcast_status(
+                        ticker,
+                        "portfolio_weekly_complete",
+                        "completed",
+                        "Portfolio weekly reflection complete",
+                    )
                 else:
                     await asyncio.to_thread(
                         scheduler._run_analysis_cycle,
@@ -270,7 +296,15 @@ async def _queue_worker():
                         else (
                             f"RAG validation failed: {str(e)}"
                             if is_rag_validation
-                            else f"Analysis failed: {str(e)}"
+                            else (
+                                f"Portfolio daily pipeline failed: {str(e)}"
+                                if is_portfolio_daily
+                                else (
+                                    f"Portfolio weekly reflection failed: {str(e)}"
+                                    if is_portfolio_weekly
+                                    else f"Analysis failed: {str(e)}"
+                                )
+                            )
                         )
                     ),
                     schedule_job_id=job_id,
@@ -325,7 +359,7 @@ async def lifespan(app: FastAPI):
     scheduler.set_queue(ticker_scheduler_module.analysis_queue, _event_loop)
 
     # Auto-load schedules from config into DB + scheduler
-    from tradingagents.storage import ScheduleConfigRepository
+    from tradingagents.storage import ScheduleConfigRepository, PortfolioConfigRepository
 
     schedule_config_repo = ScheduleConfigRepository(scheduler.db)
     for schedule_item in DEFAULT_CONFIG.get("schedules", []):
@@ -343,6 +377,19 @@ async def lifespan(app: FastAPI):
             )
     except Exception as e:
         logger.warning(f"Failed to load schedules from DB: {e}")
+
+    if DEFAULT_CONFIG.get("portfolio_enabled", False):
+        try:
+            portfolio_repo = PortfolioConfigRepository(scheduler.db)
+            if not portfolio_repo.get_latest():
+                portfolio_repo.create(
+                    initial_capital=float(DEFAULT_CONFIG.get("portfolio_initial_capital", 100000000)),
+                    base_currency="KRW",
+                    fee_enabled=bool(DEFAULT_CONFIG.get("portfolio_fee_enabled", True)),
+                )
+                logger.info("Created default portfolio config on startup")
+        except Exception as e:
+            logger.warning(f"Failed to initialize portfolio config: {e}")
 
     # Start scheduler
     if DEFAULT_CONFIG.get("scheduler_enabled", False):
@@ -427,9 +474,11 @@ def create_app() -> FastAPI:
 
     # Register routes
     from tradingagents.api import routes
+    from tradingagents.api import portfolio_routes
     from tradingagents.api import ws
 
     app.include_router(routes.router)
+    app.include_router(portfolio_routes.router)
     app.include_router(ws.router)
 
     return app

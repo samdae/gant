@@ -74,13 +74,13 @@
 - **FR-052: RAG 검색 파이프라인 재설계 — RRF → usefulness 순서, usefulness_score, RAG_TOP_K**
 - **FR-053: RAG Validator — 회고분석 기반 문서별 usefulness_score ±1 자동 조정**
 - **FR-054: 매매검증 검색 — 키워드 + 시멘틱 이중 검색**
-- **FR-055: 회고분석 배점 — analysis_accuracy + rag_contribution 0~100 수치화** (Designed)
-- **FR-056: 포트폴리오 모드 인프라 — 전용 테이블 5개, 활성화 설정** (Designed)
-- **FR-057: 비서 에이전트 — reports 요약 압축 → 포트폴리오 PA 입력** (Designed)
-- **FR-058: PortfolioManagerAgent — 리밸런싱 결정, 매매 지시 JSON** (Designed)
-- **FR-059: 포트폴리오 공유 자금 풀 — 혼합 통화, 환율, 거래 수수료** (Designed)
-- **FR-060: 포트폴리오 RAG 교차 참조 — 모드별 컬렉션 분리** (Designed)
-- **FR-061: 포트폴리오 주간 반성 — KST 일요일 12:00, 성과 평가** (Designed)
+- **FR-055: 회고분석 배점 — analysis_accuracy + rag_contribution 0~100 수치화** (Implemented)
+- **FR-056: 포트폴리오 모드 인프라 — 전용 테이블 5개, 활성화 설정** (Implemented)
+- **FR-057: 비서 에이전트 — reports 요약 압축 → 포트폴리오 PA 입력** (Implemented)
+- **FR-058: PortfolioManagerAgent — 리밸런싱 결정, 매매 지시 JSON** (Implemented)
+- **FR-059: 포트폴리오 공유 자금 풀 — 혼합 통화, 환율, 거래 수수료** (Implemented)
+- **FR-060: 포트폴리오 RAG 교차 참조 — 모드별 컬렉션 분리** (Implemented)
+- **FR-061: 포트폴리오 주간 반성 — KST 일요일 12:00, 성과 평가** (Implemented)
 - **FR-062: 매크로 컨텍스트 주입 — 시장별(us/kr/crypto) 지표를 12에이전트 + PA 프롬프트에 공통 반영** (Implemented)
 - **FR-063: 섹터 호황도 주입 — 섹터 자동 판별 + ETF 상대강도/추세 계산 + 캐시/폴백** (Implemented)
 
@@ -373,7 +373,7 @@ CREATE INDEX idx_schedule_job_events_ticker ON schedule_job_events(ticker);
 CREATE INDEX idx_schedule_job_events_created_at ON schedule_job_events(created_at);
 CREATE UNIQUE INDEX idx_schedule_job_events_unique ON schedule_job_events(schedule_job_id, agent);
 
--- ⑧ retrospective_analyses: 회고분석 (v4 도입, FR-055 배점 추가 예정)
+-- ⑧ retrospective_analyses: 회고분석 (v4 도입, FR-055 배점 구현 완료)
 CREATE TABLE retrospective_analyses (
     id                  BIGSERIAL PRIMARY KEY,
     position_id         BIGINT    NOT NULL UNIQUE REFERENCES positions(id),
@@ -669,7 +669,7 @@ scripts/
 | 96 | FR-053 | 평가 결과 테이블 | `storage/database.py` | `Database` | `init_schema` | `rag_validation_results` CREATE TABLE + UNIQUE 인덱스 | [x] |
 | 97 | FR-053 | ValidationResultRepository | `storage/rag_validation_repo.py` | `RAGValidationRepository` | `create`, `exists(retro_id, reflection_id)`, `list_by_retrospective`, `get_summary` | CRUD + 멱등성 체크 + 집계 | [x] |
 
-### Phase 5: v6 설계 (FR-055~061)
+### Phase 5: 구현 완료 (FR-055~061)
 
 | # | Spec Ref | Feature | File | Class / Function | Method / Detail | Action |
 |---|----------|---------|------|------------------|-----------------|--------|

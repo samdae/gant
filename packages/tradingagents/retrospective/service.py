@@ -5,6 +5,7 @@ Called from the queue worker when item type is 'retrospective'.
 """
 
 import logging
+import re
 from typing import Dict, Any
 
 from tradingagents.storage import (
@@ -18,6 +19,43 @@ from tradingagents.retrospective.prompt import build_retrospective_prompt
 from tradingagents.llm_clients.factory import create_llm_client
 
 logger = logging.getLogger(__name__)
+
+
+def _build_prompt_with_scores(base_prompt: str) -> str:
+    """Append FR-055 score output instructions to retrospective prompt."""
+    return (
+        f"{base_prompt}\n\n"
+        "반드시 아래 점수 항목을 함께 포함하세요.\n"
+        "- analysis_accuracy: 0~100 정수\n"
+        "- rag_contribution: 0~100 정수 또는 null (RAG 미사용 시)\n\n"
+        "출력 형식 예시:\n"
+        "analysis_accuracy: 72\n"
+        "rag_contribution: 58\n"
+    )
+
+
+def _clamp_score(value: int) -> int:
+    return max(0, min(100, int(value)))
+
+
+def _parse_scores(text: str) -> tuple[int | None, int | None]:
+    """Parse FR-055 scoring fields from analysis content."""
+    accuracy: int | None = None
+    contribution: int | None = None
+
+    m = re.search(r"analysis_accuracy\s*[:=]\s*(\d+)", text, flags=re.IGNORECASE)
+    if m:
+        accuracy = _clamp_score(int(m.group(1)))
+
+    m = re.search(
+        r"rag_contribution\s*[:=]\s*(\d+|null)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if m and m.group(1).lower() != "null":
+        contribution = _clamp_score(int(m.group(1)))
+
+    return accuracy, contribution
 
 
 def run_retrospective_analysis(
@@ -70,13 +108,26 @@ def run_retrospective_analysis(
             current_price=current_price,
             unrealized_pnl_pct=unrealized_pnl_pct,
         )
+        prompt = _build_prompt_with_scores(prompt)
 
         llm = _get_llm(config)
         response = llm.invoke(prompt, config={"timeout": 600})
-        analysis_content = response.content
+        analysis_content = (
+            response.content
+            if hasattr(response, "content")
+            else str(response)
+        )
+        analysis_content = str(analysis_content)
+
+        analysis_accuracy, rag_contribution = _parse_scores(analysis_content)
 
         retro_repo.update_status(
             retro_id, "completed", analysis_content=analysis_content
+        )
+        retro_repo.update_scores(
+            retro_id,
+            analysis_accuracy=analysis_accuracy,
+            rag_contribution=rag_contribution,
         )
         logger.info(f"Retrospective analysis completed for {ticker} (retro_id={retro_id})")
 

@@ -103,6 +103,10 @@ class MetricsResponse(BaseModel):
     total_realized_return_pct: float
     total_pnl: float
     total_return_pct: float
+    analysis_accuracy_avg: Optional[float] = None
+    analysis_accuracy_count: int = 0
+    rag_contribution_avg: Optional[float] = None
+    rag_contribution_count: int = 0
 
 
 class ActivityEvent(BaseModel):
@@ -604,6 +608,37 @@ async def get_metrics():
     total_invested = total_realized_cost + total_cost_basis
     total_return_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0.0
 
+    score_row = conn.execute(
+        """
+        SELECT AVG(analysis_accuracy) AS analysis_accuracy_avg,
+               COUNT(analysis_accuracy) AS analysis_accuracy_count,
+               AVG(rag_contribution) AS rag_contribution_avg,
+               COUNT(rag_contribution) AS rag_contribution_count
+        FROM retrospective_analyses
+        WHERE status = 'completed'
+        """
+    ).fetchone()
+    analysis_accuracy_avg = (
+        float(score_row["analysis_accuracy_avg"])
+        if score_row and score_row.get("analysis_accuracy_avg") is not None
+        else None
+    )
+    analysis_accuracy_count = (
+        int(score_row["analysis_accuracy_count"])
+        if score_row and score_row.get("analysis_accuracy_count") is not None
+        else 0
+    )
+    rag_contribution_avg = (
+        float(score_row["rag_contribution_avg"])
+        if score_row and score_row.get("rag_contribution_avg") is not None
+        else None
+    )
+    rag_contribution_count = (
+        int(score_row["rag_contribution_count"])
+        if score_row and score_row.get("rag_contribution_count") is not None
+        else 0
+    )
+
     return MetricsResponse(
         as_of=as_of,
         active_positions=active_positions,
@@ -616,6 +651,10 @@ async def get_metrics():
         total_realized_return_pct=total_realized_return_pct,
         total_pnl=total_pnl,
         total_return_pct=total_return_pct,
+        analysis_accuracy_avg=analysis_accuracy_avg,
+        analysis_accuracy_count=analysis_accuracy_count,
+        rag_contribution_avg=rag_contribution_avg,
+        rag_contribution_count=rag_contribution_count,
     )
 
 
