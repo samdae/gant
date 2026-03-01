@@ -42,7 +42,7 @@
 
 | 지표 | yfinance 소스 | 계산 | 의미 |
 |------|-------------|------|------|
-| VKOSPI (공포지수) | `^VKOSPI` | 종가 | 한국 시장 불안 수준 |
+| VIX (글로벌 공포지수) | `^VIX` | 종가 | 글로벌 시장 불안 수준. VKOSPI는 yfinance에서 제공 중단되어 VIX로 대체. 글로벌 시장 연동성이 높아 VIX + USDKRW 조합으로 한국 시장 불안을 충분히 포착 |
 | USDKRW 환율 | `USDKRW=X` | 종가 | 원화 약세면 외국인 이탈, 강세면 유입. 코스피의 핵심 드라이버 |
 | 코스피 추세 | `^KS11` | 현재가 vs 50일/200일 이동평균 | 중기/장기 추세 방향 |
 | 섹터 ETF 상대 강도 | 아래 매핑 참조 | 섹터 ETF 20일 수익률 / 코스피 20일 수익률 | 해당 섹터가 시장 대비 강한지 약한지 |
@@ -241,7 +241,7 @@ _sector_cache: Dict[str, Tuple[str, str]] = {}  # {sector_etf: (date, text)}
 | 주입 대상 | 12에이전트 + PA 전부 |
 | 데이터 소스 | yfinance 단일 (외부 API 의존성 제로) |
 | 나스닥 지표 | VIX, Fed Rate (3M T-Bill), 장단기 금리차, 나스닥 추세 (4개) |
-| 코스피 지표 | VKOSPI, USDKRW 환율, 코스피 추세, 섹터 ETF 상대 강도 (4개) |
+| 코스피 지표 | VIX (글로벌), USDKRW 환율, 코스피 추세, 섹터 ETF 상대 강도 (4개). VKOSPI는 yfinance 미제공으로 VIX 대체 |
 | 코인 지표 | BTC 20일 변동성, DXY, BTC 도미넌스 (3개) |
 | 섹터 판별 | `yf.Ticker(ticker).info["sector"]` 자동 |
 | 섹터 ETF | US 11/11 완비, KR 8/11 (없으면 코스피 대체) |

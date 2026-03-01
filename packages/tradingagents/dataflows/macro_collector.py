@@ -132,7 +132,7 @@ def _collect_macro_us() -> str:
 
 
 def _collect_macro_kr() -> str:
-    vkospi = _safe_latest("^VKOSPI")
+    vix = _safe_latest("^VIX")
     usdkrw = _safe_latest("USDKRW=X")
 
     kospi_price = _safe_latest("^KS11")
@@ -141,7 +141,7 @@ def _collect_macro_kr() -> str:
 
     lines = [
         "[매크로 — 코스피]",
-        f"VKOSPI (공포지수): {_fmt(vkospi)}",
+        f"VIX (글로벌 공포지수): {_fmt(vix)}",
         f"USDKRW 환율: {_fmt(usdkrw, '원', 0)}",
         f"코스피 50일선: {_trend_vs_sma(kospi_price, kospi_sma50)}",
         f"코스피 200일선: {_trend_vs_sma(kospi_price, kospi_sma200)}",
