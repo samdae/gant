@@ -1,7 +1,7 @@
-# Backend Design Doc: TradingAgents Features (FR-013~054)
+# Backend Design Doc: TradingAgents Features (FR-013~063)
 
 > Created: 2026-02-11
-> Updated: 2026-02-25
+> Updated: 2026-03-01
 > Service: tradingagents
 > Type: Backend
 > Requirements document: docs/tradingagents/spec.md
@@ -11,7 +11,7 @@
 
 ### Goal
 
-기존 TradingAgents 멀티에이전트 분석 파이프라인에 **영속 메모리(Hybrid RAG)**, **가상 매매 검증**, **스케줄 기반 자동화**를 추가하고, **Postgres 기반 데이터 저장**, **반성 집중화(반성에이전트 1곳)**, **요약에이전트**를 도입하여, AI 분석의 정확도를 정량적으로 추적·학습하는 자기 개선 시스템으로 진화시킨다. 추가로 **스케줄 테이블 재설계(9테이블)**, **통화 지원(KRW/USD)**, **자동 청산 메커니즘**, **시장별 스케줄링**, **Codex LLM 프로바이더**를 도입한다. v5에서 **RAG 검색 파이프라인 개편(맥락 인식 검색, usefulness 기반 필터링)**, **RAG Validator(경험 유용성 자동 평가)**, **매매검증 검색 기능**을 추가한다. v6에서 **회고분석 배점(analysis_accuracy, rag_contribution)**, **포트폴리오 모드(공유 자금 풀, 비서 에이전트, PortfolioManagerAgent, 주간 반성)**를 도입한다.
+기존 TradingAgents 멀티에이전트 분석 파이프라인에 **영속 메모리(Hybrid RAG)**, **가상 매매 검증**, **스케줄 기반 자동화**를 추가하고, **Postgres 기반 데이터 저장**, **반성 집중화(반성에이전트 1곳)**, **요약에이전트**를 도입하여, AI 분석의 정확도를 정량적으로 추적·학습하는 자기 개선 시스템으로 진화시킨다. 추가로 **스케줄 테이블 재설계(9테이블)**, **통화 지원(KRW/USD)**, **자동 청산 메커니즘**, **시장별 스케줄링**, **Codex LLM 프로바이더**를 도입한다. v5에서 **RAG 검색 파이프라인 개편(맥락 인식 검색, usefulness 기반 필터링)**, **RAG Validator(경험 유용성 자동 평가)**, **매매검증 검색 기능**을 추가한다. v6에서 **회고분석 배점(analysis_accuracy, rag_contribution)**, **포트폴리오 모드(공유 자금 풀, 비서 에이전트, PortfolioManagerAgent, 주간 반성)**를 도입한다. v7에서 **시장별 매크로 지표 + 섹터 호황도 컨텍스트 주입(FR-062, FR-063)**을 도입하여 12에이전트와 PA의 판단 맥락을 강화한다.
 
 ### Non-goals
 
@@ -81,6 +81,8 @@
 - **FR-059: 포트폴리오 공유 자금 풀 — 혼합 통화, 환율, 거래 수수료** (Designed)
 - **FR-060: 포트폴리오 RAG 교차 참조 — 모드별 컬렉션 분리** (Designed)
 - **FR-061: 포트폴리오 주간 반성 — KST 일요일 12:00, 성과 평가** (Designed)
+- **FR-062: 매크로 컨텍스트 주입 — 시장별(us/kr/crypto) 지표를 12에이전트 + PA 프롬프트에 공통 반영** (Implemented)
+- **FR-063: 섹터 호황도 주입 — 섹터 자동 판별 + ETF 상대강도/추세 계산 + 캐시/폴백** (Implemented)
 
 ### Out of scope
 
@@ -231,6 +233,12 @@ dependencies:
 | `tradingagents/storage/portfolio_*_repo.py` | 포트폴리오 전용 5개 Repository (config, decision, trade, holding, reflection) | **new** (FR-056) |
 | `tradingagents/api/portfolio_routes.py` | 포트폴리오 전용 API 라우터 (9개 엔드포인트) | **new** (FR-056) |
 | `tradingagents/memory/hybrid_memory.py` | `collection_name` + `fts_repo` 파라미터화 → 모드별 인스턴스 분리 | modify (FR-060) |
+| `tradingagents/dataflows/macro_collector.py` | 시장별 매크로 지표 + 섹터 상대강도 수집/포맷팅 + 일일 캐시 (`_macro_cache`, `_sector_cache`) | **new** (FR-062, FR-063) |
+| `tradingagents/agents/utils/macro_mixin.py` | 에이전트 프롬프트 공통 매크로 블록 생성 (`get_macro_block`) | **new** (FR-062) |
+| `tradingagents/agents/*` | Market/Bull/Bear/Research/Risk/Trader 프롬프트에 `macro_context` 주입 | modify (FR-062) |
+| `tradingagents/scheduler/ticker_scheduler.py` | 분석 시작 전 `collect_macro_context()` 호출 후 그래프에 전달 | modify (FR-062, FR-063) |
+| `tradingagents/graph/propagation.py` | `AgentState` 초기값에 `macro_context` 필드 주입 | modify (FR-062) |
+| `tradingagents/virtual_trade/portfolio_agent.py` | PA 프롬프트에 매크로/섹터 컨텍스트 섹션 추가 | modify (FR-062) |
 
 ### Data
 
@@ -689,6 +697,23 @@ scripts/
 | 123 | FR-061 | PortfolioReflector 프롬프트 | `graph/portfolio_reflection.py` | — | `_WEEKLY_REFLECTION_PROMPT` — "이번 주 포트폴리오 배분 결정을 복기하라. allocation_accuracy(0~100), 핵심 교훈, 개선 방향을 제시하라" | **new** |
 | 124 | FR-056 | 포트폴리오 API 라우터 | `api/portfolio_routes.py` | — | 9개 엔드포인트 (상세 §6 참조) | **new** |
 
+### Phase 6: 구현 완료 (FR-062~063, v7)
+
+| # | Spec Ref | Feature | File | Class / Function | Method / Detail | Action | Impl |
+|---|----------|---------|------|------------------|-----------------|--------|------|
+| 125 | FR-062 | AgentState 확장 | `agents/utils/agent_states.py` | `AgentState` | `macro_context` 필드 추가 (TypedDict) | modify | [x] |
+| 126 | FR-062 | 그래프 입력 경로 확장 | `graph/propagation.py`, `graph/trading_graph.py` | `Propagator`, `TradingAgentsGraph` | `create_initial_state(..., macro_context)`, `propagate(..., macro_context)` 시그니처/전달 | modify | [x] |
+| 127 | FR-062 | 스케줄러 선행 수집 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_run_analysis_cycle_impl`에서 `collect_macro_context(ticker, market)` 호출 후 그래프에 주입 | modify | [x] |
+| 128 | FR-062 | 프롬프트 공통 유틸 | `agents/utils/macro_mixin.py` | `get_macro_block` | `macro_context`가 있을 때만 공통 블록 생성 | **new** | [x] |
+| 129 | FR-062 | 시장 분석가 프롬프트 반영 | `agents/analysts/market_analyst.py` | `create_market_analyst` | system prompt에 매크로/섹터 컨텍스트 직접 삽입 | modify | [x] |
+| 130 | FR-062 | 토론/리스크/트레이더 프롬프트 반영 | `agents/researchers/*.py`, `agents/managers/*.py`, `agents/risk_mgmt/*.py`, `agents/trader/trader.py` | Bull/Bear/Research/Risk/Trader | `get_macro_block(state)` 호출로 공통 컨텍스트 삽입 | modify | [x] |
+| 131 | FR-062 | PA 프롬프트 반영 | `virtual_trade/portfolio_agent.py` | `PortfolioAgent` | `pipeline_state["macro_context"]`를 의사결정 프롬프트에 추가 | modify | [x] |
+| 132 | FR-063 | 매크로 수집기 모듈 | `dataflows/macro_collector.py` | `collect_macro_context` | 시장별 수집기 `_collect_macro_us/_kr/_crypto` + 공통 포맷 | **new** | [x] |
+| 133 | FR-063 | 섹터 ETF 매핑/폴백 | `dataflows/macro_collector.py` | `_collect_sector` | US 11개/KR 8개 ETF 매핑, 미매핑 시 fallback 메시지 | **new** | [x] |
+| 134 | FR-063 | 섹터 강도 계산 | `dataflows/macro_collector.py` | `_relative_strength_20d`, `_trend_vs_sma` | 상대강도(최근 1개월) + 50일선 추세 계산 | **new** | [x] |
+| 135 | FR-063 | 일일 캐시 전략 | `dataflows/macro_collector.py` | `_macro_cache`, `_sector_cache` | 시장별/ETF별 당일 1회 캐시로 중복 fetch 억제 | **new** | [x] |
+| 136 | FR-063 | 코인/장애 허용 정책 | `dataflows/macro_collector.py` | `collect_macro_context` | crypto는 섹터 스킵, fetch 실패 시 `N/A`/빈 문자열로 graceful degradation | **new** | [x] |
+
 ---
 
 ## 4. Implementation Plan
@@ -772,6 +797,12 @@ scripts/
     - `PortfolioReflector.reflect_weekly()` — 주간 decisions/trades 분석 → LLM → DB + ChromaDB
     - CronTrigger(day_of_week='sat', hour=2) 주간 스케줄 등록
 
+16. **Step 16: 매크로/섹터 컨텍스트 주입 (FR-062, FR-063)**
+    - `dataflows/macro_collector.py` 신규: 시장별 매크로 + 섹터 상대강도 수집, 일일 캐시, 폴백
+    - `scheduler/ticker_scheduler.py`에서 분석 시작 전 `collect_macro_context()` 호출 후 `graph.propagate(..., macro_context=...)` 전달
+    - `AgentState`/`Propagator`/`TradingGraph` 경로에 `macro_context` 필드 연결
+    - 12에이전트 + PA 프롬프트에 매크로 블록 주입 (`macro_mixin` + Market Analyst 직접 블록)
+
 ---
 
 ## 5. Sequence Diagrams
@@ -794,12 +825,18 @@ scripts/
 │     → stop_loss/target 또는 ±30% 초과 시 PA 거치지 않고 즉시 전량 청산   │
 │     → 청산 처리 후 반성에이전트 실행, 분석 파이프라인은 스킵              │
 │                                                                            │
+│  0.7. 매크로/섹터 컨텍스트 수집 (FR-062, FR-063)                          │
+│     collect_macro_context(ticker, market)                                  │
+│     → market(us/kr/crypto)별 거시지표 + 섹터 상대강도 계산                │
+│     → 실패 시 N/A/빈 문자열로 graceful degradation                         │
+│                                                                            │
 │  1. G-ANT 분석 (12에이전트 파이프라인, 기존 그대로)                       │
 │     Market → Social → News → Fundamentals                                  │
 │     → Bull ↔ Bear (N rounds) → Research Judge                             │
 │     → Trader → Aggressive ↔ Conservative ↔ Neutral → Risk Judge           │
 │     → Signal: BUY/HOLD/SELL + strategy_json                               │
 │     ※ 12에이전트는 포지션 정보 없이 완전 객관적 분석 (FR-021)            │
+│     ※ AgentState.macro_context로 시장/섹터 컨텍스트 공통 주입 (FR-062)   │
 │     ※ 각 에이전트 완료 시 broadcast_status → WS + schedule_job_events    │
 │                                                                            │
 │  2. PA 판단 (deep_think_llm)                                              │
@@ -1128,6 +1165,8 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | RAG Validator 조정 폭 | ±1 고정 | 신뢰도 가중 (±1~3) | 느린 수렴이 의도. 빠른 적용은 노이즈에 반응할 위험 (FR-053) |
 | RAG 소스 범위 | 반성(매매검증)만 | 회고분석 포함 | 회고분석은 검증/시각화 전용. RAG 소스 단일화로 역할 명확 |
 | 검색 API 설계 | 단일 엔드포인트 + mode 파라미터 | 모드별 별도 엔드포인트 | API 표면 최소화, 클라이언트 로직 단순화 (FR-054) |
+| 매크로 데이터 소스 | yfinance 단일 | 외부 매크로 API(FRED 등) | 의존성/운영 복잡도 최소화, 기존 데이터 흐름 재사용 (FR-062) |
+| 매크로 해석 방식 | 룰 기반 해석 없음 (수치 원문 주입) | 규칙 엔진 선해석 | 하드코딩 편향을 줄이고 LLM+RAG가 맥락적으로 판단 (FR-062, FR-063) |
 | 금액 타입 (포트폴리오) | DOUBLE PRECISION | DECIMAL(18,4) | 기존 9테이블 패턴 일관성. 가상 매매라 소수점 정밀도 이슈 무관 (FR-056, v6 설계 토론) |
 | 수수료 테이블 | application 상수 (FeeCalculator) | 별도 fee_rates 테이블 | 3종(us/kr/crypto) 고정 규칙. DB 관리 오버헤드 대비 이점 없음. 변경 시 코드 수정이 더 명확 (FR-059, v6 설계 토론) |
 | 스케줄 완료 감지 | 이벤트 드리븐 (schedule_jobs 완료 카운트) | 폴링 | `_on_all_tickers_complete()` — 마지막 job 완료 시 active config 기준 전체 카운트 비교. 폴링 대비 즉시 반응 (FR-056, v6 설계 토론) |
@@ -1149,6 +1188,8 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | PM 에이전트 JSON 파싱 실패 | 당일 포트폴리오 결정 불가 | LLM fallback (재시도 1회, 더 엄격한 프롬프트), 실패 시 decision.status='failed' + 다음 날 재시도 |
 | 개별 종목 매매 실패 | 일부 리밸런싱 미실행 | 종목별 try/except → 실패 건 skip + error_message 기록 + 나머지 종목 정상 실행 (hung job 대응) |
 | 포트폴리오 파이프라인 hang | daily pipeline 무한 대기 | 기존 lock acquire timeout(600s) 적용. 초과 시 status='failed' 처리 |
+| yfinance 매크로 fetch 실패 | 매크로 컨텍스트 일부/전체 누락 | 지표 단위 `N/A` 표기 + 전체 실패 시 빈 컨텍스트로 분석 지속 (FR-062) |
+| 섹터 판별/ETF 매핑 누락 | 섹터 컨텍스트 품질 저하 | "판별 불가/대응 ETF 없음" 폴백 메시지 + 시장 지수 기준 해석 (FR-063) |
 
 ### 가정사항
 
@@ -1195,6 +1236,9 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | 26 | Portfolio | 전체 티커 미완료 상태에서 파이프라인 트리거 | 완료 카운트 불일치 시 무시. 다음 분석 완료 시 재검사 (FR-056) |
 | 27 | Portfolio | available_cash 부족 | PM 결정 중 weight 기반 배분이므로 초과 불가. 안전장치: 실행 시 잔액 재확인 → 부족 시 해당 건 skip (FR-059) |
 | 28 | Portfolio | 주간 회고 LLM 실패 | portfolio_reflections INSERT 없이 로그만 남김. 다음 주에 재시도 안 함 (FR-061) |
+| 29 | Macro | 매크로 지표 일부 fetch 실패 | 실패 지표만 `N/A`로 표기하고 나머지 컨텍스트/분석은 정상 진행 (FR-062) |
+| 30 | Macro | 섹터 판별 실패 또는 ETF 매핑 없음 | 섹터 블록을 "판별 불가/대응 ETF 없음" 메시지로 대체 후 진행 (FR-063) |
+| 31 | Macro | 매크로 수집 전체 실패 | `macro_context=""`로 파이프라인 + PA 실행 (graceful degradation) (FR-062) |
 
 ### Authorization
 
@@ -1508,6 +1552,34 @@ DB 연결은 프로세스 종료 시 psycopg가 자동 정리. ChromaDB Persiste
 - 환율 스냅샷: `portfolio_trades.exchange_rate` + `portfolio_decisions.exchange_rate_snapshot` 저장
 - fee_rates 검증: `FeeCalculator` 단위 테스트로 fee 계산 정확성 보장
 - hung job 대응: 종목별 try/except + skip + error_message 기록, lock acquire timeout(600s)
+
+### 10.16 Macro & Sector Context Injection (FR-062, FR-063)
+
+#### 수집기 개요
+- 모듈: `tradingagents/dataflows/macro_collector.py`
+- 진입점: `collect_macro_context(ticker, market)`
+- 호출 시점: `TickerScheduler._run_analysis_cycle_impl`에서 G-ANT 파이프라인 직전
+- 출력 포맷: 프롬프트 주입용 텍스트 블록 (`AgentState.macro_context`)
+
+#### 시장별 매크로 지표
+| market | 지표 |
+|---|---|
+| `us` | `^VIX`, `^IRX`(3M T-Bill), `^TNX-^IRX` 스프레드, `^IXIC` 50/200일선 추세 |
+| `kr` | `^VIX`(VKOSPI 대체), `USDKRW=X`, `^KS11` 50/200일선 추세 |
+| `crypto` | `BTC-USD` 20일 변동성(연율화), `DX-Y.NYB`, BTC 시가총액 |
+
+#### 섹터 컨텍스트
+- 섹터 판별: `yf.Ticker(ticker).info["sector"]`
+- US: 11개 섹터 ETF 매핑 (`XLK`~`XLU`)
+- KR: 8개 섹터 ETF 매핑 (미매핑 섹터는 fallback 메시지)
+- 계산: 상대강도(최근 1개월 수익률 차) + 50일선 대비 추세
+- crypto: 섹터 블록 미주입 (매크로만 사용)
+
+#### 캐시/장애 허용
+- `_macro_cache`: 시장별 당일 1회 캐시
+- `_sector_cache`: ETF별 당일 1회 캐시
+- 지표 fetch 실패: 해당 지표 `N/A`
+- 전체 실패: 빈 컨텍스트 반환, 파이프라인은 정상 진행
 
 ### ⚠️ TBD (Skipped)
 

@@ -67,6 +67,8 @@
 | FR-059     | Portfolio  | 포트폴리오 공유 자금 풀 — 분석검증 자금과 완전 분리, 사용자 총액 입력, 혼합 통화(USD+KRW), yfinance 환율 조회(`USDKRW=X`), 시장별 거래 수수료(US 0.1%, KR 0.25%+세금, Crypto 0.1%)                               | High         | Designed             |
 | FR-060     | Memory     | 포트폴리오 RAG 교차 참조 — 분석PA→포폴반성 ❌ 차단, 포폴PA→분석반성+포폴반성 ✅ 양방향(각 K개). 모드별 ChromaDB 컬렉션 분리                                                                                     | High         | Designed             |
 | FR-061     | Portfolio  | 포트폴리오 주간 반성 — CronTrigger KST 일요일 12:00. 입력: 주간 매매+비서요약, 종목별 수익률, 자산 변동, holdings. portfolio_reflections + ChromaDB 이중 저장                                                     | High         | Designed             |
+| FR-062     | Analysis   | 매크로 컨텍스트 주입 — 시장별(us/kr/crypto) 거시 지표(VIX/금리/환율/추세/변동성)를 yfinance로 수집해 12에이전트 + PA 프롬프트에 공통 주입                                                                          | High         | Implemented          |
+| FR-063     | Analysis   | 섹터 호황도 주입 — 섹터 자동 판별 + US/KR ETF 매핑, 상대강도(약 20거래일) + 50일선 추세 계산, 일일 캐시/폴백 포함                                                                                                 | High         | Implemented          |
 
 > **Status**: `Implemented` = 코드 존재, `Designed` = 설계 완료 (미구현), `Draft` = proposal.md에서 추출
 > **Req ID Rule**: `FR-{number}` format. New = max + 1. Never reuse deleted numbers.
@@ -140,6 +142,8 @@ Financial Analysis / AI-driven Investment Decision Support
 | Portfolio Shared Fund Pool (FR-059)                 | 공유 자금 풀 — 혼합 통화, yfinance 환율, 시장별 거래 수수료                                               | ✅ High    |
 | Portfolio RAG Cross-Reference (FR-060)              | 포트폴리오 RAG 교차 참조 정책, 모드별 ChromaDB 컬렉션 분리                                                | ✅ High    |
 | Portfolio Weekly Reflection (FR-061)                | 주간 정기 반성 — KST 일요일 12:00, 배분 품질 평가, RAG 저장                                               | ✅ High    |
+| Macro Context Injection (FR-062)                    | 분석 시작 전 시장별 거시 지표 수집 후 12에이전트 + PA 프롬프트에 동일 주입                                | ✅ High    |
+| Sector Health Injection (FR-063)                    | 섹터 자동 판별 + ETF 상대강도/추세 계산으로 종목 분석에 시장/섹터 맥락 보강                               | ✅ High    |
 
 ### 3.2 Detailed Features
 
@@ -380,13 +384,31 @@ CronTrigger (KST Sun 12:00)
 - **RAG 저장**: 포트폴리오 전용 ChromaDB 컬렉션 + `portfolio_reflections` 테이블 이중 저장
 - **별도 테이블**: `portfolio_reflections` — 기존 `reflections`와 FK 구조가 다름 (종목 단위가 아닌 전체 배분 단위)
 
+#### 3.2.10 Macro Indicators & Sector Health Injection (FR-062, FR-063)
+
+- **목표**: 개별 종목 데이터만으로 발생하는 맥락 누락을 줄이기 위해, 분석 시작 전에 시장 거시지표와 섹터 상대강도를 수집해 12에이전트 + PA 전부에 동일 주입
+- **수집 모듈**: `dataflows/macro_collector.py`의 `collect_macro_context(ticker, market)`
+- **데이터 소스**: yfinance 단일 소스 (외부 API 미사용, LLM 호출 없음)
+- **시장별 매크로 지표** (FR-062):
+  - `us`: `^VIX`, `^IRX`(3M T-Bill), `^TNX - ^IRX` 장단기 스프레드, `^IXIC` 50/200일선 추세
+  - `kr`: `^VIX`(VKOSPI 대체), `USDKRW=X`, `^KS11` 50/200일선 추세
+  - `crypto`: `BTC-USD` 20일 변동성(연율화), `DX-Y.NYB`, BTC 시가총액
+- **섹터 호황도** (FR-063):
+  - 섹터 자동 판별: `yf.Ticker(ticker).info["sector"]`
+  - US: 11개 섹터 ETF 매핑(XLK~XLU), KR: 8개 섹터 ETF 매핑(미매핑 3개 섹터는 시장지수 참조)
+  - 계산: 최근 1개월(약 20거래일) 상대강도(섹터 ETF - 벤치마크) + 50일선 대비 추세
+- **주입 경로**: `TickerScheduler` 사이클 시작 시 컨텍스트 생성 → `TradingAgentsGraph.propagate(..., macro_context=...)` → `AgentState.macro_context` 저장 → 에이전트 프롬프트(`macro_mixin`/직접 블록) 반영
+- **캐시 전략**: `_macro_cache`(시장별, 당일 1회), `_sector_cache`(ETF별, 당일 1회)
+- **장애 허용**: 지표 fetch 실패 시 `N/A`/부분 결과로 진행, 전체 실패 시 빈 문자열로 graceful degradation (분석 중단 없음)
+- **코인 정책**: crypto 티커는 섹터 블록 스킵 (매크로만 주입)
+
 ## 4. Data Contracts
 
 ### 4.1 Main Entities
 
 | Entity                                          | Fields                                                                                                                                                                                                                                                     | Source        |
 | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `AgentState` (TypedDict)                        | messages, company_of_interest, trade_date, market_report, sentiment_report, news_report, fundamentals_report, investment_debate_state, risk_debate_state, investment_plan, trader_investment_plan, final_trade_decision, sender | Code + Draft  |
+| `AgentState` (TypedDict)                        | messages, company_of_interest, trade_date, macro_context, market_report, sentiment_report, news_report, fundamentals_report, investment_debate_state, risk_debate_state, investment_plan, trader_investment_plan, final_trade_decision, sender | Code + Draft  |
 | `InvestDebateState` (TypedDict)                 | history, current_response, bull_history, bear_history, judge_decision, count                                                                                                                                                                               | Code          |
 | `RiskDebateState` (TypedDict)                   | history, current_aggressive/conservative/neutral_response, aggressive/conservative/neutral_history, latest_speaker, judge_decision, count                                                                                                                  | Code          |
 | `HybridMemory` (was `FinancialSituationMemory`) | name, chroma_client, chroma_collection, reflection_repo, db — **Postgres FTS + ChromaDB Hybrid RAG**                                                                                                                                                       | Code (FR-015) |
@@ -684,6 +706,9 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 | No new market data        | 스케줄 스킵 처리 (`status='skipped'`, FR-036)                       |
 | ADMIN_TOKEN 미설정        | 서버 시작 차단 (`raise RuntimeError`)                               |
 | Auto-liquidation trigger  | return_pct가 stop_loss/target 또는 ±30% 초과 시 PA 거치지 않고 즉시 청산 (FR-042). stop_loss ≥ target 역전 값은 무시 |
+| Macro indicator partial fetch fail | 해당 지표만 `N/A`로 표기하고 나머지 컨텍스트로 분석 진행 (`collect_macro_context`) |
+| Sector classification/mapping miss | 섹터 블록을 "판별 불가/대응 ETF 없음" 메시지로 대체하고 분석 진행 |
+| Macro context total failure | `macro_context=""`로 파이프라인/PA 실행 (graceful degradation) |
 
 ## 6. Unclear Items
 
@@ -707,6 +732,7 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 | 7    | Data Fetching / LLM Resilience (FR-010~012) | 안정적 실행 보장 (구현 완료)                 |
 | 8    | Retrospective Scoring (FR-055)              | v5 안정화 후 즉시 착수 가능. 독립적          |
 | 9    | Portfolio Mode (FR-056~061)                 | 분석검증 승률 확인 → 균등 배분 테스트 → 이후 |
+| 10   | Macro + Sector Context (FR-062, FR-063)     | 시장/섹터 맥락 보강으로 판단 품질 개선 (구현 완료) |
 
 ---
 
@@ -714,6 +740,7 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 
 | Date       | Type            | Changes                                                                                                                                                                 |
 | ---------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-03-01 | code_sync       | v7 코드 동기화: FR-062~063 신규 추가(Implemented). `dataflows/macro_collector.py` 기반 시장별 매크로/섹터 컨텍스트 수집, AgentState `macro_context` 주입, 스케줄러 선행 수집, 12에이전트+PA 프롬프트 반영, 일일 캐시/폴백 규칙 문서화 |
 | 2026-02-27 | add_requirement | proposal_v6 → FR-055~061 추가 (7개). FR-055: 회고분석 배점. FR-056~061: 포트폴리오 모드 (인프라, 비서, PA, 자금풀, RAG 교차참조, 주간 반성). DB 스키마 7→9테이블 (retrospective_analyses + rag_validation_results 추가, reports.rag_used/rag_docs, reflections.usefulness_score 보완). 포트폴리오 전용 테이블 5개 역할 기술 (DDL은 /arch). Non-goals 포트폴리오 시뮬레이션 명시 |
 | 2026-02-27 | arch_design     | FR-055~061 Status: Draft→Designed. arch-be.md에 포트폴리오 5테이블 DDL(14테이블 총), Phase 5 코드 매핑(#98~#124, 27항목), 일일/주간 시퀀스 다이어그램, 9개 API 엔드포인트, 환경변수 5개, 에러 케이스 6건, 설계 토론 결과(DA 채택, 5개 쟁점) 반영 |
 | 2026-02-25 | code_sync       | FR-051~054 Status: Designed→Implemented (코드 매핑 17/17, API 런타임 5/5 검증 완료). arch-be.md Phase 4 구현 완료 마킹. 경미 이슈 2건 수정 (ON CONFLICT DO NOTHING, usefulness 이중 조회 제거) |
@@ -744,6 +771,6 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 | Item           | Content                                      |
 | -------------- | -------------------------------------------- |
 | Generated      | 2026-02-11                                   |
-| Last synced    | 2026-02-27 (FR-055~061 Designed, 포트폴리오 5테이블 DDL + Phase 5 코드 매핑 완료) |
+| Last synced    | 2026-03-01 (FR-062~063 Implemented, v7 매크로/섹터 컨텍스트 주입 반영) |
 | Analysis scope | `packages/tradingagents/` + `apps/` (Python + Svelte) |
 | Skill version  | reverse 2.0.0                                |
