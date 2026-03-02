@@ -33,6 +33,11 @@
     }
   }
 
+  function handleModeSelect(e: Event) {
+    const val = (e.currentTarget as HTMLSelectElement).value;
+    onModeChange(val === "portfolio" ? "portfolio" : "analysis");
+  }
+
   onMount(() => {
     if ($viewMode === "portfolio") checkPortfolioConfig();
   });
@@ -43,26 +48,24 @@
     <select
       class="mode-select"
       value={$viewMode}
-      on:change={(e) => onModeChange((e.currentTarget.value as ViewMode))}
+      on:change={handleModeSelect}
     >
       {#each modes as m}
         <option value={m.value}>{m.label}</option>
       {/each}
     </select>
   </div>
-
   <div class="header-right">
-  <div class="currency-selector">
-    {#each currencies as c}
-      <button
-        class="currency-btn"
-        class:active={$currencyFilter === c}
-        on:click={() => setCurrency(c)}
-      >{c}</button>
-    {/each}
-  </div>
-
-  <a href="#/about" class="header-link about-icon" use:link title="about">?</a>
+    <div class="currency-selector">
+      {#each currencies as c}
+        <button
+          class="currency-btn"
+          class:active={$currencyFilter === c}
+          on:click={() => setCurrency(c)}
+        >{c}</button>
+      {/each}
+    </div>
+    <a href="#/about" class="header-link about-icon" use:link title="about">?</a>
   </div>
 </header>
 
@@ -82,7 +85,11 @@
     flex-wrap: wrap;
   }
   .header-left { flex: 0 0 auto; }
-  .header-right { display: flex; align-items: center; gap: 12px; }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
   .mode-select {
     padding: 6px 10px;
     font-size: 0.75rem;
