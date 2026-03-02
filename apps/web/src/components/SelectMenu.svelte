@@ -140,6 +140,8 @@
   .select-menu.minimal :global(.select-panel) {
     top: calc(100% + 4px);
     left: 0;
+    min-width: 120px;
+    width: max-content;
     background: var(--bg-header);
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -150,5 +152,6 @@
     min-height: 40px;
     padding: 8px 12px;
     font-size: 0.875rem;
+    white-space: nowrap;
   }
 </style>
