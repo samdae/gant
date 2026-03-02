@@ -41,30 +41,26 @@
 </script>
 
 <header class="app-header">
-  <div class="header-half header-left-half">
-    <div class="segment-group">
-      {#each modes as m}
-        <button
-          type="button"
-          class="segment-btn"
-          class:active={$viewMode === m.value}
-          on:click={() => onModeChange(m.value)}
-        >{m.label}</button>
-      {/each}
-    </div>
+  <div class="segment-group segment-left">
+    {#each modes as m}
+      <button
+        type="button"
+        class="segment-btn"
+        class:active={$viewMode === m.value}
+        on:click={() => onModeChange(m.value)}
+      >{m.label}</button>
+    {/each}
   </div>
   <div class="header-separator"></div>
-  <div class="header-half header-right-half">
-    <div class="segment-group">
-      {#each currencies as c}
-        <button
-          type="button"
-          class="segment-btn"
-          class:active={$currencyFilter === c}
-          on:click={() => onCurrencyChange(c)}
-        >{c}</button>
-      {/each}
-    </div>
+  <div class="segment-group segment-right">
+    {#each currencies as c}
+      <button
+        type="button"
+        class="segment-btn"
+        class:active={$currencyFilter === c}
+        on:click={() => onCurrencyChange(c)}
+      >{c}</button>
+    {/each}
   </div>
 </header>
 
@@ -81,24 +77,19 @@
     align-items: center;
     padding: 0 16px;
   }
-  .header-half {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    min-width: 0;
+  .segment-left {
+    margin-right: auto;
   }
-  .header-left-half {
-    justify-content: flex-start;
-  }
-  .header-right-half {
-    justify-content: flex-end;
+  .segment-right {
+    margin-left: auto;
   }
   .header-separator {
     flex-shrink: 0;
-    width: 1px;
+    width: 2px;
     height: 20px;
-    margin: 0 12px;
+    margin: 0 10px;
     background: var(--border);
+    border-radius: 1px;
   }
   .segment-group {
     display: flex;
@@ -111,7 +102,7 @@
     font-weight: 600;
     border: none;
     border-radius: 8px;
-    background: transparent;
+    background: rgba(255, 255, 255, 0.06);
     color: var(--text-dim);
     cursor: pointer;
     outline: none;
@@ -120,10 +111,10 @@
   }
   .segment-btn:hover {
     color: var(--text-secondary);
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.08);
   }
   .segment-btn.active {
     color: var(--text);
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.14);
   }
 </style>
