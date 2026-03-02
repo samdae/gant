@@ -1,5 +1,5 @@
 #!/bin/sh
-set -e
+# Avoid set -e for portability with minimal sh (e.g. dash on some systems)
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)

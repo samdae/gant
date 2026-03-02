@@ -925,6 +925,5 @@
           {/if}
         </div>
       {/if}
-    {/if}
   </div>
 </section>
