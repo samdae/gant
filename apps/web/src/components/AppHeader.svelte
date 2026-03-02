@@ -3,18 +3,13 @@
   import { currencyFilter, type CurrencyFilter } from "../stores/currency";
   import { viewMode, type ViewMode } from "../stores/mode";
   import { fetchPortfolioConfig } from "../lib/api/endpoints";
-  import SelectMenu from "./SelectMenu.svelte";
   import PortfolioActivateModal from "./PortfolioActivateModal.svelte";
 
-  const modeOptions = [
+  const modes: { value: ViewMode; label: string }[] = [
     { value: "analysis", label: "분석" },
     { value: "portfolio", label: "포트폴리오" },
   ];
-  const currencyOptions = [
-    { value: "ALL", label: "ALL" },
-    { value: "KRW", label: "KRW" },
-    { value: "USD", label: "USD" },
-  ];
+  const currencies: CurrencyFilter[] = ["ALL", "KRW", "USD"];
 
   let showActivateModal = false;
 
@@ -27,9 +22,8 @@
     }
   }
 
-  function onModeChange(val: string) {
-    const m = val as ViewMode;
-    if (m === "portfolio") {
+  function onModeChange(val: ViewMode) {
+    if (val === "portfolio") {
       viewMode.set("portfolio");
       checkPortfolioConfig();
     } else {
@@ -37,8 +31,8 @@
     }
   }
 
-  function onCurrencyChange(val: string) {
-    currencyFilter.set(val as CurrencyFilter);
+  function onCurrencyChange(val: CurrencyFilter) {
+    currencyFilter.set(val);
   }
 
   onMount(() => {
@@ -47,24 +41,29 @@
 </script>
 
 <header class="app-header">
-  <div class="header-left">
-    <div class="header-select-wrap mode-wrap">
-      <SelectMenu
-        value={$viewMode}
-        options={modeOptions}
-        minimal
-        on:change={(e) => onModeChange(e.detail)}
-      />
+  <div class="header-half header-left-half">
+    <div class="segment-group">
+      {#each modes as m}
+        <button
+          type="button"
+          class="segment-btn"
+          class:active={$viewMode === m.value}
+          on:click={() => onModeChange(m.value)}
+        >{m.label}</button>
+      {/each}
     </div>
   </div>
-  <div class="header-right">
-    <div class="header-select-wrap currency-wrap">
-      <SelectMenu
-        value={$currencyFilter}
-        options={currencyOptions}
-        minimal
-        on:change={(e) => onCurrencyChange(e.detail)}
-      />
+  <div class="header-separator"></div>
+  <div class="header-half header-right-half">
+    <div class="segment-group">
+      {#each currencies as c}
+        <button
+          type="button"
+          class="segment-btn"
+          class:active={$currencyFilter === c}
+          on:click={() => onCurrencyChange(c)}
+        >{c}</button>
+      {/each}
     </div>
   </div>
 </header>
@@ -80,27 +79,51 @@
   .app-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
     padding: 0 16px;
   }
-  .header-left {
-    display: flex;
-    align-items: center;
+  .header-half {
     flex: 1;
-    min-width: 0;
-  }
-  .header-right {
     display: flex;
     align-items: center;
-    flex-shrink: 0;
-  }
-  .header-select-wrap {
-    flex: 0 1 auto;
     min-width: 0;
   }
-  .header-select-wrap.mode-wrap,
-  .header-select-wrap.currency-wrap {
-    min-width: 72px;
+  .header-left-half {
+    justify-content: flex-start;
+  }
+  .header-right-half {
+    justify-content: flex-end;
+  }
+  .header-separator {
+    flex-shrink: 0;
+    width: 1px;
+    height: 20px;
+    margin: 0 12px;
+    background: var(--border);
+  }
+  .segment-group {
+    display: flex;
+    gap: 4px;
+  }
+  .segment-btn {
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, color 0.15s;
+  }
+  .segment-btn:hover {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .segment-btn.active {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.1);
   }
 </style>
