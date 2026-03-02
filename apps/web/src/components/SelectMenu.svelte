@@ -12,6 +12,7 @@
   export let disabled = false;
   export let compact = false;
   export let minimal = false;
+  export let panelAlign: "start" | "end" = "start";
 
   const dispatch = createEventDispatcher<{ change: string }>();
   let open = false;
@@ -47,7 +48,7 @@
   $: selectedLabel = options.find((item) => item.value === value)?.label ?? placeholder;
 </script>
 
-<div class="select-menu" class:compact class:minimal bind:this={container}>
+<div class="select-menu" class:compact class:minimal class:end={panelAlign === "end"} bind:this={container}>
   <button
     type="button"
     class={`select-trigger ${open ? "open" : ""}`}
@@ -140,13 +141,20 @@
   .select-menu.minimal :global(.select-panel) {
     top: calc(100% + 4px);
     left: 0;
+    right: auto;
     min-width: 120px;
     width: max-content;
+    max-width: min(180px, calc(100vw - 24px));
     background: var(--bg-header);
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: var(--shadow-md);
     padding: 6px;
+  }
+
+  .select-menu.end :global(.select-panel) {
+    left: auto;
+    right: 0;
   }
   .select-menu.minimal :global(.select-option) {
     min-height: 40px;
