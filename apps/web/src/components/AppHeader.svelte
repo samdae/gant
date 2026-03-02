@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { link } from "svelte-spa-router";
   import { currencyFilter, type CurrencyFilter } from "../stores/currency";
   import { viewMode, type ViewMode } from "../stores/mode";
   import { fetchPortfolioConfig } from "../lib/api/endpoints";
@@ -57,6 +56,8 @@
         on:change={(e) => onModeChange(e.detail)}
       />
     </div>
+  </div>
+  <div class="header-right">
     <div class="header-select-wrap currency-wrap">
       <SelectMenu
         value={$currencyFilter}
@@ -66,7 +67,6 @@
       />
     </div>
   </div>
-  <a href="#/about" class="help-link" use:link>도움말</a>
 </header>
 
 {#if showActivateModal}
@@ -87,9 +87,13 @@
   .header-left {
     display: flex;
     align-items: center;
-    gap: 8px;
     flex: 1;
     min-width: 0;
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
   }
   .header-select-wrap {
     flex: 0 1 auto;
@@ -100,15 +104,5 @@
   }
   .header-select-wrap.currency-wrap {
     max-width: 68px;
-  }
-  .help-link {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    flex-shrink: 0;
-    transition: color 0.15s ease;
-  }
-  .help-link:hover {
-    color: var(--text);
   }
 </style>
