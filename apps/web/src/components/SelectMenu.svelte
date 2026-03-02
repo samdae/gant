@@ -10,6 +10,7 @@
   export let options: Option[] = [];
   export let placeholder = "선택";
   export let disabled = false;
+  export let compact = false;
 
   const dispatch = createEventDispatcher<{ change: string }>();
   let open = false;
@@ -45,7 +46,7 @@
   $: selectedLabel = options.find((item) => item.value === value)?.label ?? placeholder;
 </script>
 
-<div class="select-menu" bind:this={container}>
+<div class="select-menu" class:compact bind:this={container}>
   <button
     type="button"
     class={`select-trigger ${open ? "open" : ""}`}
@@ -78,3 +79,27 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .select-menu.compact {
+    width: auto;
+    min-width: 0;
+  }
+  .select-menu.compact :global(.select-trigger) {
+    padding: 6px 10px 6px 12px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .select-menu.compact :global(.select-caret) {
+    width: 14px;
+    height: 14px;
+    margin-left: 4px;
+  }
+  .select-menu.compact :global(.select-panel) {
+    padding: 4px;
+  }
+  .select-menu.compact :global(.select-option) {
+    padding: 6px 10px;
+    font-size: 0.8125rem;
+  }
+</style>
