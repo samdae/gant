@@ -33,11 +33,6 @@
     }
   }
 
-  function handleModeSelect(e: Event) {
-    const val = (e.currentTarget as HTMLSelectElement).value;
-    onModeChange(val === "portfolio" ? "portfolio" : "analysis");
-  }
-
   onMount(() => {
     if ($viewMode === "portfolio") checkPortfolioConfig();
   });
@@ -45,15 +40,16 @@
 
 <header class="app-header">
   <div class="header-left">
-    <select
-      class="mode-select"
-      value={$viewMode}
-      on:change={handleModeSelect}
-    >
+    <a href="#/" class="logo" use:link>Gant</a>
+    <div class="mode-selector">
       {#each modes as m}
-        <option value={m.value}>{m.label}</option>
+        <button
+          class="mode-btn"
+          class:active={$viewMode === m.value}
+          on:click={() => onModeChange(m.value)}
+        >{m.label}</button>
       {/each}
-    </select>
+    </div>
   </div>
   <div class="header-right">
     <div class="currency-selector">
@@ -65,7 +61,13 @@
         >{c}</button>
       {/each}
     </div>
-    <a href="#/about" class="header-link about-icon" use:link title="about">?</a>
+    <a href="#/about" class="help-btn" use:link title="도움말" aria-label="도움말">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+        <path d="M12 17h.01"/>
+      </svg>
+    </a>
   </div>
 </header>
 
@@ -81,34 +83,63 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
+    gap: 16px;
+    padding: 0 20px;
   }
-  .header-left { flex: 0 0 auto; }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+    min-width: 0;
+  }
+  .logo {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--primary);
+    flex-shrink: 0;
+    transition: color 0.15s ease;
+  }
+  .logo:hover {
+    color: var(--primary-hover);
+  }
+  .mode-selector {
+    display: flex;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px;
+  }
+  .mode-btn {
+    padding: 5px 14px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-dim);
+    transition: all 0.15s ease;
+  }
+  .mode-btn:hover:not(.active) {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .mode-btn.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
   .header-right {
     display: flex;
     align-items: center;
-    gap: 12px;
-  }
-  .mode-select {
-    padding: 6px 10px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--text);
-    cursor: pointer;
-  }
-  .about-icon {
-    font-size: 1rem;
-    font-weight: 700;
-    padding: 2px 8px;
-    min-width: 28px;
-    text-align: center;
+    gap: 10px;
+    flex-shrink: 0;
   }
   .currency-selector {
-    flex: 0 0 auto;
     display: flex;
     gap: 2px;
     background: rgba(255, 255, 255, 0.04);
@@ -117,8 +148,8 @@
     padding: 2px;
   }
   .currency-btn {
-    padding: 4px 12px;
-    font-size: 0.7rem;
+    padding: 5px 12px;
+    font-size: 0.72rem;
     font-weight: 600;
     border: 1px solid transparent;
     border-radius: 6px;
@@ -132,17 +163,23 @@
     background: rgba(255, 255, 255, 0.04);
   }
   .currency-btn.active {
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--text);
-    border-color: var(--border);
-  }
-  .header-link {
-    font-size: 0.8125rem;
-    font-weight: 600;
+    background: var(--primary-bg);
     color: var(--primary);
+    border-color: var(--primary-border);
+    box-shadow: 0 0 0 1px var(--primary-border);
+  }
+  .help-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    color: var(--text-dim);
     transition: all 0.15s ease;
   }
-  .header-link:hover {
-    color: var(--primary-hover);
+  .help-btn:hover {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
   }
 </style>
