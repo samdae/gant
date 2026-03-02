@@ -108,6 +108,11 @@ Risk Judge가 최종 BUY/SELL/HOLD + `strategy_json`(확신도, 비중)을 구�
 - RAG 경험이 PA 판단에 실제 기여한 정도 (0~100)
 - 회고분석 프롬프트에서 자동 추출 → 대시보드 표시
 
+### v7 컨텍스트 보강
+
+- 시장별 매크로/섹터 컨텍스트를 선행 수집해 분석 프롬프트에 주입
+- 캐시/폴백 규칙으로 데이터 수집 실패 시에도 파이프라인 지속
+
 ---
 
 ## 어떻게 동작하는가
@@ -139,7 +144,7 @@ Risk Judge가 최종 BUY/SELL/HOLD + `strategy_json`(확신도, 비중)을 구�
 | 백엔드 | Python 3.10+, FastAPI, LangGraph, APScheduler |
 | 프론트엔드 | Svelte 4, TypeScript, Vite |
 | 데이터베이스 | PostgreSQL 17, ChromaDB |
-| LLM | Google Gemini — OAuth 인증, API 키 불필요 |
+| LLM | Google Gemini / OpenAI Codex — OAuth 인증, API 키 불필요 |
 | 데이터 | yfinance (기본) → Alpha Vantage (자동 폴백) |
 
 > LLM Resilience: 429 → 동일 모델 재시도 (최대 5회) / 503 → 하위 모델 자동 폴백
@@ -150,7 +155,7 @@ Risk Judge가 최종 BUY/SELL/HOLD + `strategy_json`(확신도, 비중)을 구�
 
 | 문서 | 설명 |
 |------|------|
-| [spec.md](docs/tradingagents/spec.md) | 요구사항 정의 (FR-001~061) |
+| [spec.md](docs/tradingagents/spec.md) | 요구사항 정의 (FR-001~063) |
 | [arch-be.md](docs/tradingagents/arch-be.md) | 백엔드 설계 — DB 스키마, API 명세, 에러 처리 |
 | [arch-fe.md](docs/tradingagents/arch-fe.md) | 프론트엔드 설계 — 컴포넌트, 상태 관리, 라우팅 |
 | [ui.md](docs/tradingagents/ui.md) | UI 명세 — 화면별 컴포넌트, 상태, 인터랙션 |
