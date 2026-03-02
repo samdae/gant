@@ -155,6 +155,53 @@ class PortfolioPipeline:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def _load_today_skipped_tickers(self, kst_date: str) -> List[str]:
+        """Return tickers skipped today because market data was not updated."""
+        rows = self.db.get_connection().execute(
+            """
+            SELECT sc.ticker,
+                   sc.last_data_date,
+                   sj.status AS latest_status,
+                   sj.created_at AS latest_created_at
+            FROM schedule_configs sc
+            LEFT JOIN LATERAL (
+                SELECT status, created_at
+                FROM schedule_jobs
+                WHERE schedule_config_id = sc.id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) sj ON TRUE
+            ORDER BY sc.ticker
+            """
+        ).fetchall()
+
+        skipped: List[str] = []
+        for row in rows:
+            ticker = str(row.get("ticker") or "").upper()
+            if not ticker:
+                continue
+
+            latest_status = str(row.get("latest_status") or "").lower()
+            latest_created_at = row.get("latest_created_at")
+            latest_created_date = ""
+            if hasattr(latest_created_at, "date"):
+                latest_created_date = latest_created_at.date().isoformat()
+            elif latest_created_at:
+                latest_created_date = str(latest_created_at)[:10]
+
+            if latest_created_date == kst_date and latest_status == "skipped":
+                skipped.append(ticker)
+                continue
+
+            # No today's job row but last_data_date already moved to today => stale-data skip.
+            last_data_date = row.get("last_data_date")
+            if hasattr(last_data_date, "isoformat"):
+                last_data_date = last_data_date.isoformat()
+            if str(last_data_date or "")[:10] == kst_date and latest_created_date != kst_date:
+                skipped.append(ticker)
+
+        return skipped
+
     def _load_latest_holdings_state(self, config_id: int) -> Dict[str, Dict[str, Any]]:
         state: Dict[str, Dict[str, Any]] = {}
         for row in self.holding_repo.list_latest(config_id):
@@ -263,17 +310,16 @@ class PortfolioPipeline:
                 )
                 continue
 
-            amount_local = shares * price
-            amount_base = self._to_base(amount_local, currency, base_currency, exchange_rate)
-            amount_krw = self._to_krw(amount_local, currency, exchange_rate)
-            fee = self.fee_calculator.calculate(market, action, amount_base, config=config_row)
-            fee_krw = (
-                fee.amount
-                if base_currency == "KRW"
-                else self._to_krw(fee.amount, "USD", exchange_rate)
-            )
-
             if action == "buy":
+                amount_local = shares * price
+                amount_base = self._to_base(amount_local, currency, base_currency, exchange_rate)
+                amount_krw = self._to_krw(amount_local, currency, exchange_rate)
+                fee = self.fee_calculator.calculate(market, action, amount_base, config=config_row)
+                fee_krw = (
+                    fee.amount
+                    if base_currency == "KRW"
+                    else self._to_krw(fee.amount, "USD", exchange_rate)
+                )
                 total_spend_base = amount_base + fee.amount
                 if total_spend_base > available_cash_base + 1e-9:
                     errors.append(f"{ticker}: insufficient cash")
@@ -300,6 +346,16 @@ class PortfolioPipeline:
                     continue
                 prev_shares = float(prev.get("shares") or 0.0)
                 sell_shares = min(shares, prev_shares)
+                shares = sell_shares
+                amount_local = shares * price
+                amount_base = self._to_base(amount_local, currency, base_currency, exchange_rate)
+                amount_krw = self._to_krw(amount_local, currency, exchange_rate)
+                fee = self.fee_calculator.calculate(market, action, amount_base, config=config_row)
+                fee_krw = (
+                    fee.amount
+                    if base_currency == "KRW"
+                    else self._to_krw(fee.amount, "USD", exchange_rate)
+                )
                 proceeds_base = max(amount_base - fee.amount, 0.0)
                 available_cash_base += proceeds_base
                 remain = prev_shares - sell_shares
@@ -308,10 +364,6 @@ class PortfolioPipeline:
                 else:
                     prev["shares"] = remain
                     holdings_state[ticker] = prev
-                shares = sell_shares
-                amount_local = shares * price
-                amount_base = self._to_base(amount_local, currency, base_currency, exchange_rate)
-                amount_krw = self._to_krw(amount_local, currency, exchange_rate)
 
             trade_rows.append(
                 {
@@ -373,8 +425,28 @@ class PortfolioPipeline:
             return {"status": "skipped", "reason": "already completed", "decision": existing}
 
         reports = self._load_today_reports(today)
-        if not reports:
+        skipped_tickers = self._load_today_skipped_tickers(today)
+        if not reports and not skipped_tickers:
             return {"status": "skipped", "reason": "no reports"}
+
+        if skipped_tickers:
+            report_tickers = {str(item.get("ticker") or "").upper() for item in reports}
+            for ticker in skipped_tickers:
+                if ticker in report_tickers:
+                    continue
+                reports.append(
+                    {
+                        "ticker": ticker,
+                        "market_report": "오늘 분석 없음 (데이터 미갱신)",
+                        "final_trade_decision": "HOLD",
+                        "decision_position": "HOLD",
+                        "portfolio_action": "HOLD",
+                        "portfolio_shares": 0.0,
+                        "pa_opinion": "오늘 분석 없음 (데이터 미갱신)",
+                        "analysis_skipped": True,
+                        "skip_reason": "오늘 분석 없음 (데이터 미갱신)",
+                    }
+                )
 
         latest_holdings = self.holding_repo.list_latest(int(cfg["id"]))
         briefing = self.briefing_agent.generate_briefing(reports, latest_holdings)

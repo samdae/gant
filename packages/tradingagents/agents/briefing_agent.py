@@ -39,6 +39,21 @@ class BriefingAgent:
         items: List[Dict[str, Any]] = []
         for report in reports:
             ticker = str(report.get("ticker") or "").upper()
+            if bool(report.get("analysis_skipped")):
+                skip_reason = str(
+                    report.get("skip_reason") or "오늘 분석 없음 (데이터 미갱신)"
+                )
+                items.append(
+                    {
+                        "ticker": ticker,
+                        "action": "HOLD",
+                        "confidence": "low",
+                        "summary": skip_reason,
+                        "analysis_skipped": True,
+                    }
+                )
+                continue
+
             decision = (
                 report.get("portfolio_action")
                 or report.get("decision_position")
@@ -58,6 +73,7 @@ class BriefingAgent:
                     "action": str(decision).upper(),
                     "confidence": confidence,
                     "summary": key_summary,
+                    "analysis_skipped": False,
                 }
             )
         items.sort(key=lambda x: x["ticker"])

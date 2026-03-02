@@ -3,10 +3,12 @@
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from .database import Database
 
 logger = logging.getLogger(__name__)
+KST = ZoneInfo("Asia/Seoul")
 
 
 class ScheduleJobRepository:
@@ -27,7 +29,7 @@ class ScheduleJobRepository:
         commit: bool = True,
         conn=None,
     ) -> int:
-        created_at = datetime.now().isoformat()
+        created_at = datetime.now(KST).isoformat()
         connection = conn or self.db.get_connection()
 
         cursor = connection.execute(

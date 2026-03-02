@@ -283,7 +283,7 @@ Market Analyst → [Msg Clear] → Social Analyst → [Msg Clear]
 
 #### 3.2.9 Portfolio Mode (FR-056~061)
 
-> **선행 조건**: 분석검증 승률 확인 → 균등 배분 테스트 → 그 이후 구현
+> **구현 상태**: 분석검증 단계 검증 이후 FR-056~061 구현 완료
 > **핵심 원칙**: 포트폴리오 모드는 기존 분석검증 시스템과 **완전히 독립된 별도 시스템**
 
 ##### 분석검증모드 vs 포트폴리오 모드
@@ -334,6 +334,7 @@ CronTrigger (KST Sun 12:00)
 - **출력**: 자유 텍스트 (오늘 시장 전체 흐름 + 종목별 핵심 신호 + 포트폴리오 현황)
 - **모델**: `deep_think_llm` — 21개 티커 요약 압축 시 핵심 신호 누락 방지
 - **출력 = RAG 쿼리**: 비서 자유 텍스트가 그대로 포트폴리오 RAG 검색 쿼리로 사용
+- **skipped 티커 정책**: 직전 보고서 재사용 금지. `"오늘 분석 없음 (데이터 미갱신)"`으로 표기
 - **저장**: `portfolio_decisions` 테이블에 저장 (주간 반성 시 맥락으로 사용)
 
 ##### FR-058: PortfolioManagerAgent
@@ -730,8 +731,8 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 | 5    | Scheduled Analysis (FR-016)                 | 반복 분석 자동화                             |
 | 6    | Position-Aware Analysis (FR-017)            | 기존 에이전트 수정 필요, 가장 마지막         |
 | 7    | Data Fetching / LLM Resilience (FR-010~012) | 안정적 실행 보장 (구현 완료)                 |
-| 8    | Retrospective Scoring (FR-055)              | v5 안정화 후 즉시 착수 가능. 독립적          |
-| 9    | Portfolio Mode (FR-056~061)                 | 분석검증 승률 확인 → 균등 배분 테스트 → 이후 |
+| 8    | Retrospective Scoring (FR-055)              | 구현 완료 (회고분석 배점 + 대시보드 지표 반영) |
+| 9    | Portfolio Mode (FR-056~061)                 | 구현 완료 (일일 리밸런싱 + 주간 회고 + 교차 RAG) |
 | 10   | Macro + Sector Context (FR-062, FR-063)     | 시장/섹터 맥락 보강으로 판단 품질 개선 (구현 완료) |
 
 ---

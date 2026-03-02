@@ -194,15 +194,50 @@ class PortfolioManagerAgent:
         plan: Dict[str, Any],
         available_cash: float,
         current_prices: Optional[Dict[str, float]] = None,
+        briefing: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         items = plan.get("allocation_plan") or []
         current_prices = current_prices or {}
+        stale_tickers: Dict[str, str] = {}
+        for item in (briefing or {}).get("items", []):
+            if not isinstance(item, dict):
+                continue
+            ticker = str(item.get("ticker") or "").upper().strip()
+            if not ticker:
+                continue
+            if bool(item.get("analysis_skipped")):
+                stale_tickers[ticker] = str(
+                    item.get("summary") or "오늘 분석 없음 (데이터 미갱신)"
+                )
 
         # Normalize duplicate tickers by keeping the latest entry.
         merged: Dict[str, Dict[str, Any]] = {}
         for item in items:
             merged[str(item["ticker"]).upper()] = item
+        for ticker, reason in stale_tickers.items():
+            if ticker in merged:
+                continue
+            merged[ticker] = {
+                "ticker": ticker,
+                "action": "HOLD",
+                "allocation_pct": 0.0,
+                "shares": 0.0,
+                "rationale": f"{reason}; 기존 포지션 유지",
+            }
         normalized = list(merged.values())
+
+        # Enforce HOLD on stale-data tickers.
+        for item in normalized:
+            ticker = str(item.get("ticker") or "").upper()
+            if ticker not in stale_tickers:
+                continue
+            reason = stale_tickers[ticker]
+            item["action"] = "HOLD"
+            item["allocation_pct"] = 0.0
+            item["shares"] = 0.0
+            prev = str(item.get("rationale") or "").strip()
+            hold_reason = f"{reason}; 기존 포지션 유지"
+            item["rationale"] = hold_reason if not prev else f"{prev} | {hold_reason}"
 
         # Cap total BUY allocation to 100%.
         buy_items = [x for x in normalized if x.get("action") == "BUY"]
@@ -296,7 +331,12 @@ class PortfolioManagerAgent:
                 response = self.llm.invoke(prompt, config={"timeout": 180})
                 content = response.content if hasattr(response, "content") else str(response)
                 parsed = self._parse_plan(str(content))
-                return self._validate_plan(parsed, available_cash, current_prices=current_prices)
+                return self._validate_plan(
+                    parsed,
+                    available_cash,
+                    current_prices=current_prices,
+                    briefing=briefing,
+                )
             except Exception as exc:
                 last_error = exc
                 logger.warning(

@@ -26,6 +26,7 @@ import time
 import traceback
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -293,13 +294,28 @@ class TickerScheduler:
             return False
 
     def _today_kst_date(self) -> str:
-        try:
-            import pytz
+        return datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
 
-            now = datetime.now(pytz.timezone("Asia/Seoul"))
-            return now.date().isoformat()
-        except Exception:
-            return datetime.now().date().isoformat()
+    @staticmethod
+    def _as_kst_date(value: Any) -> str:
+        if value is None:
+            return ""
+        kst = ZoneInfo("Asia/Seoul")
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            text = str(value).strip()
+            if not text:
+                return ""
+            try:
+                dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            except Exception:
+                return text[:10]
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=kst)
+        else:
+            dt = dt.astimezone(kst)
+        return dt.date().isoformat()
 
     def _enqueue_portfolio_weekly(self) -> None:
         if not self._is_portfolio_enabled():
@@ -359,10 +375,7 @@ class TickerScheduler:
                 continue
 
             created_at = latest.get("created_at")
-            if hasattr(created_at, "date"):
-                created_date = created_at.date().isoformat()
-            else:
-                created_date = str(created_at)[:10]
+            created_date = self._as_kst_date(created_at)
             status = str(latest.get("status") or "").lower()
 
             if created_date == today:
@@ -375,10 +388,8 @@ class TickerScheduler:
                 continue
 
             # No today's job row: treat as completed if last_data_date already advanced to today.
-            last_data_date = cfg.get("last_data_date")
-            if hasattr(last_data_date, "isoformat"):
-                last_data_date = last_data_date.isoformat()
-            if str(last_data_date)[:10] == today:
+            last_data_date = self._as_kst_date(cfg.get("last_data_date"))
+            if last_data_date == today:
                 skipped += 1
 
         logger.info(

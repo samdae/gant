@@ -436,7 +436,7 @@ CREATE TABLE portfolio_decisions (
     portfolio_config_id     BIGINT    NOT NULL REFERENCES portfolio_configs(id),
     decision_date           DATE      NOT NULL,
     briefing_summary        JSONB,                                  -- BriefingAgent 출력 (티커별 요약)
-    allocation_plan         JSONB     NOT NULL,                     -- [{ticker, action, weight, shares, rationale}]
+    allocation_plan         JSONB     NOT NULL,                     -- [{ticker, action, allocation_pct, shares, rationale}]
     rationale               TEXT,                                   -- 전체 배분 근거
     total_fund_snapshot     DOUBLE PRECISION NOT NULL,
     available_cash_snapshot DOUBLE PRECISION NOT NULL,
@@ -688,8 +688,8 @@ scripts/
 | 110 | FR-057 | BriefingAgent | `agents/briefing_agent.py` | `BriefingAgent` | `generate_briefing(reports: list[dict]) → BriefingSummary` — 전체 티커 리포트 압축 → JSONB (ticker별 action/confidence/요약) | **new** |
 | 111 | FR-057 | BriefingAgent 프롬프트 | `agents/briefing_agent.py` | — | `_BRIEFING_PROMPT` — 시스템 프롬프트: "투자 비서로서 12-agent 분석 결과를 간결히 요약하되, 각 종목의 최종 판단(buy/sell/hold)·신뢰도·핵심 근거를 유지하라" | **new** |
 | 112 | FR-058 | PortfolioManagerAgent | `virtual_trade/portfolio_manager_agent.py` | `PortfolioManagerAgent` | `decide_allocation(briefing, holdings, available_cash, exchange_rate) → AllocationPlan` | **new** |
-| 113 | FR-058 | PortfolioManagerAgent 프롬프트 | `virtual_trade/portfolio_manager_agent.py` | — | `_PM_PROMPT` — "포트폴리오 매니저로서 현재 보유 현황과 가용 자금을 고려하여 리밸런싱 계획을 수립하라. JSON [{ticker, action, weight, shares, rationale}] + 전체 근거 TEXT" | **new** |
-| 114 | FR-058 | PM JSON 파싱 + 검증 | `virtual_trade/portfolio_manager_agent.py` | `PortfolioManagerAgent` | `_parse_plan(response) → AllocationPlan`. weight 합 100% 검증, shares × price ≤ available_cash 검증, LLM fallback on parse error | **new** |
+| 113 | FR-058 | PortfolioManagerAgent 프롬프트 | `virtual_trade/portfolio_manager_agent.py` | — | `_PM_PROMPT` — "포트폴리오 매니저로서 현재 보유 현황과 가용 자금을 고려하여 리밸런싱 계획을 수립하라. JSON [{ticker, action, allocation_pct, shares, rationale}] + 전체 근거 TEXT" | **new** |
+| 114 | FR-058 | PM JSON 파싱 + 검증 | `virtual_trade/portfolio_manager_agent.py` | `PortfolioManagerAgent` | `_parse_plan(response) → AllocationPlan`. allocation_pct 합 100% 검증, shares × price ≤ available_cash 검증, LLM fallback on parse error | **new** |
 | 115 | FR-059 | 수수료 계산기 | `virtual_trade/fee_calculator.py` | `FeeCalculator` | `calculate(market, action, amount) → FeeResult(rate, amount)`. 기본값: us 0.1%, kr buy 0.25% / sell 0.25%+0.18% tax, crypto 0.1%. `portfolio_configs` 사용자 설정값 우선 | **new** |
 | 116 | FR-059 | 환율 조회 | `virtual_trade/exchange_rate.py` | `ExchangeRateService` | `get_usd_krw() → float`. yfinance `USDKRW=X`, 1시간 TTL 인메모리 캐시. 실패 시 마지막 캐시값 반환 (None이면 1380.0 하드코딩 폴백) | **new** |
 | 117 | FR-059 | 매매 실행 엔진 | `scheduler/portfolio_pipeline.py` | `PortfolioPipeline` | `_execute_trades(plan, config, exchange_rate)` — plan 순회: 현가 조회 → 수수료 계산 → portfolio_trades INSERT → 일별 holdings snapshot INSERT → available_cash 차감. 실행 후 14일 이전 snapshot 정리 | modify |
@@ -1002,7 +1002,7 @@ _queue_worker → PortfolioPipeline.run_daily(config_id)
          ▼
     PortfolioManagerAgent.decide_allocation(
         briefing, holdings, available_cash, exchange_rate, rag_context)
-         │ → AllocationPlan [{ticker, action, weight, shares, rationale}]
+         │ → AllocationPlan [{ticker, action, allocation_pct, shares, rationale}]
          ▼
     PortfolioPipeline._execute_trades(plan, config, exchange_rate)
          │
@@ -1243,7 +1243,7 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | 24 | Portfolio | PM JSON 파싱 실패 | 1회 재시도 (stricter prompt), 실패 시 decision.status='failed' (FR-058) |
 | 25 | Portfolio | 개별 종목 매매 실패 | 해당 건 skip + error_message 기록, 나머지 종목 정상 진행 (FR-059) |
 | 26 | Portfolio | 전체 티커 미완료 상태에서 파이프라인 트리거 | 완료 카운트 불일치 시 무시. 다음 분석 완료 시 재검사 (FR-056) |
-| 27 | Portfolio | available_cash 부족 | PM 결정 중 weight 기반 배분이므로 초과 불가. 안전장치: 실행 시 잔액 재확인 → 부족 시 해당 건 skip (FR-059) |
+| 27 | Portfolio | available_cash 부족 | PM 결정 중 allocation_pct 기반 배분이므로 초과 불가. 안전장치: 실행 시 잔액 재확인 → 부족 시 해당 건 skip (FR-059) |
 | 28 | Portfolio | 주간 회고 LLM 실패 | portfolio_reflections INSERT 없이 로그만 남김. 다음 주에 재시도 안 함 (FR-061) |
 | 29 | Macro | 매크로 지표 일부 fetch 실패 | 실패 지표만 `N/A`로 표기하고 나머지 컨텍스트/분석은 정상 진행 (FR-062) |
 | 30 | Macro | 섹터 판별 실패 또는 ETF 매핑 없음 | 섹터 블록을 "판별 불가/대응 ETF 없음" 메시지로 대체 후 진행 (FR-063) |
@@ -1616,15 +1616,15 @@ DB 연결은 프로세스 종료 시 psycopg가 자동 정리. ChromaDB Persiste
 ### 10.18 External API Resilience for Portfolio
 
 - **환율 조회** (`USDKRW=X`):
-  - timeout 10초, 2회 재시도(지수 백오프)
+  - 2회 즉시 재시도 (백오프 없음)
   - 실패 시 마지막 캐시값 사용, 캐시 없음이면 `EXCHANGE_RATE_FALLBACK`
-  - 24시간 이상 stale 캐시만 남은 경우 경고 로그 + decision 상태를 `partial_failed`로 표기 가능
+  - stale 캐시만 남은 경우 경고 로그를 남기고 실행 지속
 - **종목 현재가 조회**:
-  - timeout 10초, 2회 재시도
-  - 종목 단위 실패는 skip + `error_message` 누적, 파이프라인 전체는 지속
+  - 1회 조회 실패 시 해당 종목은 당일 매매에서 skip
+  - 종목 단위 실패는 `error_message` 누적, 파이프라인 전체는 지속
 - **실행 안전성**:
   - 외부 시세 실패가 발생해도 이미 완료된 종목 매매는 롤백하지 않음
-  - 실패 목록은 decision 단위로 저장해 당일 재실행 시 참조
+  - 실패 목록은 decision 단위로 저장하고 다음 실행에서 재평가
 
 ### 10.19 Portfolio Idempotency & Recovery Contract
 
@@ -1640,6 +1640,10 @@ DB 연결은 프로세스 종료 시 psycopg가 자동 정리. ChromaDB Persiste
   3. 엄격 모드 조건 충족 시에만 `portfolio_daily` 작업 enqueue
   4. enqueue 전 `(config_id, decision_date)` 멱등성 키로 중복 실행 차단
   5. 조건 불충족 시 큐잉하지 않고 다음 이벤트를 대기
+- **skipped 티커 처리 정책**:
+  - skipped 티커는 **직전 리포트를 재사용하지 않음** (stale 데이터 주입 방지)
+  - 브리핑에는 `"오늘 분석 없음 (데이터 미갱신)"`으로 명시
+  - PortfolioManagerAgent 검증 단계에서 해당 티커는 `HOLD`로 강제해 기존 포지션 유지
 - **재실행 규칙**:
   - `completed`: 동일 일자 재실행 금지
   - `partial_failed`: 실패 종목만 수동 재실행 허용
