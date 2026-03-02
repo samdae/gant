@@ -52,7 +52,7 @@
       <SelectMenu
         value={$viewMode}
         options={modeOptions}
-        compact
+        minimal
         on:change={(e) => onModeChange(e.detail)}
       />
     </div>
@@ -62,7 +62,7 @@
       <SelectMenu
         value={$currencyFilter}
         options={currencyOptions}
-        compact
+        minimal
         on:change={(e) => onCurrencyChange(e.detail)}
       />
     </div>
@@ -99,10 +99,8 @@
     flex: 0 1 auto;
     min-width: 0;
   }
-  .header-select-wrap.mode-wrap {
-    max-width: 100px;
-  }
+  .header-select-wrap.mode-wrap,
   .header-select-wrap.currency-wrap {
-    max-width: 68px;
+    min-width: 72px;
   }
 </style>

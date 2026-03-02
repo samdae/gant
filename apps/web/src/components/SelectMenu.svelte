@@ -11,6 +11,7 @@
   export let placeholder = "선택";
   export let disabled = false;
   export let compact = false;
+  export let minimal = false;
 
   const dispatch = createEventDispatcher<{ change: string }>();
   let open = false;
@@ -46,7 +47,7 @@
   $: selectedLabel = options.find((item) => item.value === value)?.label ?? placeholder;
 </script>
 
-<div class="select-menu" class:compact bind:this={container}>
+<div class="select-menu" class:compact class:minimal bind:this={container}>
   <button
     type="button"
     class={`select-trigger ${open ? "open" : ""}`}
@@ -101,5 +102,53 @@
   .select-menu.compact :global(.select-option) {
     padding: 6px 10px;
     font-size: 0.8125rem;
+  }
+
+  /* minimal: 셀렉트박스처럼 보이지 않음, 터치 타겟 44px, 포커스 앱 테마 */
+  .select-menu.minimal {
+    min-width: 72px;
+  }
+  .select-menu.minimal :global(.select-trigger) {
+    min-height: 44px;
+    padding: 0 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text);
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .select-menu.minimal :global(.select-trigger:hover) {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .select-menu.minimal :global(.select-trigger:focus) {
+    outline: none;
+  }
+  .select-menu.minimal :global(.select-trigger.open) {
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    box-shadow: 0 0 0 2px var(--primary-border);
+  }
+  .select-menu.minimal :global(.select-caret) {
+    width: 12px;
+    height: 12px;
+    margin-left: 6px;
+    opacity: 0.6;
+  }
+  .select-menu.minimal :global(.select-panel) {
+    top: calc(100% + 4px);
+    left: 0;
+    background: var(--bg-header);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-md);
+    padding: 6px;
+  }
+  .select-menu.minimal :global(.select-option) {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 0.875rem;
   }
 </style>
