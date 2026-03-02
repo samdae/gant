@@ -38,6 +38,10 @@
     }
   }
 
+  function onCurrencyChange(val: string) {
+    currencyFilter.set(val as CurrencyFilter);
+  }
+
   onMount(() => {
     if ($viewMode === "portfolio") checkPortfolioConfig();
   });
@@ -58,7 +62,7 @@
         value={$currencyFilter}
         options={currencyOptions}
         compact
-        on:change={(e) => currencyFilter.set(e.detail as CurrencyFilter)}
+        on:change={(e) => onCurrencyChange(e.detail)}
       />
     </div>
   </div>
