@@ -1,13 +1,57 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { link } from "svelte-spa-router";
   import { currencyFilter, type CurrencyFilter } from "../stores/currency";
+  import { viewMode, type ViewMode } from "../stores/mode";
+  import { fetchPortfolioConfig } from "../lib/api/endpoints";
+  import PortfolioActivateModal from "./PortfolioActivateModal.svelte";
 
   const currencies: CurrencyFilter[] = ["ALL", "KRW", "USD"];
+  const modes: { value: ViewMode; label: string }[] = [
+    { value: "analysis", label: "분석" },
+    { value: "portfolio", label: "포트폴리오" },
+  ];
 
   const setCurrency = (c: CurrencyFilter) => { currencyFilter.set(c); };
+  let showActivateModal = false;
+
+  async function checkPortfolioConfig() {
+    try {
+      const r = await fetchPortfolioConfig() as { config?: unknown };
+      if (!r.config) showActivateModal = true;
+    } catch {
+      showActivateModal = true;
+    }
+  }
+
+  function onModeChange(m: ViewMode) {
+    if (m === "portfolio") {
+      viewMode.set("portfolio");
+      checkPortfolioConfig();
+    } else {
+      viewMode.set("analysis");
+    }
+  }
+
+  onMount(() => {
+    if ($viewMode === "portfolio") checkPortfolioConfig();
+  });
 </script>
 
 <header class="app-header">
+  <div class="header-left">
+    <select
+      class="mode-select"
+      value={$viewMode}
+      on:change={(e) => onModeChange((e.currentTarget.value as ViewMode))}
+    >
+      {#each modes as m}
+        <option value={m.value}>{m.label}</option>
+      {/each}
+    </select>
+  </div>
+
+  <div class="header-right">
   <div class="currency-selector">
     {#each currencies as c}
       <button
@@ -18,11 +62,46 @@
     {/each}
   </div>
 
-  <a href="#/about" class="header-link" use:link>about</a>
+  <a href="#/about" class="header-link about-icon" use:link title="about">?</a>
+  </div>
 </header>
 
+{#if showActivateModal}
+  <PortfolioActivateModal
+    onClose={() => (showActivateModal = false)}
+    onActivated={() => (showActivateModal = false)}
+  />
+{/if}
+
 <style>
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .header-left { flex: 0 0 auto; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .mode-select {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .about-icon {
+    font-size: 1rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    min-width: 28px;
+    text-align: center;
+  }
   .currency-selector {
+    flex: 0 0 auto;
     display: flex;
     gap: 2px;
     background: rgba(255, 255, 255, 0.04);

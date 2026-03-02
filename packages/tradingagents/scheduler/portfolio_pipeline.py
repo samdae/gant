@@ -412,9 +412,6 @@ class PortfolioPipeline:
         }
 
     def run_daily(self, config_id: Optional[int] = None) -> Dict[str, Any]:
-        if not self.config.get("portfolio_enabled", False):
-            return {"status": "skipped", "reason": "portfolio disabled"}
-
         cfg = self._get_active_config(config_id)
         if not cfg:
             return {"status": "skipped", "reason": "no active config"}
@@ -509,9 +506,6 @@ class PortfolioPipeline:
         return dict(by_date)
 
     def run_weekly(self, config_id: Optional[int] = None) -> Dict[str, Any]:
-        if not self.config.get("portfolio_enabled", False):
-            return {"status": "skipped", "reason": "portfolio disabled"}
-
         cfg = self._get_active_config(config_id)
         if not cfg:
             return {"status": "skipped", "reason": "no active config"}

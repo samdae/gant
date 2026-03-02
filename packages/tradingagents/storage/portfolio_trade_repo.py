@@ -140,6 +140,27 @@ class PortfolioTradeRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_closed_tickers(self, config_id: int) -> List[Dict[str, Any]]:
+        """Tickers we've fully sold (net shares <= 0)."""
+        rows = self.db.get_connection().execute(
+            """
+            SELECT pt.ticker,
+                   SUM(CASE WHEN pt.action = 'buy' THEN pt.shares ELSE 0 END) AS bought_shares,
+                   SUM(CASE WHEN pt.action = 'sell' THEN pt.shares ELSE 0 END) AS sold_shares,
+                   MAX(pt.executed_at) AS last_trade_at
+            FROM portfolio_trades pt
+            JOIN portfolio_decisions pd ON pd.id = pt.portfolio_decision_id
+            WHERE pd.portfolio_config_id = %s
+            GROUP BY pt.ticker
+            HAVING SUM(CASE WHEN pt.action = 'buy' THEN pt.shares ELSE 0 END) > 0
+               AND SUM(CASE WHEN pt.action = 'buy' THEN pt.shares ELSE 0 END)
+                   <= SUM(CASE WHEN pt.action = 'sell' THEN pt.shares ELSE 0 END)
+            ORDER BY MAX(pt.executed_at) DESC
+            """,
+            (config_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def get_summary_by_ticker(self, config_id: int) -> List[Dict[str, Any]]:
         rows = self.db.get_connection().execute(
             """

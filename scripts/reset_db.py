@@ -44,14 +44,22 @@ def get_database_url() -> str:
     return f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
 
+# FK-safe: children first. v6 adds rag_validation_results, retrospective_analyses, portfolio_*.
 DROP_ORDER = [
+    "rag_validation_results",    # refs retrospective_analyses, reflections
+    "retrospective_analyses",    # refs positions
     "reflections",
     "trades",
     "reports",
     "schedule_job_events",
     "schedule_jobs",
     "positions",
-    "schedules",
+    "portfolio_trades",          # refs portfolio_decisions
+    "portfolio_decisions",      # refs portfolio_configs
+    "portfolio_holdings",       # refs portfolio_configs
+    "portfolio_reflections",    # refs portfolio_configs
+    "portfolio_configs",
+    "schedules",                # legacy (may not exist)
     "schedule_configs",
 ]
 

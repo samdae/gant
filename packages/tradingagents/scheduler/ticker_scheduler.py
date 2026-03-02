@@ -284,8 +284,7 @@ class TickerScheduler:
         return schedules
 
     def _is_portfolio_enabled(self) -> bool:
-        if not self.config.get("portfolio_enabled", False):
-            return False
+        """포트폴리오 활성화 = DB에 active config 존재 (env 아님)."""
         try:
             from tradingagents.storage import PortfolioConfigRepository
 

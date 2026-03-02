@@ -1,15 +1,17 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import {
     fetchHealth,
     fetchMetrics,
     fetchPositionsMarket,
     fetchQueue,
     fetchScheduleSummary,
+    fetchPortfolioConfig,
+    fetchPortfolioHoldings,
   } from "../lib/api/endpoints";
   import { formatPercent, formatErrorMessage, formatAmount, formatSignedAmount } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
   import { currencyFilter, showAmount, matchesCurrency, tickerCurrency } from "../stores/currency";
+  import { viewMode, portfolioRefreshTrigger } from "../stores/mode";
 
   type Metrics = {
     active_positions: number;
@@ -22,6 +24,10 @@
     total_realized_return_pct: number;
     total_pnl: number;
     total_return_pct: number;
+    analysis_accuracy_avg?: number | null;
+    analysis_accuracy_count?: number;
+    rag_contribution_avg?: number | null;
+    rag_contribution_count?: number;
   };
 
   type Health = {
@@ -62,6 +68,8 @@
   let queue: QueueStatus = { running: null, pending: [], total: 0 };
   let scheduleSummary: ScheduleSummary | null = null;
   let todayRunsTotal: number | null = null;
+  let portfolioConfig: { total_fund?: number; available_cash?: number; initial_capital?: number; base_currency?: string } | null = null;
+  let portfolioHoldings: Array<{ ticker: string; shares: number; current_value_base?: number; allocation_pct?: number }> = [];
 
   const goTrade = (ticker: string) => {
     window.location.hash = `#/trade/${ticker.toLowerCase()}`;
@@ -80,19 +88,32 @@
     loading = true;
     error = "";
     try {
-      const [metricsRes, positionsRes, queueRes, healthRes, summaryRes] = await Promise.all([
+      const base: Promise<unknown>[] = [
         fetchMetrics(),
         fetchPositionsMarket(),
         fetchQueue(),
         fetchHealth(),
         fetchScheduleSummary(),
-      ]);
-
-      metrics = metricsRes as Metrics;
-      positions = (positionsRes as PositionMarket[]) || [];
-      queue = (queueRes as QueueStatus) || { running: null, pending: [], total: 0 };
-      health = healthRes as Health;
-      scheduleSummary = summaryRes as ScheduleSummary;
+      ];
+      if ($viewMode === "portfolio") {
+        base.push(fetchPortfolioConfig());
+        base.push(fetchPortfolioHoldings());
+      }
+      const results = await Promise.all(base);
+      metrics = results[0] as Metrics;
+      positions = (results[1] as PositionMarket[]) || [];
+      queue = (results[2] as QueueStatus) || { running: null, pending: [], total: 0 };
+      health = results[3] as Health;
+      scheduleSummary = results[4] as ScheduleSummary;
+      if ($viewMode === "portfolio" && results[5]) {
+        const pc = results[5] as { config?: { total_fund?: number; available_cash?: number; initial_capital?: number; base_currency?: string } };
+        portfolioConfig = pc?.config ?? null;
+        const ph = results[6] as { holdings?: Array<{ ticker: string; shares: number; current_value_base?: number; allocation_pct?: number }> };
+        portfolioHoldings = ph?.holdings ?? [];
+      } else {
+        portfolioConfig = null;
+        portfolioHoldings = [];
+      }
     } catch (err) {
       error = formatErrorMessage(err, "대시보드 데이터를 불러오지 못했습니다.");
     } finally {
@@ -100,15 +121,14 @@
     }
   };
 
-  onMount(() => {
-    loadData();
-  });
+  $: $viewMode, $portfolioRefreshTrigger, loadData();
 
   $: todayRunsTotal = scheduleSummary
     ? scheduleSummary.done + scheduleSummary.failed + scheduleSummary.skipped + scheduleSummary.running
     : null;
 
   $: filteredPositions = positions.filter((p) => matchesCurrency(p.ticker, $currencyFilter));
+  $: filteredPortfolioHoldings = portfolioHoldings.filter((h) => matchesCurrency(h.ticker, $currencyFilter));
 
 </script>
 
@@ -172,36 +192,106 @@
     </button>
 
     <div class="card metric-strip" style="margin-bottom:16px">
-      <div class="metric-segment">
-        <div class="metric-icon icon-gain">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M4 16l4-4 4 4 6-6" />
-          </svg>
+      {#if $viewMode === "portfolio"}
+        <div class="metric-segment">
+          <div class="metric-icon icon-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 7h16v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" />
+              <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </div>
+          <div class="metric-label">자산</div>
+          <div class="metric-value">
+            {portfolioConfig?.total_fund != null
+              ? (portfolioConfig.base_currency === "USD"
+                ? `$${portfolioConfig.total_fund.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+                : `₩${portfolioConfig.total_fund.toLocaleString("ko-KR", { maximumFractionDigits: 0 })}`)
+              : "-"}
+          </div>
         </div>
-        <div class="metric-label">총손익</div>
-        <div class="metric-value" class:text-gain={metrics && metrics.total_return_pct >= 0} class:text-loss={metrics && metrics.total_return_pct < 0}>
-          {metrics ? formatPercent(metrics.total_return_pct) : "-"}
+        <div class="metric-segment">
+          <div class="metric-icon icon-gain">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+          </div>
+          <div class="metric-label">가용 현금</div>
+          <div class="metric-value">
+            {portfolioConfig?.available_cash != null
+              ? (portfolioConfig.base_currency === "USD"
+                ? `$${portfolioConfig.available_cash.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+                : `₩${portfolioConfig.available_cash.toLocaleString("ko-KR", { maximumFractionDigits: 0 })}`)
+              : "-"}
+          </div>
         </div>
-        <div class="metric-sub metric-sub-grid">
-          <span>실현</span><span>{metrics ? formatPercent(metrics.total_realized_return_pct) : "-"}</span>
-          <span>미실현</span><span>{metrics ? formatPercent(metrics.total_unrealized_return_pct) : "-"}</span>
+        <div class="metric-segment">
+          <div class="metric-icon icon-gain">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 16l4-4 4 4 6-6" />
+            </svg>
+          </div>
+          <div class="metric-label">총 수익률</div>
+          <div class="metric-value" class:text-gain={portfolioConfig && (portfolioConfig.total_fund ?? 0) >= (portfolioConfig.initial_capital ?? 0)} class:text-loss={portfolioConfig && (portfolioConfig.total_fund ?? 0) < (portfolioConfig.initial_capital ?? 0)}>
+            {portfolioConfig?.total_fund != null && portfolioConfig?.initial_capital != null && portfolioConfig.initial_capital > 0
+              ? formatPercent(((portfolioConfig.total_fund - portfolioConfig.initial_capital) / portfolioConfig.initial_capital) * 100)
+              : "-"}
+          </div>
         </div>
-      </div>
-      <div class="metric-segment">
-        <div class="metric-icon icon-primary">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M4 7h16v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" />
-            <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          </svg>
+      {:else}
+        <div class="metric-segment">
+          <div class="metric-icon icon-gain">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 16l4-4 4 4 6-6" />
+            </svg>
+          </div>
+          <div class="metric-label">총손익</div>
+          <div class="metric-value" class:text-gain={metrics && metrics.total_return_pct >= 0} class:text-loss={metrics && metrics.total_return_pct < 0}>
+            {metrics ? formatPercent(metrics.total_return_pct) : "-"}
+          </div>
+          <div class="metric-sub metric-sub-grid">
+            <span>실현</span><span>{metrics ? formatPercent(metrics.total_realized_return_pct) : "-"}</span>
+            <span>미실현</span><span>{metrics ? formatPercent(metrics.total_unrealized_return_pct) : "-"}</span>
+          </div>
         </div>
-        <div class="metric-label">투자</div>
-        <div class="metric-value">{metrics ? metrics.active_positions : "-"}</div>
-        <div class="metric-sub">
-          <div>승 {metrics ? metrics.wins : "-"}</div>
-          <div>패 {metrics ? metrics.losses : "-"}</div>
+        <div class="metric-segment">
+          <div class="metric-icon icon-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 7h16v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" />
+              <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </div>
+          <div class="metric-label">투자</div>
+          <div class="metric-value">{metrics ? metrics.active_positions : "-"}</div>
+          <div class="metric-sub">
+            <div>승 {metrics ? metrics.wins : "-"}</div>
+            <div>패 {metrics ? metrics.losses : "-"}</div>
+          </div>
         </div>
-      </div>
+      {/if}
     </div>
+
+    {#if $viewMode === "analysis" && metrics && (metrics.analysis_accuracy_count != null && metrics.analysis_accuracy_count > 0 || metrics.rag_contribution_count != null && metrics.rag_contribution_count > 0)}
+      <div class="card metric-strip" style="margin-bottom:16px">
+        <div class="metric-segment">
+          <div class="metric-label">분석 정확도</div>
+          <div class="metric-value">
+            {metrics.analysis_accuracy_avg != null ? `${Math.round(metrics.analysis_accuracy_avg)}점` : "-"}
+            {metrics.analysis_accuracy_count != null && metrics.analysis_accuracy_count > 0
+              ? ` (${metrics.analysis_accuracy_count}건 평균)`
+              : ""}
+          </div>
+        </div>
+        <div class="metric-segment">
+          <div class="metric-label">RAG 기여도</div>
+          <div class="metric-value">
+            {metrics.rag_contribution_avg != null ? `${Math.round(metrics.rag_contribution_avg)}점` : "-"}
+            {metrics.rag_contribution_count != null && metrics.rag_contribution_count > 0
+              ? ` (RAG 사용 ${metrics.rag_contribution_count}건 평균)`
+              : ""}
+          </div>
+        </div>
+      </div>
+    {/if}
 
     <div class="dashboard-grid">
       <div class="card">
@@ -216,6 +306,28 @@
                 <tr>
                   <td colspan="2">불러오는 중...</td>
                 </tr>
+              {:else if $viewMode === "portfolio"}
+                {#if filteredPortfolioHoldings.length === 0}
+                  <tr>
+                    <td colspan="2" class="empty-state">내 투자가 없습니다.</td>
+                  </tr>
+                {:else}
+                  {#each filteredPortfolioHoldings as h}
+                    <tr on:click={() => goTrade(h.ticker)}>
+                      <td><span class="ticker-badge">{h.ticker}</span>{#if $tickerNames[h.ticker]} <span class="ticker-tag">{$tickerNames[h.ticker]}</span>{/if}</td>
+                      <td>
+                        {#if $showAmount && h.current_value_base != null}
+                          {portfolioConfig?.base_currency === "USD"
+                            ? `$${h.current_value_base.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+                            : `₩${h.current_value_base.toLocaleString("ko-KR", { maximumFractionDigits: 0 })}`}
+                        {/if}
+                        {#if h.allocation_pct != null}
+                          <span class="text-dim" style="margin-left:4px">({h.allocation_pct.toFixed(1)}%)</span>
+                        {/if}
+                      </td>
+                    </tr>
+                  {/each}
+                {/if}
               {:else if filteredPositions.length === 0}
                 <tr>
                   <td colspan="2" class="empty-state">내 투자가 없습니다.</td>

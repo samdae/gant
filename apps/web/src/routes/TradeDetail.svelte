@@ -7,7 +7,10 @@
     fetchPositionsMarket,
     fetchReportsByTicker,
     fetchPositionGraph,
+    fetchPortfolioTrades,
+    fetchPortfolioHoldings,
   } from "../lib/api/endpoints";
+  import { viewMode } from "../stores/mode";
   import { formatMoney, formatMoneyPlain, formatPercent, formatDateTime, formatErrorMessage, formatAmount, formatSignedAmount } from "../lib/utils/format";
   import { marked } from "marked";
   import DOMPurify from "dompurify";
@@ -19,6 +22,16 @@
     current_price: number | null;
     pnl: number;
     return_pct: number;
+  };
+
+  type PortfolioTrade = {
+    id: number;
+    ticker: string;
+    action: string;
+    shares: number;
+    price: number;
+    currency?: string;
+    executed_at: string;
   };
 
   type PositionDetail = {
@@ -85,7 +98,9 @@
   let summary: PositionMarket | null = null;
   let reports: PositionDetail["reports"] = [];
   let trades: PositionDetail["trades"] = [];
-  let tab: "report" | "history" = "report";
+  let portfolioTrades: PortfolioTrade[] = [];
+  let portfolioHolding: { shares: number; current_value_base?: number } | null = null;
+  let tab: "report" | "history" | "trades" = "report";
   let totalAmount: number | null = null;
   let selectedHistoryId = "";
   let positionId: number | null = null;
@@ -195,6 +210,35 @@
     error = "";
     resetChart();
     try {
+      if ($viewMode === "portfolio") {
+        const [holdingsRes, tradesRes] = await Promise.all([
+          fetchPortfolioHoldings(),
+          fetchPortfolioTrades(t, undefined, 100),
+        ]);
+        const h = holdingsRes as { holdings?: Array<{ ticker: string; shares: number; current_value_base?: number }> };
+        const holding = h?.holdings?.find((x) => x.ticker.toUpperCase() === t.toUpperCase());
+        portfolioHolding = holding ? { shares: holding.shares, current_value_base: holding.current_value_base } : null;
+        portfolioTrades = ((tradesRes as { items?: PortfolioTrade[] })?.items ?? []) as PortfolioTrade[];
+        summary = portfolioHolding
+          ? {
+              ticker: t,
+              shares: portfolioHolding.shares,
+              avg_cost: null,
+              current_price: null,
+              pnl: 0,
+              return_pct: 0,
+            }
+          : null;
+        positionId = null;
+        positionOpenedAt = portfolioTrades.length > 0 ? portfolioTrades[portfolioTrades.length - 1]?.executed_at ?? null : null;
+        reports = [];
+        trades = [];
+        selectedHistoryId = "";
+        tab = "trades";
+        return;
+      }
+
+      tab = "report";
       const positionsMarket = (await fetchPositionsMarket()) as PositionMarket[];
       summary = positionsMarket.find((p) => p.ticker.toLowerCase() === t.toLowerCase()) || null;
 
@@ -208,11 +252,15 @@
         reports = (await fetchReportsByTicker(t)) as PositionDetail["reports"];
         positionId = null;
         positionOpenedAt = null;
+        portfolioHolding = null;
+        portfolioTrades = [];
         selectedHistoryId = "";
         return;
       }
 
       positionId = target.id;
+      portfolioHolding = null;
+      portfolioTrades = [];
       const detail = (await fetchPositionDetail(target.id)) as PositionDetail;
       reports = detail.reports || [];
       trades = detail.trades || [];
@@ -227,7 +275,7 @@
   };
 
   $: if ($params?.ticker) { ticker = String($params.ticker).toUpperCase(); }
-  $: if (ticker) { loadDetail(ticker); }
+  $: if (ticker && $viewMode) { loadDetail(ticker); }
   $: totalAmount = summary?.avg_cost ? summary.avg_cost * summary.shares : null;
 
   /* ── chart building ── */
@@ -805,16 +853,38 @@
     </div>
 
     <div class="tab-bar">
-      <button class={`tab-btn ${tab === "report" ? "active" : ""}`} on:click={() => (tab = "report")}>최신 AI분석</button>
-      <button class={`tab-btn ${tab === "history" ? "active" : ""}`} on:click={() => (tab = "history")}>기록</button>
+      {#if $viewMode === "portfolio"}
+        <button class={`tab-btn ${tab === "trades" ? "active" : ""}`} on:click={() => (tab = "trades")}>거래 내역</button>
+      {:else}
+        <button class={`tab-btn ${tab === "report" ? "active" : ""}`} on:click={() => (tab = "report")}>최신 AI분석</button>
+        <button class={`tab-btn ${tab === "history" ? "active" : ""}`} on:click={() => (tab = "history")}>기록</button>
+      {/if}
     </div>
 
     {#if loading}
       <div class="card" style="padding:16px">불러오는 중...</div>
     {:else if error}
       <div class="card error-text" style="padding:16px">{error}</div>
-    {:else}
-      {#if tab === "report"}
+    {:else if $viewMode === "portfolio" && tab === "trades"}
+      <div class="history-list">
+        {#if portfolioTrades.length === 0}
+          <div class="card history-entry"><div class="history-action">거래 내역이 없습니다.</div></div>
+        {:else}
+          {#each portfolioTrades as tr}
+            <div class="card history-entry">
+              <div class="history-top" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span class={tr.action?.toLowerCase().includes("buy") ? "badge badge-gain" : "badge badge-loss"}>
+                  {tr.action?.toLowerCase().includes("buy") ? "매수" : tr.action?.toLowerCase().includes("sell") ? "매도" : tr.action || "-"}
+                </span>
+                <span>{tr.shares}주</span>
+                <span>{formatAmount(tr.price, ticker)}</span>
+                <span style="font-size:0.8125rem;color:var(--text-dim)">{formatDateTime(tr.executed_at)}</span>
+              </div>
+            </div>
+          {/each}
+        {/if}
+      </div>
+    {:else if tab === "report"}
         {#if latestReport()}
           <div class="card" style="margin-bottom:12px">
             <div class="card-body">

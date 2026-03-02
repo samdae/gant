@@ -359,7 +359,7 @@ async def lifespan(app: FastAPI):
     scheduler.set_queue(ticker_scheduler_module.analysis_queue, _event_loop)
 
     # Auto-load schedules from config into DB + scheduler
-    from tradingagents.storage import ScheduleConfigRepository, PortfolioConfigRepository
+    from tradingagents.storage import ScheduleConfigRepository
 
     schedule_config_repo = ScheduleConfigRepository(scheduler.db)
     for schedule_item in DEFAULT_CONFIG.get("schedules", []):
@@ -378,18 +378,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to load schedules from DB: {e}")
 
-    if DEFAULT_CONFIG.get("portfolio_enabled", False):
-        try:
-            portfolio_repo = PortfolioConfigRepository(scheduler.db)
-            if not portfolio_repo.get_latest():
-                portfolio_repo.create(
-                    initial_capital=float(DEFAULT_CONFIG.get("portfolio_initial_capital", 100000000)),
-                    base_currency="KRW",
-                    fee_enabled=bool(DEFAULT_CONFIG.get("portfolio_fee_enabled", True)),
-                )
-                logger.info("Created default portfolio config on startup")
-        except Exception as e:
-            logger.warning(f"Failed to initialize portfolio config: {e}")
+    # Portfolio config: FE에서 첫 진입 시 생성 (env 기반 자동 생성 없음)
 
     # Start scheduler
     if DEFAULT_CONFIG.get("scheduler_enabled", False):

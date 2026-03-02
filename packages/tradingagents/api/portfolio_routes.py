@@ -260,6 +260,20 @@ async def get_portfolio_holdings(_: bool = Depends(check_portfolio_read_access))
     }
 
 
+@router.get("/portfolio/closed")
+async def get_portfolio_closed(_: bool = Depends(check_portfolio_read_access)):
+    """종료된 포지션(전량 매도된 티커) 목록."""
+    scheduler = _get_scheduler()
+    cfg_repo = PortfolioConfigRepository(scheduler.db)
+    config = cfg_repo.get_active() or cfg_repo.get_latest()
+    if not config:
+        return {"schema_version": "v1", "items": []}
+
+    trade_repo = PortfolioTradeRepository(scheduler.db)
+    items = trade_repo.list_closed_tickers(int(config["id"]))
+    return {"schema_version": "v1", "items": items}
+
+
 @router.get("/portfolio/trades")
 async def get_portfolio_trades(
     ticker: Optional[str] = Query(None),

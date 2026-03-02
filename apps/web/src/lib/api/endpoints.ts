@@ -77,3 +77,24 @@ export const requestRetroAnalysis = (payload: {
 
 export const fetchRetroResult = (retroId: number) =>
   getJson(`/retrospective/${retroId}`);
+
+// Portfolio
+export const fetchPortfolioConfig = () => getJson("/portfolio/config");
+
+export const createPortfolioConfig = (payload: {
+  initial_capital: number;
+  base_currency: "KRW" | "USD";
+  fee_enabled?: boolean;
+  reset_fund_to_initial?: boolean;
+}) => postJson("/portfolio/config", payload);
+
+export const fetchPortfolioHoldings = () => getJson("/portfolio/holdings");
+
+export const fetchPortfolioTrades = (ticker?: string, cursor?: number, limit = 50) => {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (ticker) params.set("ticker", ticker);
+  if (cursor) params.set("cursor", String(cursor));
+  return getJson(`/portfolio/trades?${params.toString()}`);
+};
+
+export const fetchPortfolioClosedTickers = () => getJson("/portfolio/closed");

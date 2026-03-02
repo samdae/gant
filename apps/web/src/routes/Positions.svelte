@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fetchPositionsMarket, fetchPositionsClosed, fetchMetrics } from "../lib/api/endpoints";
+  import { fetchPositionsMarket, fetchPositionsClosed, fetchMetrics, fetchPortfolioHoldings, fetchPortfolioClosedTickers } from "../lib/api/endpoints";
   import { formatAmount, formatSignedAmount, formatMoneyPlain, formatPercent, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
   import { currencyFilter, showAmount, matchesCurrency, tickerCurrency } from "../stores/currency";
+  import { viewMode, portfolioRefreshTrigger } from "../stores/mode";
 
   type PositionMarket = {
     position_id: number;
@@ -33,6 +34,9 @@
   let closedPositions: ClosedPosition[] = [];
   let totalPnl = 0;
   let tab: "active" | "closed" = "active";
+  let portfolioHoldings: Array<{ ticker: string; shares: number; current_value_base?: number; allocation_pct?: number; currency?: string }> = [];
+  let portfolioClosed: Array<{ ticker: string; last_trade_at?: string }> = [];
+  let portfolioConfig: { base_currency?: string } | null = null;
 
   const goTrade = (ticker: string) => {
     window.location.hash = `#/trade/${ticker.toLowerCase()}`;
@@ -42,14 +46,30 @@
     loading = true;
     error = "";
     try {
-      const [positionsRes, closedRes, metricsRes] = await Promise.all([
-        fetchPositionsMarket(),
-        fetchPositionsClosed(),
-        fetchMetrics(),
-      ]);
-      positions = (positionsRes as PositionMarket[]) || [];
-      closedPositions = (closedRes as ClosedPosition[]) || [];
-      totalPnl = (metricsRes as { total_unrealized_pnl?: number })?.total_unrealized_pnl ?? 0;
+      if ($viewMode === "portfolio") {
+        const [holdingsRes, closedRes] = await Promise.all([
+          fetchPortfolioHoldings(),
+          fetchPortfolioClosedTickers(),
+        ]);
+        const h = holdingsRes as { holdings?: Array<{ ticker: string; shares: number; current_value_base?: number; allocation_pct?: number; currency?: string }>; base_currency?: string };
+        portfolioHoldings = h?.holdings ?? [];
+        portfolioConfig = { base_currency: h?.base_currency };
+        portfolioClosed = (closedRes as { items?: Array<{ ticker: string; last_trade_at?: string }> })?.items ?? [];
+        positions = [];
+        closedPositions = [];
+        totalPnl = 0;
+      } else {
+        const [positionsRes, closedRes, metricsRes] = await Promise.all([
+          fetchPositionsMarket(),
+          fetchPositionsClosed(),
+          fetchMetrics(),
+        ]);
+        positions = (positionsRes as PositionMarket[]) || [];
+        closedPositions = (closedRes as ClosedPosition[]) || [];
+        totalPnl = (metricsRes as { total_unrealized_pnl?: number })?.total_unrealized_pnl ?? 0;
+        portfolioHoldings = [];
+        portfolioClosed = [];
+      }
     } catch (err) {
       error = formatErrorMessage(err, "투자를 불러오지 못했습니다.");
     } finally {
@@ -57,15 +77,17 @@
     }
   };
 
-  onMount(() => {
-    loadData();
-  });
+  $: $viewMode, $portfolioRefreshTrigger, loadData();
+
+  onMount(() => loadData());
 
   const getTotalAmount = (pos: PositionMarket) =>
     pos.avg_cost ? pos.avg_cost * pos.shares : null;
 
   $: filteredPositions = positions.filter((p) => matchesCurrency(p.ticker, $currencyFilter));
   $: filteredClosed = closedPositions.filter((p) => matchesCurrency(p.ticker, $currencyFilter));
+  $: filteredPortfolioHoldings = portfolioHoldings.filter((h) => matchesCurrency(h.ticker, $currencyFilter));
+  $: filteredPortfolioClosed = portfolioClosed.filter((c) => matchesCurrency(c.ticker, $currencyFilter));
 
   const formatDate = (iso: string | null) => {
     if (!iso) return "-";
@@ -98,14 +120,51 @@
 
     <div class="tab-bar" style="margin-bottom:16px">
       <button class={`tab-btn ${tab === "active" ? "active" : ""}`} on:click={() => (tab = "active")}>
-        보유중 <span class="tab-count">{filteredPositions.length}</span>
+        보유중 <span class="tab-count">{$viewMode === "portfolio" ? filteredPortfolioHoldings.length : filteredPositions.length}</span>
       </button>
       <button class={`tab-btn ${tab === "closed" ? "active" : ""}`} on:click={() => (tab = "closed")}>
-        이전 투자 <span class="tab-count">{filteredClosed.length}</span>
+        이전 투자 <span class="tab-count">{$viewMode === "portfolio" ? filteredPortfolioClosed.length : filteredClosed.length}</span>
       </button>
     </div>
 
     {#if tab === "active"}
+      {#if $viewMode === "portfolio"}
+        <div class="pos-card-list list-grid">
+          {#if loading}
+            <div class="pos-card list-row"><div class="pos-card-details">불러오는 중...</div></div>
+          {:else if error}
+            <div class="pos-card list-row"><div class="pos-card-details error-text">{error}</div></div>
+          {:else if filteredPortfolioHoldings.length === 0}
+            <div class="pos-card list-row"><div class="pos-card-details">보유중인 투자가 없습니다.</div></div>
+          {:else}
+            {#each filteredPortfolioHoldings as h}
+              <div class="pos-card list-row" on:click={() => goTrade(h.ticker)}>
+                <div class="pos-card-top">
+                  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    <span class="ticker-badge">{h.ticker}</span>
+                    {#if $tickerNames[h.ticker]}
+                      <span class="ticker-tag">{$tickerNames[h.ticker]}</span>
+                    {/if}
+                  </div>
+                  {#if h.allocation_pct != null}
+                    <span class="return-badge return-pos">{h.allocation_pct.toFixed(1)}%</span>
+                  {/if}
+                </div>
+                <div class="pos-card-details">
+                  <span>보유 {h.shares}주</span>
+                  <span>
+                    {#if $showAmount && h.current_value_base != null}
+                      {portfolioConfig?.base_currency === "USD"
+                        ? `$${h.current_value_base.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+                        : `₩${h.current_value_base.toLocaleString("ko-KR", { maximumFractionDigits: 0 })}`}
+                    {/if}
+                  </span>
+                </div>
+              </div>
+            {/each}
+          {/if}
+        </div>
+      {:else}
       <div class="table-wrap">
         <table class="data-table list-table">
           <thead>
@@ -153,7 +212,6 @@
           </tbody>
         </table>
       </div>
-
       <div class="pos-card-list list-grid">
         {#if loading}
           <div class="pos-card list-row"><div class="pos-card-details">불러오는 중...</div></div>
@@ -189,10 +247,36 @@
           {/each}
         {/if}
       </div>
+      {/if}
     {:else}
       <div class="pos-card-list list-grid">
         {#if loading}
           <div class="pos-card list-row"><div class="pos-card-details">불러오는 중...</div></div>
+        {:else if error}
+          <div class="pos-card list-row"><div class="pos-card-details error-text">{error}</div></div>
+        {:else if $viewMode === "portfolio"}
+          {#if filteredPortfolioClosed.length === 0}
+            <div class="pos-card list-row"><div class="pos-card-details">이전 투자가 없습니다.</div></div>
+          {:else}
+            {#each filteredPortfolioClosed as c}
+              <div class="pos-card list-row" on:click={() => goTrade(c.ticker)}>
+                <div class="pos-card-top">
+                  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    <span class="ticker-badge">{c.ticker}</span>
+                    {#if $tickerNames[c.ticker]}
+                      <span class="ticker-tag">{$tickerNames[c.ticker]}</span>
+                    {/if}
+                  </div>
+                  <span class="badge badge-muted">종료</span>
+                </div>
+                <div class="pos-card-details">
+                  <span style="color:var(--text-dim)">
+                    {c.last_trade_at ? formatDate(c.last_trade_at) : ""}
+                  </span>
+                </div>
+              </div>
+            {/each}
+          {/if}
         {:else if filteredClosed.length === 0}
           <div class="pos-card list-row"><div class="pos-card-details">이전 투자가 없습니다.</div></div>
         {:else}
