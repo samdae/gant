@@ -1,7 +1,7 @@
-# Backend Design Doc: TradingAgents Features (FR-013~063)
+# Backend Design Doc: TradingAgents Features (FR-013~068)
 
 > Created: 2026-02-11
-> Updated: 2026-03-01
+> Updated: 2026-03-03
 > Service: tradingagents
 > Type: Backend
 > Requirements document: docs/tradingagents/spec.md
@@ -11,7 +11,7 @@
 
 ### Goal
 
-기존 TradingAgents 멀티에이전트 분석 파이프라인에 **영속 메모리(Hybrid RAG)**, **가상 매매 검증**, **스케줄 기반 자동화**를 추가하고, **Postgres 기반 데이터 저장**, **반성 집중화(반성에이전트 1곳)**, **요약에이전트**를 도입하여, AI 분석의 정확도를 정량적으로 추적·학습하는 자기 개선 시스템으로 진화시킨다. 추가로 **스케줄 테이블 재설계(9테이블)**, **통화 지원(KRW/USD)**, **자동 청산 메커니즘**, **시장별 스케줄링**, **Codex LLM 프로바이더**를 도입한다. v5에서 **RAG 검색 파이프라인 개편(맥락 인식 검색, usefulness 기반 필터링)**, **RAG Validator(경험 유용성 자동 평가)**, **매매검증 검색 기능**을 추가한다. v6에서 **회고분석 배점(analysis_accuracy, rag_contribution)**, **포트폴리오 모드(공유 자금 풀, 비서 에이전트, PortfolioManagerAgent, 주간 반성)**를 도입한다. v7에서 **시장별 매크로 지표 + 섹터 호황도 컨텍스트 주입(FR-062, FR-063)**을 도입하여 12에이전트와 PA의 판단 맥락을 강화한다.
+기존 TradingAgents 멀티에이전트 분석 파이프라인에 **영속 메모리(Hybrid RAG)**, **가상 매매 검증**, **스케줄 기반 자동화**를 추가하고, **Postgres 기반 데이터 저장**, **반성 집중화(반성에이전트 1곳)**, **요약에이전트**를 도입하여, AI 분석의 정확도를 정량적으로 추적·학습하는 자기 개선 시스템으로 진화시킨다. 추가로 **스케줄 테이블 재설계(9테이블)**, **통화 지원(KRW/USD)**, **자동 청산 메커니즘**, **시장별 스케줄링**, **Codex LLM 프로바이더**를 도입한다. v5에서 **RAG 검색 파이프라인 개편(맥락 인식 검색, usefulness 기반 필터링)**, **RAG Validator(경험 유용성 자동 평가)**, **매매검증 검색 기능**을 추가한다. v6에서 **회고분석 배점(analysis_accuracy, rag_contribution)**, **포트폴리오 모드(공유 자금 풀, 비서 에이전트, PortfolioManagerAgent, 주간 반성)**를 도입한다. v7에서 **시장별 매크로 지표 + 섹터 호황도 컨텍스트 주입(FR-062, FR-063)**을 도입하여 12에이전트와 PA의 판단 맥락을 강화한다. v8에서 **레짐 태그/구조화 반성 저장**, **증거 기반 proposed/applied 점수 분리**, **학습 반영 품질 게이트(Green/Yellow/Red)**, **포트폴리오 RAG 1+1 하드 쿼터**를 도입해 학습 반영 품질을 강화한다.
 
 ### Non-goals
 
@@ -83,12 +83,18 @@
 - **FR-061: 포트폴리오 주간 반성 — KST 일요일 12:00, 성과 평가** (Implemented)
 - **FR-062: 매크로 컨텍스트 주입 — 시장별(us/kr/crypto) 지표를 12에이전트 + PA 프롬프트에 공통 반영** (Implemented)
 - **FR-063: 섹터 호황도 주입 — 섹터 자동 판별 + ETF 상대강도/추세 계산 + 캐시/폴백** (Implemented)
+- **FR-064: 레짐 태그 저장/검색 — 반성 저장 시 버킷 태그 기록, RAG 조회 시 태그 반영** (Designed)
+- **FR-065: 구조화 반성 병행 저장 — anti_patterns/do_not_rules/safe_rules JSONB + parse_error 기록** (Designed)
+- **FR-066: 증거 기반 usefulness 반영 — proposed_delta와 applied_delta 분리, +1 엄격화** (Designed)
+- **FR-067: 학습 반영 품질 게이트 — retrospective 단위 Green/Yellow/Red 판정 후 최종 반영** (Designed)
+- **FR-068: 포트폴리오 RAG 1+1 하드 쿼터 — 소스 miss 시 보충 금지** (Designed)
 
 ### Out of scope
 
 - Pydantic 기반 설정 마이그레이션 (기존 dict 유지)
 - 멀티스레드 병렬 분석 (순차 실행 유지)
 - Event Sourcing / CQRS 패턴 (단일 트랜잭션 모델)
+- Hexagonal 아키텍처/CQRS 전면 도입 및 outbox 이벤트 버스 구축 (v8 범위 초과)
 
 ---
 
@@ -239,6 +245,15 @@ dependencies:
 | `tradingagents/scheduler/ticker_scheduler.py` | 분석 시작 전 `collect_macro_context()` 호출 후 그래프에 전달 | modify (FR-062, FR-063) |
 | `tradingagents/graph/propagation.py` | `AgentState` 초기값에 `macro_context` 필드 주입 | modify (FR-062) |
 | `tradingagents/virtual_trade/portfolio_agent.py` | PA 프롬프트에 매크로/섹터 컨텍스트 섹션 추가 | modify (FR-062) |
+| `tradingagents/dataflows/macro_collector.py` | 레짐 태그 버킷 산출 (`vol/rate/trend/risk`) | modify (FR-064) |
+| `tradingagents/storage/reflection_repo.py` | 반성 저장 확장: 레짐 태그 + 구조화 JSONB 배열 필드 저장/조회 | modify (FR-064, FR-065) |
+| `tradingagents/retrospective/service.py` | 구조화 반성 파싱 + parse_error 기록 연동 | modify (FR-065) |
+| `tradingagents/storage/retrospective_repo.py` | `structured_parse_error`, `quality_grade`, `ambiguous_ratio` 업데이트 메서드 | modify (FR-065, FR-067) |
+| `tradingagents/rag_validator/service.py` | proposed/applied 분리, evidence 판정, quality gate 적용, 최종 반영 제어 | modify (FR-066, FR-067) |
+| `tradingagents/storage/rag_validation_repo.py` | evidence/quality/proposed/applied/update_applied 컬럼 CRUD 확장 | modify (FR-066, FR-067) |
+| `tradingagents/memory/hybrid_memory.py` | 레짐 태그 기반 소프트 가중치, 교차조회 1+1 하드 쿼터 강제 | modify (FR-064, FR-068) |
+| `tradingagents/virtual_trade/portfolio_manager_agent.py` | `_inject_rag` 소스별 1개 고정, source miss 시 보충 금지 | modify (FR-068) |
+| `tradingagents/api/routes.py` | RAG Validator 리포트 응답 스키마 확장 (proposed/applied/evidence/quality) | modify (FR-066, FR-067) |
 
 ### Data
 
@@ -340,7 +355,7 @@ CREATE TABLE trades (
 CREATE INDEX idx_trades_position ON trades(position_id);
 CREATE INDEX idx_trades_report ON trades(report_id);
 
--- ⑥ reflections: 회고 (FR-052 usefulness_score 추가)
+-- ⑥ reflections: 회고 (FR-052 + FR-064~065 확장)
 CREATE TABLE reflections (
     id               BIGSERIAL PRIMARY KEY,
     position_id      BIGINT NOT NULL REFERENCES positions(id),
@@ -352,9 +367,24 @@ CREATE TABLE reflections (
     sector           TEXT,
     industry         TEXT,
     usefulness_score DOUBLE PRECISION NOT NULL DEFAULT 50, -- [NEW] FR-052/053: RAG Validator ±1 조정, < 40 시 배제
+    regime_vol_bucket   TEXT    NOT NULL DEFAULT 'unknown', -- [FR-064]
+    regime_rate_bucket  TEXT    NOT NULL DEFAULT 'unknown', -- [FR-064]
+    regime_trend_state  TEXT    NOT NULL DEFAULT 'unknown', -- [FR-064]
+    regime_risk_state   TEXT    NOT NULL DEFAULT 'unknown', -- [FR-064]
+    anti_patterns       JSONB   NOT NULL DEFAULT '[]'::jsonb, -- [FR-065]
+    do_not_rules        JSONB   NOT NULL DEFAULT '[]'::jsonb, -- [FR-065]
+    safe_rules          JSONB   NOT NULL DEFAULT '[]'::jsonb, -- [FR-065]
+    reflection_schema_version INTEGER NOT NULL DEFAULT 1, -- [FR-065]
     created_at       TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX idx_reflections_position ON reflections(position_id);
+CREATE INDEX idx_reflections_regime ON reflections(
+    regime_vol_bucket,
+    regime_rate_bucket,
+    regime_trend_state,
+    regime_risk_state,
+    created_at DESC
+);
 
 -- ⑦ schedule_job_events: 에이전트 활동 로그 (FK 정리)
 CREATE TABLE schedule_job_events (
@@ -373,7 +403,7 @@ CREATE INDEX idx_schedule_job_events_ticker ON schedule_job_events(ticker);
 CREATE INDEX idx_schedule_job_events_created_at ON schedule_job_events(created_at);
 CREATE UNIQUE INDEX idx_schedule_job_events_unique ON schedule_job_events(schedule_job_id, agent);
 
--- ⑧ retrospective_analyses: 회고분석 (v4 도입, FR-055 배점 구현 완료)
+-- ⑧ retrospective_analyses: 회고분석 (v4 + FR-055 + FR-065/067 확장)
 CREATE TABLE retrospective_analyses (
     id                  BIGSERIAL PRIMARY KEY,
     position_id         BIGINT    NOT NULL UNIQUE REFERENCES positions(id),
@@ -385,6 +415,12 @@ CREATE TABLE retrospective_analyses (
     analysis_count      INTEGER   NOT NULL DEFAULT 1,
     analysis_accuracy   INTEGER,                              -- [FR-055] 0~100, 분석 정확도
     rag_contribution    INTEGER,                              -- [FR-055] 0~100 or NULL, RAG 기여도
+    structured_parse_error BOOLEAN NOT NULL DEFAULT FALSE,    -- [FR-065]
+    structured_parse_error_reasons JSONB NOT NULL DEFAULT '[]'::jsonb, -- [FR-065]
+    ambiguous_ratio    DOUBLE PRECISION,                      -- [FR-067] retrospective 단위 ambiguous 비율
+    quality_grade      TEXT,                                  -- [FR-067] green | yellow | red
+    quality_reasons    JSONB NOT NULL DEFAULT '[]'::jsonb,    -- [FR-067]
+    quality_evaluated_at TIMESTAMPTZ,                         -- [FR-067]
     position_open_date  TIMESTAMPTZ,
     position_close_date TIMESTAMPTZ,
     error_message       TEXT,
@@ -394,8 +430,31 @@ CREATE TABLE retrospective_analyses (
 );
 CREATE INDEX idx_retro_ticker ON retrospective_analyses(ticker);
 CREATE INDEX idx_retro_status ON retrospective_analyses(status);
+CREATE INDEX idx_retro_quality ON retrospective_analyses(status, quality_grade, updated_at DESC);
 
--- ⑨ FTS: Postgres GIN 인덱스 (BM25 검색용) — FR-033
+-- ⑨ rag_validation_results: RAG 효과 검증 결과 (FR-053 + FR-066/067 확장)
+CREATE TABLE rag_validation_results (
+    id                BIGSERIAL PRIMARY KEY,
+    retrospective_id  BIGINT NOT NULL REFERENCES retrospective_analyses(id),
+    reflection_id     BIGINT NOT NULL REFERENCES reflections(id),
+    verdict           TEXT NOT NULL,          -- reflected | not_reflected | ambiguous
+    justification     TEXT,
+    score_delta       INTEGER NOT NULL,
+    evidence_passed   BOOLEAN,                -- [FR-066]
+    evidence_reasons  JSONB NOT NULL DEFAULT '[]'::jsonb, -- [FR-066]
+    quality_grade     TEXT,                   -- [FR-067]
+    quality_reasons   JSONB NOT NULL DEFAULT '[]'::jsonb, -- [FR-067]
+    proposed_delta    INTEGER,                -- [FR-066/067]
+    applied_delta     INTEGER,                -- [FR-066/067]
+    update_applied    BOOLEAN NOT NULL DEFAULT FALSE, -- [FR-067]
+    policy_version    TEXT    NOT NULL DEFAULT 'v8',
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(retrospective_id, reflection_id)
+);
+CREATE INDEX idx_rag_validation_retro ON rag_validation_results(retrospective_id);
+CREATE INDEX idx_rag_validation_retro_apply ON rag_validation_results(retrospective_id, update_applied);
+
+-- ⑩ FTS: Postgres GIN 인덱스 (BM25 검색용) — FR-033
 CREATE INDEX idx_reflections_search
     ON reflections
     USING GIN (to_tsvector('simple', coalesce(reflection, '') || ' ' || coalesce(key_lessons, '')));
@@ -694,7 +753,7 @@ scripts/
 | 116 | FR-059 | 환율 조회 | `virtual_trade/exchange_rate.py` | `ExchangeRateService` | `get_usd_krw() → float`. yfinance `USDKRW=X`, 1시간 TTL 인메모리 캐시. 실패 시 마지막 캐시값 반환 (None이면 1380.0 하드코딩 폴백) | **new** |
 | 117 | FR-059 | 매매 실행 엔진 | `scheduler/portfolio_pipeline.py` | `PortfolioPipeline` | `_execute_trades(plan, config, exchange_rate)` — plan 순회: 현가 조회 → 수수료 계산 → portfolio_trades INSERT → 일별 holdings snapshot INSERT → available_cash 차감. 실행 후 14일 이전 snapshot 정리 | modify |
 | 118 | FR-060 | HybridMemory 컬렉션 분리 | `memory/hybrid_memory.py` | `HybridMemory` | `__init__` 에 `collection_name` 파라미터 추가. 기존: `"analysis_reflections"`, 포트폴리오: `"portfolio_reflections"`. FTS 쿼리 대상 테이블도 파라미터화 | modify |
-| 119 | FR-060 | RAG 교차 참조 | `memory/hybrid_memory.py` | `HybridMemory` | `get_memories_cross(query, primary_collection, secondary_collection, primary_k, secondary_k)` — primary에서 top-K + secondary에서 top-1, 소스 태깅하여 반환 | **new** |
+| 119 | FR-060 | RAG 교차 참조 | `memory/hybrid_memory.py` | `HybridMemory` | `get_memories_cross(query, primary_collection, secondary_collection, primary_k, secondary_k)` — 소스 태깅 교차조회 기본 경로. v8(FR-068)에서 포트폴리오 경로는 1+1 하드 쿼터로 재고정 | **new** |
 | 120 | FR-060 | PM RAG 연동 | `virtual_trade/portfolio_manager_agent.py` | `PortfolioManagerAgent` | `_inject_rag(briefing)` — `get_memories_cross("portfolio_reflections", "analysis_reflections", 2, 1)` 호출 → PM 프롬프트에 "과거 경험" 섹션 주입 | modify |
 | 121 | FR-061 | PortfolioReflector | `graph/portfolio_reflection.py` | `PortfolioReflector` | `reflect_weekly(config_id, week_start, week_end) → ReflectionResult` — 해당 주 decisions + trades + holdings 변화 분석 → LLM 평가 → portfolio_reflections INSERT + ChromaDB 벡터 저장 | **new** |
 | 122 | FR-061 | 주간 스케줄러 트리거 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_init_weekly_schedule()` — `CronTrigger(day_of_week='sun', hour=12, minute=0, timezone='Asia/Seoul')`. `PortfolioPipeline.run_weekly` 큐 등록 | modify |
@@ -717,6 +776,27 @@ scripts/
 | 134 | FR-063 | 섹터 강도 계산 | `dataflows/macro_collector.py` | `_relative_strength_20d`, `_trend_vs_sma` | 상대강도(최근 1개월) + 50일선 추세 계산 | **new** | [x] |
 | 135 | FR-063 | 일일 캐시 전략 | `dataflows/macro_collector.py` | `_macro_cache`, `_sector_cache` | 시장별/ETF별 당일 1회 캐시로 중복 fetch 억제 | **new** | [x] |
 | 136 | FR-063 | 코인/장애 허용 정책 | `dataflows/macro_collector.py` | `collect_macro_context` | crypto는 섹터 스킵, fetch 실패 시 `N/A`/빈 문자열로 graceful degradation | **new** | [x] |
+
+### Phase 7: 설계 완료 (FR-064~068, v8)
+
+| # | Spec Ref | Feature | File | Class / Function | Method / Detail | Action | Impl |
+|---|----------|---------|------|------------------|-----------------|--------|------|
+| 137 | FR-064 | 레짐 태그 버킷 산출 | `dataflows/macro_collector.py` | `collect_regime_tags` | vol/rate/trend/risk 버킷 산출. rate는 US=`^IRX`, KR=`USDKRW=X` 20거래일 변화량 기준 | modify | [ ] |
+| 138 | FR-064 | 청산 반성 저장 시 레짐 태그 기록 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_run_analysis_cycle_impl`의 reflection 저장 경로에서 regime 태그를 `ReflectionRepository.create(...)`로 전달 | modify | [ ] |
+| 139 | FR-064/065 | Reflection 저장/조회 스키마 확장 | `storage/reflection_repo.py` | `ReflectionRepository` | `create`, `get_by_id`, `search_fts`에 regime_* + JSONB(`anti_patterns`, `do_not_rules`, `safe_rules`) 반영 | modify | [ ] |
+| 140 | FR-064 | 레짐 기반 RAG 검색 가중치 | `memory/hybrid_memory.py` | `HybridMemory` | `get_memories`, `get_memories_cross`에 레짐 soft-weight/re-rank 추가 (하드필터 아님) | modify | [ ] |
+| 141 | FR-065 | 구조화 반성 블록 출력 가이드 | `graph/reflection.py` | `Reflector` | `reflect_on_position` 프롬프트에 구조화 블록(`ANTI_PATTERNS`, `DO_NOT_RULES`, `SAFE_RULES`) 추가 | modify | [ ] |
+| 142 | FR-065 | 구조화 블록 파싱 유틸 | `retrospective/service.py` | `_parse_structured_reflection` | 회고 텍스트 파싱 -> JSONB 배열 정규화. 실패 시 parse_error reason 생성 | modify | [ ] |
+| 143 | FR-065/067 | 회고 parse_error/quality 저장 | `storage/retrospective_repo.py` | `RetrospectiveRepository` | `update_structured_parse_error`, `update_quality_gate` 메서드 추가 | modify | [ ] |
+| 144 | FR-065~067 | v8 컬럼/인덱스 마이그레이션 | `storage/database.py` | `Database` | `init_schema` ensure_column 패턴으로 reflections/retrospective_analyses/rag_validation_results 확장 | modify | [ ] |
+| 145 | FR-066 | proposed_delta 분리 산출 | `rag_validator/service.py` | `RAGValidatorService` | `_evaluate_document`를 `proposed_delta` 산출로 분리 (verdict 기반) | modify | [ ] |
+| 146 | FR-066 | C2 증거 이진 판정 | `rag_validator/service.py` | `RAGValidatorService` | `_evaluate_evidence` 추가: evidence_passed(boolean)+evidence_reasons(JSONB) LLM 판정 | modify | [ ] |
+| 147 | FR-067 | 품질 게이트 적용 | `rag_validator/service.py` | `RAGValidatorService` | `_evaluate_quality_gate` 추가: retrospective 단위 ambiguous ratio + parse_error + evidence 실패율로 Green/Yellow/Red 판정 | modify | [ ] |
+| 148 | FR-066/067 | 검증 결과 저장 스키마 확장 | `storage/rag_validation_repo.py` | `RAGValidationRepository` | `create`, `get_summary`, `list_by_retrospective`에 proposed/applied/evidence/quality/update_applied 필드 반영 | modify | [ ] |
+| 149 | FR-067 | applied_delta만 반영 | `rag_validator/service.py` | `RAGValidatorService` | `_apply_score_adjustments`를 `applied_delta` 기반으로 변경, Red는 무조건 0 | modify | [ ] |
+| 150 | FR-068 | 포트폴리오 교차조회 1+1 하드 제한 | `memory/hybrid_memory.py` | `HybridMemory` | `get_memories_cross(query, ..., primary_k=1, secondary_k=1)` 고정 + source miss 보충 금지 | modify | [ ] |
+| 151 | FR-068 | PM RAG 주입 정책 고정 | `virtual_trade/portfolio_manager_agent.py` | `PortfolioManagerAgent` | `_inject_rag`에서 분석 1 + 포트폴리오 1만 주입, 한쪽 미스 시 총량 감소 허용 | modify | [ ] |
+| 152 | FR-066/067 | 검증 리포트 응답 확장 | `api/routes.py` | — | `/rag-validator/reports*` 응답에 proposed/applied/evidence/quality/ambiguous_ratio 노출 | modify | [ ] |
 
 ---
 
@@ -806,6 +886,14 @@ scripts/
     - `scheduler/ticker_scheduler.py`에서 분석 시작 전 `collect_macro_context()` 호출 후 `graph.propagate(..., macro_context=...)` 전달
     - `AgentState`/`Propagator`/`TradingGraph` 경로에 `macro_context` 필드 연결
     - 12에이전트 + PA 프롬프트에 매크로 블록 주입 (`macro_mixin` + Market Analyst 직접 블록)
+
+17. **Step 17: 학습 반영 품질 강화 (FR-064~068, v8)**
+    - `database.py`: reflections/retrospective_analyses/rag_validation_results 컬럼 및 인덱스 확장 (ensure_column)
+    - `macro_collector.py`: 레짐 태그 버킷(`vol/rate/trend/risk`) 산출 함수 추가 (US=`^IRX`, KR=`USDKRW=X`)
+    - `reflection.py` + `reflection_repo.py`: 구조화 반성 블록 출력/저장(JSONB 배열)
+    - `retrospective_repo.py`: `structured_parse_error`, `ambiguous_ratio`, `quality_grade` 업데이트 경로 추가
+    - `rag_validator/service.py`: proposed_delta -> evidence 판정(C2) -> quality gate -> applied_delta 확정 순서로 변경
+    - `hybrid_memory.py` + `portfolio_manager_agent.py`: 포트폴리오 RAG 1+1 하드 쿼터 강제, source miss 보충 금지
 
 ---
 
@@ -940,6 +1028,39 @@ RAGValidatorService.validate(retrospective_id)
   클램핑)    (사람이 읽음)
 ```
 
+### 5.7 Learning Gate Flow (FR-066~067, v8)
+
+```
+retrospective_analyses.status = 'completed'
+         │
+         ▼
+RAGValidatorService.validate(retrospective_id)
+         │
+   각 문서별 verdict 산출
+         │
+         ▼
+proposed_delta 계산 (verdict 기반)
+         │
+         ▼
+C2 evidence binary 판정
+evidence_passed / evidence_reasons
+         │
+         ▼
+retrospective 단위 품질 게이트
+inputs: ambiguous_ratio + structured_parse_error + evidence_fail_ratio
+         │
+         ├─ Green  -> 정책 범위 내 applied_delta 허용
+         ├─ Yellow -> +1 금지 (0/-1만)
+         └─ Red    -> applied_delta = 0, update_applied = false
+         │
+         ▼
+rag_validation_results 저장
+(proposed_delta, applied_delta, evidence_*, quality_*)
+         │
+         ▼
+ReflectionRepository.update_usefulness_score(applied_delta)
+```
+
 ### 5.3 Reflection Agent Flow (청산 시에만)
 
 ```
@@ -995,8 +1116,9 @@ _queue_worker → PortfolioPipeline.run_daily(config_id)
     │ HoldingRepo.get_all(config_id) → 현재 보유      │
     │ ConfigRepo.get_active() → available_cash         │
     │ [선택] HybridMemory.get_memories_cross()         │
-    │   → portfolio_reflections(top-2) +               │
+    │   → portfolio_reflections(top-1) +               │
     │     analysis_reflections(top-1)                   │
+    │   → source miss 시 다른 소스로 보충 금지         │
     └────┬────────────────────────────────────────────┘
          │
          ▼
@@ -1083,8 +1205,8 @@ _queue_worker → PortfolioPipeline.run_weekly(config_id)
 | GET | `/live/{ticker}/events` | — | 실시간 에이전트 이벤트 (?limit) |
 | GET | `/reflections/search` | — | 매매검증 검색 (?q, ?mode=keyword\|semantic, ?limit) (FR-054) |
 | POST | `/rag-validator/run` | Bearer | RAG Validator 수동 실행 (retrospective_id 또는 전체) (FR-053) |
-| GET | `/rag-validator/reports` | — | RAG 효과 분석 리포트 목록 (?cursor, ?limit) (FR-053) |
-| GET | `/rag-validator/reports/{retrospective_id}` | — | RAG 효과 분석 상세 (문서별 verdict + justification) (FR-053) |
+| GET | `/rag-validator/reports` | — | RAG 효과 분석 리포트 목록 (?cursor, ?limit). v8: quality_grade/ambiguous_ratio/proposed_vs_applied 포함 (FR-053, FR-067) |
+| GET | `/rag-validator/reports/{retrospective_id}` | — | RAG 효과 분석 상세 (문서별 verdict + justification + evidence_passed + proposed/applied_delta) (FR-053, FR-066/067) |
 | GET | `/portfolio/config` | — | 포트폴리오 설정 조회 (FR-056) |
 | POST | `/portfolio/config` | Bearer | 포트폴리오 설정 생성/수정 (initial_capital, base_currency, fee_enabled, 시장별 fee_rate) (FR-056, FR-059) |
 | POST | `/portfolio/config/pause` | Bearer | 포트폴리오 일시정지 (FR-056) |
@@ -1140,6 +1262,11 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | `EXCHANGE_RATE_CACHE_TTL` | 환율 캐시 TTL (초) (FR-059) | `3600` |
 | `EXCHANGE_RATE_FALLBACK` | 환율 조회 실패 시 폴백 값 (FR-059) | `1380.0` |
 | `API_RATE_LIMIT_PER_MIN` | 리버스 프록시/게이트웨이 기준 분당 요청 제한(문서 계약값) | `120` |
+| `RAG_POLICY_VERSION` | 학습 반영 정책 버전 태그 (rag_validation_results 기록값) | `v8` |
+| `RAG_QUALITY_GATE_ENABLED` | FR-067 품질 게이트 적용 여부 | `true` |
+| `RAG_AMBIGUOUS_RATIO_THRESHOLD` | retrospective 단위 Yellow 기준 ambiguous 비율 | `0.5` |
+| `PORTFOLIO_RAG_ANALYSIS_QUOTA` | 포트폴리오 교차조회 분석 반성 쿼터 (FR-068) | `1` |
+| `PORTFOLIO_RAG_PORTFOLIO_QUOTA` | 포트폴리오 교차조회 포트폴리오 반성 쿼터 (FR-068) | `1` |
 
 ---
 
@@ -1181,6 +1308,12 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | 스케줄 완료 감지 | 이벤트 드리븐 (schedule_jobs 완료 카운트) | 폴링 | `_on_all_tickers_complete()` — 마지막 job 완료 시 active config 기준 전체 카운트 비교. 폴링 대비 즉시 반응 (FR-056, v6 설계 토론) |
 | 마이그레이션 (포트폴리오) | init_schema() + ensure_column | Alembic | 기존 패턴 일관성. 단일 사용자 시스템에서 Alembic 오버헤드 불필요 (v6 설계 토론) |
 | 포트폴리오 API 프리픽스 | `/portfolio/*` (9개) | `/api/v1/portfolio/*` | 기존 엔드포인트 프리픽스 없음. 일관성 우선. 리버스 프록시 필요 시 nginx에서 처리 (v6 설계 토론) |
+| FR-066 반영 모델 | proposed_delta -> applied_delta 2단계 | verdict 즉시 score_delta 반영 | 학습 오염 방지와 감사 추적을 동시에 확보. 정책/근거 분리 저장 가능 |
+| FR-067 품질 게이트 단위 | retrospective 단위 | 문서 단위 단독 게이트 | 사용자 운영 규칙과 일치. 한 회고 건의 일관성 품질을 통합 평가 |
+| FR-067 게이트 전략 | fail-safe(판정불가/파싱실패 시 보수화) | optimistic(반영 우선) | 초기 데이터 구간에서 오염 누적 방지가 우선 |
+| FR-068 포트폴리오 RAG 쿼터 | 분석 1 + 포폴 1 하드 제한 | 한쪽 miss 시 다른 소스로 총량 채움 | 변인 통제와 귀인 명확성 우선. source miss를 정보 부재로 그대로 반영 |
+| FR-064 레짐 적용 방식 | 소프트 가중치(re-rank) | 하드 필터 | 초기 데이터 sparse 구간에서 recall 저하 방지 |
+| FR-065 parse_error 저장 위치 | retrospective_analyses | 별도 이벤트 테이블 | 사용자 결정사항 준수 + 기존 회고 상태 모델과 결합 용이 |
 
 ### 리스크
 
@@ -1199,6 +1332,11 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | 포트폴리오 파이프라인 hang | daily pipeline 무한 대기 | 기존 lock acquire timeout(600s) 적용. 초과 시 status='failed' 처리 |
 | yfinance 매크로 fetch 실패 | 매크로 컨텍스트 일부/전체 누락 | 지표 단위 `N/A` 표기 + 전체 실패 시 빈 컨텍스트로 분석 지속 (FR-062) |
 | 섹터 판별/ETF 매핑 누락 | 섹터 컨텍스트 품질 저하 | "판별 불가/대응 ETF 없음" 폴백 메시지 + 시장 지수 기준 해석 (FR-063) |
+| evidence LLM 오판 | +1/0/-1 반영 왜곡 | C2는 이진 판정 + reasons 저장, 품질 게이트에서 fail-safe(불확실 시 상향 반영 금지) 적용 |
+| ambiguous 과다 구간 | 품질 게이트 Yellow/Red 빈발 | retrospective 단위 비율 임계값(`RAG_AMBIGUOUS_RATIO_THRESHOLD`) 조정 가능, 초기 0.5 적용 |
+| 레짐 태그 과도 필터링 | RAG recall 저하 | 하드필터 금지, 소프트 가중치만 적용. 태그 missing 시 unknown으로 강등 후 계속 진행 |
+| 포트폴리오 1+1 하드쿼터로 컨텍스트 부족 | 일시적 판단 근거 부족 | 정책적으로 허용(변인 통제 우선), source miss를 보충하지 않고 총량 감소를 명시 |
+| parse_error 누적 | 구조화 반성 활용 저하 | `structured_parse_error_reasons` 모니터링 + 프롬프트 보정. 본문 저장은 유지해 학습 파이프라인 중단 방지 |
 
 ### 가정사항
 
@@ -1285,6 +1423,11 @@ ADMIN_TOKEN: 환경변수 TRADINGAGENTS_ADMIN_TOKEN (미설정 시 서버 시작
 | portfolio_trades 독립성 | trade INSERT 시 | `positions` FK 미사용. 포트폴리오 모드는 전용 5테이블에서만 상태 관리 |
 | portfolio available_cash ≥ 0 | 매매 실행 시 application-level | 잔액 부족 시 해당 종목 skip |
 | exchange_rate > 0 | 환율 조회 시 application-level | 0 이하면 폴백값 사용 |
+| rag_validation_results (retrospective_id, reflection_id) UNIQUE | 검증 결과 INSERT 시 | ON CONFLICT 방지 — 중복 평가/중복 반영 차단 |
+| proposed_delta/applied_delta 분리 저장 | RAG Validator 저장 시 | 원본 판정과 최종 반영을 분리해 감사 추적 보장 |
+| quality_grade=red => applied_delta=0 | quality gate 적용 시 | 하드 규칙 위반 시 저장 거부 또는 0 강제 |
+| FR-068 1+1 하드쿼터 | 포트폴리오 RAG 조회 시 | 분석 1 + 포폴 1 초과 금지, source miss 보충 금지 |
+| structured_parse_error 기록 | 구조화 반성 파싱 시 | parse 실패 시 retrospective_analyses에 reason 저장, 파이프라인 지속 |
 
 ---
 
@@ -1426,12 +1569,12 @@ elif ticker.endswith(".KQ"):
 
 ---
 
-### 10.12 RAG Validator 상세 (FR-053, check에서 보완)
+### 10.12 RAG Validator 상세 (FR-053 + FR-066/067, v8)
 
 #### LLM 모델
-`quick_think_llm` 사용. K=1(초기)일 때 판정 대상 문서가 1개뿐이라 컨텍스트가 단순하므로 충분. `RAG_TOP_K`가 2~3으로 증가하면 deep_think_llm 전환 재검토 필요.
+`quick_think_llm`를 기본 사용한다. v8에서 C2 evidence binary 판정이 추가되므로 파싱 실패 시 fail-safe(보수화) 적용이 전제다. `RAG_TOP_K`가 증가하거나 판정 난이도가 상승하면 deep_think_llm 전환을 재검토한다.
 
-#### 평가 결과 테이블 — `rag_validation_results`
+#### 평가 결과 테이블 — `rag_validation_results` (v8 확장)
 
 ```sql
 CREATE TABLE IF NOT EXISTS rag_validation_results (
@@ -1439,22 +1582,56 @@ CREATE TABLE IF NOT EXISTS rag_validation_results (
     retrospective_id  BIGINT NOT NULL REFERENCES retrospective_analyses(id),
     reflection_id     BIGINT NOT NULL REFERENCES reflections(id),
     verdict           TEXT NOT NULL,          -- reflected | not_reflected | ambiguous
-    justification     TEXT,                   -- LLM 판정 근거
-    score_delta       INTEGER NOT NULL,       -- +1, -1, 0
+    justification     TEXT,
+    score_delta       INTEGER NOT NULL,
+    evidence_passed   BOOLEAN,
+    evidence_reasons  JSONB NOT NULL DEFAULT '[]'::jsonb,
+    quality_grade     TEXT,                   -- green | yellow | red
+    quality_reasons   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    proposed_delta    INTEGER,
+    applied_delta     INTEGER,
+    update_applied    BOOLEAN NOT NULL DEFAULT FALSE,
+    policy_version    TEXT    NOT NULL DEFAULT 'v8',
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(retrospective_id, reflection_id)   -- 멱등성 보장
+    UNIQUE(retrospective_id, reflection_id)
 );
 CREATE INDEX IF NOT EXISTS idx_rag_validation_retro ON rag_validation_results(retrospective_id);
+CREATE INDEX IF NOT EXISTS idx_rag_validation_retro_apply
+    ON rag_validation_results(retrospective_id, update_applied);
 ```
 
-#### verdict JSON 스키마 (LLM 구조화 출력)
+#### verdict/evidence JSON 스키마 (LLM 구조화 출력)
 ```json
 {
   "reflection_id": 123,
   "verdict": "reflected",
-  "justification": "PA가 반도체 모멘텀 경험을 진입 타이밍 근거로 인용함"
+  "justification": "PA가 반도체 모멘텀 경험을 진입 타이밍 근거로 인용함",
+  "evidence_passed": true,
+  "evidence_reasons": [
+    "회고 본문에 문서의 핵심 교훈이 직접 인용됨"
+  ]
 }
 ```
+
+#### v8 적용 순서 (고정)
+
+1. verdict 기반 `proposed_delta` 산출
+2. C2 evidence binary 판정(`evidence_passed`, `evidence_reasons`)
+3. retrospective 단위 quality gate 판정(`quality_grade`)
+4. 정책 적용 후 `applied_delta` 확정
+5. `applied_delta`만 usefulness에 반영
+
+품질 게이트 규칙:
+
+- Green: 정책 범위 내 반영
+- Yellow: +1 금지 (0/-1만 허용)
+- Red: `applied_delta=0`, `update_applied=false`
+
+ambiguous 비율 단위:
+
+- retrospective 단위
+- 분자: 해당 retrospective_id의 ambiguous 건수
+- 분모: 해당 retrospective_id의 전체 평가 건수
 
 #### API 스키마
 
@@ -1476,10 +1653,14 @@ response:
   - retrospective_id: int
     ticker: str
     position_sequence: int
+    quality_grade: str
+    ambiguous_ratio: float
     evaluated_count: int
     reflected_count: int
     not_reflected_count: int
     ambiguous_count: int
+    proposed_positive_count: int
+    applied_positive_count: int
     created_at: str
 ```
 
@@ -1497,7 +1678,13 @@ response:
     - reflection_id: int
       verdict: str
       justification: str
-      score_delta: int
+      evidence_passed: bool
+      evidence_reasons: [str]
+      proposed_delta: int
+      applied_delta: int
+      quality_grade: str
+      quality_reasons: [str]
+      update_applied: bool
       created_at: str
 ```
 
@@ -1522,6 +1709,10 @@ response:
 
 #### LLM 타임아웃
 기존 시스템 정책 그대로 — MAX_RETRIES=5, 429→30s 대기, 503→모델 폴백.
+
+#### FR-068 적용 메모
+
+포트폴리오 교차조회는 분석 1 + 포트폴리오 1 하드쿼터를 사용한다. source miss 시 다른 소스로 보충하지 않는다.
 
 ### 10.13 Graceful Shutdown (check 리뷰에서 문서화)
 
@@ -1764,6 +1955,92 @@ response:
 errors:
   - 404 NOT_FOUND
 ```
+
+### 10.22 v8 설계 토론 결론 (FR-064~068)
+
+#### 채택안
+
+- 기존 구조 유지(FastAPI -> Service -> Repository) + `rag_validator/service.py` 내부 경량 정책 계층
+- `proposed_delta`와 `applied_delta` 분리 저장
+- C2 evidence binary 판정(`evidence_passed`, `evidence_reasons`)
+- retrospective 단위 품질 게이트(Green/Yellow/Red)
+- 포트폴리오 교차조회 1+1 하드쿼터 + source miss 보충 금지
+
+#### 기각/보류안
+
+- Hexagonal/CQRS 전면 도입: v8 범위를 초과하는 대규모 리팩터링으로 보류
+- outbox 기반 이벤트 감사: 단일 사용자/단일 서비스 운영에서 비용 대비 효과 낮아 보류
+- 별도 정책 마이크로서비스: 운영 복잡도 증가로 보류
+
+#### 합의된 비타협 조건
+
+1. 정책 책임 분리: 저장소 계층에 게이트 정책 분산 금지
+2. fail-safe 기본값: 파싱 실패/근거 부족/품질 미달 시 보수 반영
+3. proposed/applied + 근거 추적 불변성 유지
+4. 1+1 하드쿼터 원자성 보장
+5. 결정된 정책값(JSONB, 필드명, parse_error 위치, ambiguous 단위) 일관 적용
+
+#### 가정
+
+- 초기 운영 데이터가 적어 게이트 튜닝 비용이 낮다.
+- 레짐 태그는 하드필터가 아니라 소프트 가중치로 시작한다.
+- 품질 게이트 임계값은 운영 데이터 축적 후 조정 가능하다.
+
+### 10.23 Check 리뷰 보강사항 (2026-03-03)
+
+아래 항목은 /check 점검에서 구현 전 혼선 가능성이 있는 항목을 명시적으로 고정한 것이다.
+
+#### Authentication 상세
+
+- 인증 방식: 단일 `ADMIN_TOKEN` Bearer (세션 저장소 없음)
+- 토큰 refresh: 미사용 (N/A)
+- 토큰 만료: 시간 기반 만료 없음, 운영 정책으로 로테이션
+- 강제 무효화: `TRADINGAGENTS_ADMIN_TOKEN` 교체 후 서버 재시작
+- MFA/패스워드 정책: 본 시스템 범위 밖 (외부 게이트웨이에서 처리)
+
+#### Database 상세
+
+- 삭제 전략:
+  - 포지션 데이터: `positions.status` 기반 상태 전이(`active`/`closed`)로 이력 보존
+  - 스케줄 설정 삭제: hard delete 허용 (`DELETE /schedules/{ticker}`)
+- 연결 전략: 고정 pool size 미사용, per-thread lazy connection 재사용
+- 마이그레이션: `init_schema()` + `ensure_column` 점진 확장 고정
+
+#### REST API 상세
+
+- 버저닝: 경로 unversioned 유지. breaking change는 필드 삭제 대신 필드 추가 원칙
+- 요청 검증: Pydantic + FastAPI Query 제약(범위/기본값) 사용
+- 에러 응답: 기본 `{"detail": ...}` 유지, 도메인 에러는 status code + detail 조합
+
+#### External API 상세
+
+- yfinance/외부 시세 호출 실패 시 전체 중단 금지, 폴백/재시도로 연속성 유지
+- 서킷 브레이커: 별도 미도입. 단일 사용자/저트래픽 조건에서 retry + fallback으로 운영
+- timeout은 라이브러리 특성상 호출별 하드 지정이 제한적이므로, 상위 워커 타임아웃/재시도로 보호
+
+#### Async/Queue 상세
+
+- DLQ 전용 큐는 두지 않음
+- 대체 전략: `schedule_jobs.status='failed'` + `error_type/error_detail` + 수동 재시도 API
+- 재시도 멱등성: 재큐잉 1회 제한, UNIQUE 제약으로 중복 반영 차단
+
+#### Real-time(WebSocket) 상세
+
+- 서버 측 heartbeat 미사용(에이전트 이벤트 자체를 keep-alive로 간주)
+- 클라이언트 재연결 권장: 지수 백오프(1s, 2s, 5s, 10s, 최대 30s)
+- 스케일링: 단일 인스턴스 기준. 다중 인스턴스 확장은 sticky session + pub/sub 도입 시점에 재설계
+
+#### LLM/AI 운영 상세
+
+- 비용 추적: 현재 미적용(구독형 기준). 유료 API 전환 시 토큰/비용 메트릭 추가
+- 사용량 제한: 사용자별 제한 없음(단일 사용자). API 레벨 제한은 게이트웨이 `API_RATE_LIMIT_PER_MIN`
+- 출력 검증: 점수 클램핑, JSON 파싱 실패 시 fail-safe, v8에서 proposed/applied 분리 및 품질 게이트 적용
+
+#### [TBD] (보류 항목)
+
+- 통합 모니터링/알림 파이프라인(Prometheus/Grafana, Alert routing)
+- K8s liveness/readiness probe 및 자원 제한(cpu/memory) 템플릿
+- WebSocket 다중 인스턴스 확장(pub/sub 백플레인) 설계
 
 ### ⚠️ TBD (Skipped)
 

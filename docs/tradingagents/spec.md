@@ -69,6 +69,11 @@
 | FR-061     | Portfolio  | 포트폴리오 주간 반성 — CronTrigger KST 일요일 12:00. 입력: 주간 매매+비서요약, 종목별 수익률, 자산 변동, holdings. portfolio_reflections + ChromaDB 이중 저장                                                     | High         | Implemented          |
 | FR-062     | Analysis   | 매크로 컨텍스트 주입 — 시장별(us/kr/crypto) 거시 지표(VIX/금리/환율/추세/변동성)를 yfinance로 수집해 12에이전트 + PA 프롬프트에 공통 주입                                                                          | High         | Implemented          |
 | FR-063     | Analysis   | 섹터 호황도 주입 — 섹터 자동 판별 + US/KR ETF 매핑, 상대강도(약 20거래일) + 50일선 추세 계산, 일일 캐시/폴백 포함                                                                                                 | High         | Implemented          |
+| FR-064     | Memory     | 레짐 태그 저장/검색 — 반성 저장 시 매크로 버킷 태그(vol/rate/trend/risk) 저장, RAG 조회 시 필터/가중치 반영                                                                                                         | High         | Designed             |
+| FR-065     | Learning   | 구조화 반성 병행 저장 — 반성문 텍스트와 함께 `anti_patterns`, `do_not_rules`, `safe_rules` JSONB 배열 저장                                                                                                            | High         | Designed             |
+| FR-066     | Learning   | 증거 기반 usefulness 반영 — 회고 이후 문서별 `proposed_delta` 산출 후 evidence 조건 충족 시에만 +1 허용, 미충족 시 0 강등                                                                                              | High         | Designed             |
+| FR-067     | Learning   | 학습 반영 품질 게이트 — 최종 반영 직전 Green/Yellow/Red 판정. Yellow는 +1 금지, Red는 `applied_delta=0` 스킵                                                                                                          | High         | Designed             |
+| FR-068     | Portfolio  | 포트폴리오 RAG 변인 통제 — 교차 참조를 분석 반성 1개 + 포트폴리오 반성 1개로 하드 고정(소스 미스 시 보충 금지)                                                                                                          | High         | Designed             |
 
 > **Status**: `Implemented` = 코드 존재, `Designed` = 설계 완료 (미구현), `Draft` = proposal.md에서 추출
 > **Req ID Rule**: `FR-{number}` format. New = max + 1. Never reuse deleted numbers.
@@ -144,6 +149,11 @@ Financial Analysis / AI-driven Investment Decision Support
 | Portfolio Weekly Reflection (FR-061)                | 주간 정기 반성 — KST 일요일 12:00, 배분 품질 평가, RAG 저장                                               | ✅ High    |
 | Macro Context Injection (FR-062)                    | 분석 시작 전 시장별 거시 지표 수집 후 12에이전트 + PA 프롬프트에 동일 주입                                | ✅ High    |
 | Sector Health Injection (FR-063)                    | 섹터 자동 판별 + ETF 상대강도/추세 계산으로 종목 분석에 시장/섹터 맥락 보강                               | ✅ High    |
+| Regime-tagged Memory Retrieval (FR-064)             | 반성 저장 시 레짐 버킷 태그 생성, RAG 조회 시 레짐 일치 우선 검색/가중치                                  | 🧩 Designed |
+| Structured Reflection Schema (FR-065)               | 반성문 자유 텍스트와 구조화 교훈 블록(JSONB 배열) 병행 저장                                                | 🧩 Designed |
+| Evidence-based Usefulness Update (FR-066)           | `proposed_delta`와 `applied_delta` 분리, 증거 충족 시에만 +1 반영                                          | 🧩 Designed |
+| Learning Quality Gate (FR-067)                      | 점수 반영 직전 품질 판정(Green/Yellow/Red)으로 학습 오염 차단                                              | 🧩 Designed |
+| Portfolio RAG 1+1 Quota (FR-068)                    | 포트폴리오 PA RAG를 소스별 1개씩 하드 제한, 미스 시 보충 금지                                              | 🧩 Designed |
 
 ### 3.2 Detailed Features
 
@@ -403,6 +413,17 @@ CronTrigger (KST Sun 12:00)
 - **장애 허용**: 지표 fetch 실패 시 `N/A`/부분 결과로 진행, 전체 실패 시 빈 문자열로 graceful degradation (분석 중단 없음)
 - **코인 정책**: crypto 티커는 섹터 블록 스킵 (매크로만 주입)
 
+#### 3.2.11 Learning Quality Reinforcement (FR-064~068) [Designed]
+
+본 묶음은 매매 결정 자체를 바꾸지 않고, 회고 이후 학습 반영 품질만 강화한다.
+
+- **FR-064 레짐 태그**: 반성 저장 시 `regime_vol_bucket`, `regime_rate_bucket`, `regime_trend_state`, `regime_risk_state`를 저장하고, RAG 조회에서 동일/유사 레짐 우선 규칙을 적용
+- **FR-065 구조화 반성**: `anti_patterns`, `do_not_rules`, `safe_rules`를 JSONB 배열로 저장. 반성문 텍스트는 유지
+- **FR-066 증거 기반 배점**: 회고 이후 문서별 `proposed_delta`를 계산하고, evidence 미충족 시 +1을 0으로 강등
+- **FR-067 품질 게이트**: 최종 반영 직전에 Green/Yellow/Red 판정. Yellow는 +1 금지, Red는 반영 스킵
+- **FR-068 포트폴리오 1+1 고정**: 포트폴리오 RAG 교차 참조를 분석 1 + 포트폴리오 1로 하드 제한. 한쪽 소스 미스 시 다른 소스로 보충 금지
+- **회고 대상 규칙(운영)**: `closed + completed`만 제외, 그 외는 회고 대상으로 유지
+
 ## 4. Data Contracts
 
 ### 4.1 Main Entities
@@ -415,7 +436,7 @@ CronTrigger (KST Sun 12:00)
 | `HybridMemory` (was `FinancialSituationMemory`) | name, chroma_client, chroma_collection, reflection_repo, db — **Postgres FTS + ChromaDB Hybrid RAG**                                                                                                                                                       | Code (FR-015) |
 | `DEFAULT_CONFIG` (Dict)                         | llm_provider, deep_think_llm, quick_think_llm, backend_url, data_vendors, tool_vendors, project_dir, data_cache_dir, max_debate_rounds, max_risk_discuss_rounds, max_recur_limit, database_path, chroma_path, default_initial_capital, schedules, scheduler_enabled, stock_download_days, stock_download_buffer_days, stock_cache_stale_days | Code          |
 
-### 4.2 Database Schema (FR-030, FR-039, FR-040, FR-041, FR-042, FR-053)
+### 4.2 Database Schema (FR-030, FR-039, FR-040, FR-041, FR-042, FR-053, FR-064~067 Designed)
 
 > Postgres DB — 9테이블 (FR-039에서 `schedules` 제거 → 7테이블, v4에서 `retrospective_analyses` 추가, FR-053에서 `rag_validation_results` 추가 → 9테이블). psycopg 드라이버 사용.
 
@@ -508,6 +529,14 @@ CronTrigger (KST Sun 12:00)
 | sector | TEXT | 섹터 (nullable) |
 | industry | TEXT | 산업 (nullable) |
 | usefulness_score | DOUBLE PRECISION NOT NULL DEFAULT 50 | **[NEW]** RAG Validator ±1 조정, < 40 시 배제 (FR-052/053) |
+| regime_vol_bucket | TEXT | **[DESIGNED: FR-064]** low/mid/high/unknown |
+| regime_rate_bucket | TEXT | **[DESIGNED: FR-064]** down/flat/up/unknown |
+| regime_trend_state | TEXT | **[DESIGNED: FR-064]** bull/neutral/bear/unknown |
+| regime_risk_state | TEXT | **[DESIGNED: FR-064]** risk_on/neutral/risk_off/unknown |
+| anti_patterns | JSONB | **[DESIGNED: FR-065]** 반성 금지 패턴 배열 |
+| do_not_rules | JSONB | **[DESIGNED: FR-065]** 금지 규칙 배열 |
+| safe_rules | JSONB | **[DESIGNED: FR-065]** 안전 규칙 배열 |
+| reflection_schema_version | INTEGER NOT NULL DEFAULT 1 | **[DESIGNED: FR-065]** 구조화 스키마 버전 |
 | created_at | TIMESTAMPTZ NOT NULL | 레코드 생성 일시 |
 
 #### schedule_job_events (에이전트 진행 이벤트 — FK 정리)
@@ -541,6 +570,8 @@ CronTrigger (KST Sun 12:00)
 | analysis_count | INTEGER NOT NULL DEFAULT 1 | 이 포지션에 대한 총 분석 횟수 |
 | analysis_accuracy | INTEGER | **[NEW]** 0~100, 12에이전트 분석의 시장 움직임 대비 정확도 (FR-055) |
 | rag_contribution | INTEGER | **[NEW]** 0~100 또는 NULL(RAG 미사용), RAG 경험의 PA 판단 기여도 (FR-055) |
+| structured_parse_error | BOOLEAN NOT NULL DEFAULT FALSE | **[DESIGNED: FR-065]** 구조화 반성 파싱 오류 여부 |
+| structured_parse_error_reasons | JSONB | **[DESIGNED: FR-065]** 파싱 오류 상세 사유 |
 | position_open_date | TIMESTAMPTZ | 포지션 오픈일 |
 | position_close_date | TIMESTAMPTZ | 포지션 청산일 |
 | error_message | TEXT | status='failed' 시 에러 내용 |
@@ -559,6 +590,13 @@ CronTrigger (KST Sun 12:00)
 | verdict | TEXT NOT NULL | 'reflected' / 'not_reflected' / 'ambiguous' |
 | justification | TEXT | LLM 판정 근거 |
 | score_delta | INTEGER NOT NULL | +1, -1, 0 |
+| evidence_passed | BOOLEAN | **[DESIGNED: FR-066]** 문서 반영 증거 충족 여부 |
+| evidence_reasons | JSONB | **[DESIGNED: FR-066]** 증거 판정 사유 목록 |
+| quality_grade | TEXT | **[DESIGNED: FR-067]** green / yellow / red |
+| quality_reasons | JSONB | **[DESIGNED: FR-067]** 품질 판정 사유 목록 |
+| proposed_delta | INTEGER | **[DESIGNED: FR-066/067]** 판정 모델 제안 점수 |
+| applied_delta | INTEGER | **[DESIGNED: FR-066/067]** 정책/게이트 적용 후 최종 점수 |
+| update_applied | BOOLEAN | **[DESIGNED: FR-067]** usefulness 반영 실행 여부 |
 | created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | 레코드 생성 일시 |
 
 > UNIQUE(retrospective_id, reflection_id) — 멱등성 보장
@@ -734,6 +772,7 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 | 8    | Retrospective Scoring (FR-055)              | 구현 완료 (회고분석 배점 + 대시보드 지표 반영) |
 | 9    | Portfolio Mode (FR-056~061)                 | 구현 완료 (일일 리밸런싱 + 주간 회고 + 교차 RAG) |
 | 10   | Macro + Sector Context (FR-062, FR-063)     | 시장/섹터 맥락 보강으로 판단 품질 개선 (구현 완료) |
+| 11   | Learning Quality Reinforcement (FR-064~068) | 회고 이후 학습 반영 품질 강화(레짐/구조화/증거/게이트/1+1 고정) |
 
 ---
 
@@ -741,6 +780,8 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 
 | Date       | Type            | Changes                                                                                                                                                                 |
 | ---------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-03-03 | arch_design     | FR-064~068 Status: Designed 반영. arch-be.md에 v8 설계 추가: DB 확장(reflections/retrospective_analyses/rag_validation_results), Phase 7 코드매핑(#137~#152), Learning Gate 시퀀스, proposed/applied/evidence/quality API 스키마, 포트폴리오 RAG 1+1 하드쿼터(보충 금지) 반영 |
+| 2026-03-03 | add_requirement | proposal_v8.md -> FR-064~068 추가 (5개). 레짐 태그 저장/검색, 구조화 반성 JSONB 배열, 증거 기반 +1 강등 정책, 학습 반영 품질 게이트(Green/Yellow/Red), 포트폴리오 RAG 1+1 하드 쿼터(보충 금지) 반영 |
 | 2026-03-01 | code_sync       | v7 코드 동기화: FR-062~063 신규 추가(Implemented). `dataflows/macro_collector.py` 기반 시장별 매크로/섹터 컨텍스트 수집, AgentState `macro_context` 주입, 스케줄러 선행 수집, 12에이전트+PA 프롬프트 반영, 일일 캐시/폴백 규칙 문서화 |
 | 2026-02-27 | add_requirement | proposal_v6 → FR-055~061 추가 (7개). FR-055: 회고분석 배점. FR-056~061: 포트폴리오 모드 (인프라, 비서, PA, 자금풀, RAG 교차참조, 주간 반성). DB 스키마 7→9테이블 (retrospective_analyses + rag_validation_results 추가, reports.rag_used/rag_docs, reflections.usefulness_score 보완). 포트폴리오 전용 테이블 5개 역할 기술 (DDL은 /arch). Non-goals 포트폴리오 시뮬레이션 명시 |
 | 2026-02-27 | arch_design     | FR-055~061 Status: Draft→Designed. arch-be.md에 포트폴리오 5테이블 DDL(14테이블 총), Phase 5 코드 매핑(#98~#124, 27항목), 일일/주간 시퀀스 다이어그램, 9개 API 엔드포인트, 환경변수 5개, 에러 케이스 6건, 설계 토론 결과(DA 채택, 5개 쟁점) 반영 |
@@ -772,6 +813,6 @@ ChromaDB (PersistentClient)     ← 벡터 검색 전용
 | Item           | Content                                      |
 | -------------- | -------------------------------------------- |
 | Generated      | 2026-02-11                                   |
-| Last synced    | 2026-03-01 (FR-062~063 Implemented, v7 매크로/섹터 컨텍스트 주입 반영) |
+| Last synced    | 2026-03-03 (FR-064~068 Designed 반영, arch-be v8 설계 동기화) |
 | Analysis scope | `packages/tradingagents/` + `apps/` (Python + Svelte) |
 | Skill version  | reverse 2.0.0                                |
