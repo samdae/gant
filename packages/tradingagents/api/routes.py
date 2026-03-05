@@ -1160,6 +1160,29 @@ async def get_reflections(
     return reflections
 
 
+@router.get("/reflections/detail/{reflection_id}", response_model=dict, tags=["Reflections"])
+async def get_reflection_detail(reflection_id: int):
+    """Get single reflection detail by id (PUBLIC)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    query = """
+        SELECT r.id, r.position_id, r.reflection, r.key_lessons,
+               r.outcome, r.return_pct, r.market, r.sector, r.industry,
+               r.created_at, p.ticker
+        FROM reflections r
+        LEFT JOIN positions p ON p.id = r.position_id
+        WHERE r.id = %s
+        LIMIT 1
+    """
+    row = scheduler.db.get_connection().execute(query, (reflection_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Reflection not found")
+
+    return dict(row)
+
+
 # FR-025: Hybrid RAG search endpoint
 @router.get("/search", response_model=List[dict], tags=["Search"])
 async def search_memories(

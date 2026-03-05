@@ -3,21 +3,14 @@
   import { fetchReflections } from "../lib/api/endpoints";
   import { formatPercent, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
-  import { marked } from "marked";
-  import DOMPurify from "dompurify";
   import AnalysisTabs from "../components/AnalysisTabs.svelte";
 
   type Reflection = {
     id: number;
     position_id: number;
     ticker?: string;
-    reflection: string;
-    key_lessons: string;
     outcome: string;
     return_pct: number;
-    market: string | null;
-    sector: string | null;
-    industry: string | null;
     created_at: string;
   };
 
@@ -29,10 +22,6 @@
   let loadingMore = false;
 
   const PAGE_SIZE = 15;
-
-  const goTrade = (ticker: string) => {
-    window.location.hash = `#/trade/${ticker.toLowerCase()}`;
-  };
 
   const loadData = async (append = false) => {
     if (append) {
@@ -62,7 +51,6 @@
   const setFilter = (f: "all" | "win" | "loss") => {
     filter = f;
     reflections = [];
-    cursor = null;
     hasMore = true;
     loadData();
   };
@@ -75,21 +63,14 @@
     if (!iso) return "-";
     try {
       return new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "short", day: "numeric" });
-    } catch { return "-"; }
+    } catch {
+      return "-";
+    }
   };
 
-  const truncate = (text: string, max: number) =>
-    text.length > max ? text.slice(0, max) + "..." : text;
-
-  const renderMd = (text?: string | null): string => {
-    if (!text) return "<em>데이터 없음</em>";
-    const raw = marked.parse(text, { async: false }) as string;
-    return DOMPurify.sanitize(raw);
-  };
-
-  let expandedId: number | null = null;
-  const toggle = (id: number) => {
-    expandedId = expandedId === id ? null : id;
+  const displayName = (ticker?: string) => {
+    if (!ticker) return "";
+    return $tickerNames[ticker] || "";
   };
 </script>
 
@@ -113,53 +94,29 @@
     {:else if reflections.length === 0}
       <div class="card" style="padding:16px">회고 기록이 없습니다.</div>
     {:else}
-      <div class="reflection-list" style="display:flex;flex-direction:column;gap:12px">
+      <div class="reflection-list list-grid">
         {#each reflections as ref}
-          <button class="card reflection-card" type="button" on:click={() => toggle(ref.id)} style="text-align:left;cursor:pointer;width:100%;border:none">
-            <div class="card-body" style="padding:14px">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                  {#if ref.ticker}
-                    <span class="ticker-badge" on:click|stopPropagation={() => goTrade(ref.ticker || "")}>{ref.ticker}</span>
-                    {#if $tickerNames[ref.ticker]}
-                      <span class="ticker-tag">{$tickerNames[ref.ticker]}</span>
-                    {/if}
-                  {/if}
-                  <span class={`badge ${ref.outcome === "win" ? "badge-gain" : "badge-loss"}`}>
-                    {ref.outcome === "win" ? "승" : "패"}
-                  </span>
-                  <span class={ref.return_pct >= 0 ? "text-gain" : "text-loss"} style="font-size:0.8125rem;font-weight:600">
-                    {formatPercent(ref.return_pct)}
-                  </span>
-                </div>
-                <span style="font-size:0.75rem;color:var(--text-dim)">{formatDate(ref.created_at)}</span>
-              </div>
-
-              <div style="font-size:0.8125rem;color:var(--text-secondary);margin-bottom:4px">
-                {truncate(ref.key_lessons, 120)}
-              </div>
-
-              {#if ref.market || ref.sector}
-                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
-                  {#if ref.market}
-                    <span class="badge badge-muted" style="font-size:0.6875rem">{ref.market}</span>
-                  {/if}
-                  {#if ref.sector}
-                    <span class="badge badge-muted" style="font-size:0.6875rem">{ref.sector}</span>
-                  {/if}
-                  {#if ref.industry}
-                    <span class="badge badge-muted" style="font-size:0.6875rem">{ref.industry}</span>
-                  {/if}
-                </div>
-              {/if}
-
-              {#if expandedId === ref.id}
-                <div class="md-content" style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);font-size:0.8125rem;line-height:1.6;color:var(--text-secondary)">
-                  {@html renderMd(ref.reflection)}
-                </div>
+          <a class="reflection-card list-row" href={`#/reflections/${ref.id}`}>
+            <div class="reflection-left">
+              {#if ref.ticker}
+                <span class="ticker-badge">{ref.ticker}</span>
+                {#if displayName(ref.ticker)}
+                  <span class="ticker-tag">{displayName(ref.ticker)}</span>
+                {/if}
               {/if}
             </div>
-          </button>
+
+            <div class="reflection-right">
+              <span class={`badge ${ref.outcome === "win" ? "badge-gain" : "badge-loss"}`}>
+                {ref.outcome === "win" ? "승" : "패"}
+              </span>
+              <span class={ref.return_pct >= 0 ? "text-gain" : "text-loss"}>
+                {formatPercent(ref.return_pct)}
+              </span>
+              <span class="reflection-date">{formatDate(ref.created_at)}</span>
+              <span class="reflection-chevron">›</span>
+            </div>
+          </a>
         {/each}
       </div>
 
@@ -173,3 +130,49 @@
     {/if}
   </div>
 </section>
+
+<style>
+  .reflection-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .reflection-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .reflection-left {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .reflection-right {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8125rem;
+  }
+
+  .reflection-date {
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .reflection-chevron {
+    color: var(--text-dim);
+    font-size: 1rem;
+    line-height: 1;
+  }
+</style>

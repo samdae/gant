@@ -57,6 +57,9 @@ export const fetchReflections = (limit = 15, outcome?: string, cursor?: number) 
   return getJson(`/reflections?${params.toString()}`);
 };
 
+export const fetchReflectionDetail = (reflectionId: number) =>
+  getJson(`/reflections/detail/${reflectionId}`);
+
 export const fetchRetroTickers = () => getJson("/retrospective/tickers");
 
 export const fetchRetroSummary = () => getJson("/retrospective/summary");

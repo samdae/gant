@@ -12,6 +12,7 @@
   import ReportDetail from "./routes/ReportDetail.svelte";
   import Live from "./routes/Live.svelte";
   import Reflections from "./routes/Reflections.svelte";
+  import ReflectionDetail from "./routes/ReflectionDetail.svelte";
   import Retrospective from "./routes/Retrospective.svelte";
   import RetroDetail from "./routes/RetroDetail.svelte";
   import About from "./routes/About.svelte";
@@ -29,6 +30,7 @@
     "/reports/:ticker": ReportDetail,
     "/live": Live,
     "/reflections": Reflections,
+    "/reflections/:id": ReflectionDetail,
     "/retrospective": Retrospective,
     "/retrospective/:ticker": RetroDetail,
     "/about": About,
