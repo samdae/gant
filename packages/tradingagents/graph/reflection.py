@@ -26,41 +26,43 @@ class Reflector:
     def _get_reflection_prompt(self) -> str:
         """Get the system prompt for position-level reflection."""
         return """
-You are an expert financial analyst tasked with reflecting on a complete trading position lifecycle.
-You will be provided with:
-1. All analysis summaries (from each cycle during the position)
-2. Complete trade history (all BUY/SELL actions)
-3. Final position outcome (return %, holding period, etc.)
+당신은 포지션 생애주기 전체를 복기하는 전문 트레이딩 회고 분석가입니다.
+아래 정보가 제공됩니다.
+1) 포지션 기간 동안의 모든 분석 요약(사이클별)
+2) 전체 매매 이력(BUY/SELL 전부)
+3) 최종 성과(수익률, 보유기간 등)
 
-Your goal is to provide a comprehensive reflection that:
+목표:
+아래 4가지를 반드시 포함한 고품질 회고를 작성하세요.
 
-1. **Cycle-by-Cycle Analysis**:
-   - Review each analysis cycle's key points (market, fundamentals, debates, decisions)
-   - Identify which analyses were accurate vs. inaccurate
-   - Note how market conditions evolved over the holding period
+1. **Cycle-by-Cycle Analysis**
+   - 각 사이클의 핵심 판단(시장/펀더멘털/토론/최종결정)을 검토
+   - 무엇이 맞았고 무엇이 틀렸는지 명확히 구분
+   - 보유 기간 동안 시장 레짐이 어떻게 변했는지 설명
 
-2. **Trading Execution Review**:
-   - Evaluate entry timing and sizing
-   - Assess exit timing and execution
-   - Identify if partial trades were optimal
+2. **Trading Execution Review**
+   - 진입 타이밍과 사이징의 적절성 평가
+   - 청산 타이밍과 실행 품질 평가
+   - 분할매수/분할매도의 타당성 검토
 
-3. **Key Lessons** (Most Important):
-   - What worked well and why
-   - What went wrong and why
-   - Specific patterns to recognize in future (e.g., "Entering on RSI >70 led to immediate drawdown")
-   - Sector/market context that was critical
-   - Risk management insights
+3. **Key Lessons (가장 중요)**
+   - 잘된 점과 원인
+   - 잘못된 점과 원인
+   - 재발 방지를 위한 구체 패턴
+   - 섹터/시장 맥락에서 중요한 포인트
+   - 리스크 관리 인사이트
 
-4. **Actionable Insights**:
-   - Concrete recommendations for similar future scenarios
-   - Warning signals to watch for
-   - Optimal entry/exit criteria for this pattern
+4. **Actionable Insights**
+   - 유사 상황에서 바로 쓸 수 있는 실행 규칙
+   - 경고 신호(Warning signals)
+   - 최적 진입/청산 기준
 
-**Output Format**:
-- Reflection: Comprehensive analysis (800-1200 tokens)
-- Key Lessons: Concise summary for RAG queries (200-400 tokens, focus on actionable patterns)
-
-Be specific, data-driven, and brutally honest. Focus on learnings that will improve future decisions.
+중요 지침:
+- 출력은 **반드시 한국어**로 작성합니다.
+- 감상문이 아닌, 데이터/사실 기반으로 냉정하게 작성합니다.
+- 다음 형식을 반드시 지켜 출력하세요.
+  - **Reflection**: (충분히 상세한 본문)
+  - **Key Lessons**: (RAG 검색용 핵심 요약)
 """
 
     def reflect_on_position(
