@@ -274,7 +274,7 @@
       <div class="card metric-strip" style="margin-bottom:16px">
         <div class="metric-segment">
           <div class="metric-label">분석 정확도</div>
-          <div class="metric-value">
+          <div class="metric-value metric-value-compact">
             {metrics.analysis_accuracy_avg != null ? `${Math.round(metrics.analysis_accuracy_avg)}점` : "-"}
             {metrics.analysis_accuracy_count != null && metrics.analysis_accuracy_count > 0
               ? ` (${metrics.analysis_accuracy_count}건 평균)`
@@ -283,7 +283,7 @@
         </div>
         <div class="metric-segment">
           <div class="metric-label">RAG 기여도</div>
-          <div class="metric-value">
+          <div class="metric-value metric-value-compact">
             {metrics.rag_contribution_avg != null ? `${Math.round(metrics.rag_contribution_avg)}점` : "-"}
             {metrics.rag_contribution_count != null && metrics.rag_contribution_count > 0
               ? ` (RAG 사용 ${metrics.rag_contribution_count}건 평균)`
@@ -390,3 +390,12 @@
     </div>
   </div>
 </section>
+
+<style>
+  .metric-value-compact {
+    font-size: 1.04rem;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    word-break: keep-all;
+  }
+</style>

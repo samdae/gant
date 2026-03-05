@@ -109,50 +109,52 @@
     </div>
     <AnalysisTabs />
 
-    <div class="retro-detail-header">
-      <span class="ticker-badge">{ticker}</span>
-      {#if displayName()}
-        <span class="ticker-tag">{displayName()}</span>
+    <div class="retro-detail-shell">
+      <div class="retro-detail-header">
+        <span class="ticker-badge">{ticker}</span>
+        {#if displayName()}
+          <span class="ticker-tag">{displayName()}</span>
+        {/if}
+      </div>
+
+      {#if loading}
+        <div class="card" style="padding:16px">불러오는 중...</div>
+      {:else if error}
+        <div class="card error-text" style="padding:16px">{error}</div>
+      {:else if items.length === 0}
+        <div class="card" style="padding:16px;color:var(--text-dim)">완료된 회고분석이 없습니다.</div>
+      {:else}
+        <label class="form-label">
+          회차
+          <SelectMenu
+            value={selectedId}
+            options={selectOptions}
+            placeholder="회차 선택"
+            on:change={handleSelectChange}
+          />
+        </label>
+
+        {#if selectedItem}
+          <div class="retro-meta" style="margin:12px 0;display:flex;gap:12px;flex-wrap:wrap;font-size:0.8125rem;color:var(--text-dim)">
+            <span>{formatDate(selectedItem.position_open_date)} ~ {formatDate(selectedItem.position_close_date)}</span>
+            {#if selectedItem.pos_status === "closed" && selectedItem.return_pct != null}
+              <span class={selectedItem.return_pct >= 0 ? "text-gain" : "text-loss"}>
+                {selectedItem.return_pct >= 0 ? "승" : "패"} ({selectedItem.return_pct >= 0 ? "+" : ""}{selectedItem.return_pct.toFixed(2)}%)
+              </span>
+            {:else}
+              <span>진행중</span>
+            {/if}
+            <span>분석 {selectedItem.analysis_count}회</span>
+          </div>
+
+          <div class="card retro-result-card">
+            <div class="md-content retro-result-body">
+              {@html renderMd(selectedItem.analysis_content)}
+            </div>
+          </div>
+        {/if}
       {/if}
     </div>
-
-    {#if loading}
-      <div class="card" style="padding:16px">불러오는 중...</div>
-    {:else if error}
-      <div class="card error-text" style="padding:16px">{error}</div>
-    {:else if items.length === 0}
-      <div class="card" style="padding:16px;color:var(--text-dim)">완료된 회고분석이 없습니다.</div>
-    {:else}
-      <label class="form-label">
-        회차
-        <SelectMenu
-          value={selectedId}
-          options={selectOptions}
-          placeholder="회차 선택"
-          on:change={handleSelectChange}
-        />
-      </label>
-
-      {#if selectedItem}
-        <div class="retro-meta" style="margin:12px 0;display:flex;gap:12px;flex-wrap:wrap;font-size:0.8125rem;color:var(--text-dim)">
-          <span>{formatDate(selectedItem.position_open_date)} ~ {formatDate(selectedItem.position_close_date)}</span>
-          {#if selectedItem.pos_status === "closed" && selectedItem.return_pct != null}
-            <span class={selectedItem.return_pct >= 0 ? "text-gain" : "text-loss"}>
-              {selectedItem.return_pct >= 0 ? "승" : "패"} ({selectedItem.return_pct >= 0 ? "+" : ""}{selectedItem.return_pct.toFixed(2)}%)
-            </span>
-          {:else}
-            <span>진행중</span>
-          {/if}
-          <span>분석 {selectedItem.analysis_count}회</span>
-        </div>
-
-        <div class="card retro-result-card">
-          <div class="md-content retro-result-body">
-            {@html renderMd(selectedItem.analysis_content)}
-          </div>
-        </div>
-      {/if}
-    {/if}
   </div>
 </section>
 
@@ -166,6 +168,12 @@
   .back-link:hover {
     color: var(--text-primary);
   }
+  .retro-detail-shell {
+    max-width: 444px;
+    margin: 0 auto;
+    padding: 0 2px;
+  }
+
   .retro-detail-header {
     display: flex;
     align-items: center;
@@ -176,9 +184,9 @@
     margin-top: 8px;
   }
   .retro-result-body {
-    padding: 16px;
+    padding: 18px;
     font-size: 0.8125rem;
-    line-height: 1.8;
+    line-height: 1.85;
     color: var(--text-secondary);
   }
 </style>
