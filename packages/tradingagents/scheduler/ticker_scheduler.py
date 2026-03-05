@@ -1023,16 +1023,14 @@ class TickerScheduler:
 
                 latest_index = history.index[-1]
                 try:
-                    data_date = latest_index.tz_convert(None).date()
+                    # Keep market-local calendar date (do NOT convert timezone).
+                    # tz_convert(None) can shift KRX timestamps (+09:00) to previous day.
+                    data_date = latest_index.tz_localize(None).date()
                 except Exception:
                     try:
-                        data_date = latest_index.tz_localize(None).date()
+                        data_date = latest_index.date()
                     except Exception:
-                        data_date = (
-                            latest_index.date()
-                            if hasattr(latest_index, "date")
-                            else datetime.now().date()
-                        )
+                        data_date = datetime.now().date()
 
                 return price, data_date.isoformat()
 
