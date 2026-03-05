@@ -514,6 +514,14 @@ async def get_positions_closed():
     results: List[ClosedPositionResponse] = []
     for row in rows:
         rp = float(row.get("return_pct") or 0)
+
+        opened_at = row.get("opened_at")
+        closed_at = row.get("closed_at")
+        if opened_at is not None and hasattr(opened_at, "isoformat"):
+            opened_at = opened_at.isoformat()
+        if closed_at is not None and hasattr(closed_at, "isoformat"):
+            closed_at = closed_at.isoformat()
+
         results.append(ClosedPositionResponse(
             position_id=row["id"],
             ticker=row["ticker"],
@@ -522,8 +530,8 @@ async def get_positions_closed():
             return_pct=rp,
             currency=row.get("currency") or "USD",
             outcome="win" if rp >= 0 else "loss",
-            opened_at=row.get("opened_at"),
-            closed_at=row.get("closed_at"),
+            opened_at=opened_at,
+            closed_at=closed_at,
         ))
 
     return results
