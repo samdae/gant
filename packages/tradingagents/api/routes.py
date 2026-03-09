@@ -561,11 +561,15 @@ async def get_metrics():
     ).fetchone()["count"]
 
     # Realized PnL from closed positions
+    # NOTE:
+    # - Exclude anomalous "closed" rows without any SELL execution.
+    #   (can happen from legacy/manual state corrections and distorts metrics heavily)
     realized_rows = conn.execute(
         """
         SELECT p.id, p.avg_cost, p.shares AS orig_shares, p.return_pct, p.currency,
                COALESCE(SUM(CASE WHEN t.action='SELL' THEN t.shares * t.price ELSE 0 END), 0) AS sell_total,
-               COALESCE(SUM(CASE WHEN t.action='BUY' THEN t.shares * t.price ELSE 0 END), 0) AS buy_total
+               COALESCE(SUM(CASE WHEN t.action='BUY' THEN t.shares * t.price ELSE 0 END), 0) AS buy_total,
+               COALESCE(SUM(CASE WHEN t.action='SELL' THEN t.shares ELSE 0 END), 0) AS sell_shares
         FROM positions p
         LEFT JOIN trades t ON t.position_id = p.id
         WHERE p.status = 'closed'
@@ -578,6 +582,12 @@ async def get_metrics():
     for r in realized_rows:
         sell_total = float(r["sell_total"] or 0)
         buy_total = float(r["buy_total"] or 0)
+        sell_shares = float(r["sell_shares"] or 0)
+
+        # Ignore invalid closed positions without realized sell execution.
+        if sell_shares <= 0 or sell_total <= 0:
+            continue
+
         pnl = sell_total - buy_total
         total_realized_pnl += pnl
         total_realized_cost += buy_total
