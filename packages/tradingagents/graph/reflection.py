@@ -3,6 +3,7 @@
 from typing import Dict, Any, Optional
 from langchain_core.language_models import BaseChatModel
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -137,32 +138,43 @@ class Reflector:
             ("human", context)
         ]
 
-        try:
-            response = self.deep_thinking_llm.invoke(messages)
-            reflection_text = response.content
+        max_attempts = 3
+        last_error: Optional[Exception] = None
 
-            # Parse reflection and key_lessons from response
-            reflection, key_lessons = self._parse_reflection_output(reflection_text)
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self.deep_thinking_llm.invoke(messages)
+                reflection_text = response.content
 
-            logger.info(f"Generated reflection for position {position_id} ({ticker}): {outcome}")
+                # Parse reflection and key_lessons from response
+                reflection, key_lessons = self._parse_reflection_output(reflection_text)
 
-            return {
-                "reflection": reflection,
-                "key_lessons": key_lessons,
-                "outcome": outcome,
-                "return_pct": return_pct
-            }
+                if not reflection or not key_lessons:
+                    raise ValueError("Reflection output is empty")
 
-        except Exception as e:
-            logger.error(f"Reflection failed for position {position_id}: {e}")
-            
-            # Fallback: Generate basic reflection from data
-            return {
-                "reflection": f"Position {ticker} closed with {return_pct:.2f}% return. {len(reports)} analysis cycles, {len(trades)} trades.",
-                "key_lessons": f"Position outcome: {outcome} ({return_pct:.2f}%)",
-                "outcome": outcome,
-                "return_pct": return_pct
-            }
+                logger.info(
+                    f"Generated reflection for position {position_id} ({ticker}) on attempt {attempt}: {outcome}"
+                )
+
+                return {
+                    "reflection": reflection,
+                    "key_lessons": key_lessons,
+                    "outcome": outcome,
+                    "return_pct": return_pct
+                }
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    f"Reflection attempt {attempt}/{max_attempts} failed for position {position_id} ({ticker}): {e}"
+                )
+                if attempt < max_attempts:
+                    time.sleep(attempt)  # 1s, 2s backoff
+
+        # Do not save fake fallback text; bubble up for scheduler-level retry/handling.
+        raise RuntimeError(
+            f"Reflection generation failed after {max_attempts} attempts for position {position_id} ({ticker})"
+        ) from last_error
 
     def _build_reflection_context(
         self,
