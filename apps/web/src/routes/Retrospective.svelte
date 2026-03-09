@@ -166,7 +166,24 @@
         ? { mode: "ticker", position_ids: [...modalSelectedPositions] }
         : { mode: "all" };
       const res = (await requestRetroAnalysis(payload)) as { enqueued: number[]; message: string };
-      analyzeMessage = res.message;
+
+      const enqueuedCount = Array.isArray(res?.enqueued) ? res.enqueued.length : 0;
+      if (mode === "selected") {
+        const name = modalTickers.find((t) => t.ticker === modalActiveTicker)?.display_name
+          || $tickerNames[modalActiveTicker]
+          || modalActiveTicker
+          || "선택 티커";
+        if (enqueuedCount <= 1) {
+          analyzeMessage = `${name} 회고 분석 요청 완료`;
+        } else {
+          analyzeMessage = `${name} 외 ${enqueuedCount - 1}개 회고 분석 요청 완료`;
+        }
+      } else {
+        analyzeMessage = enqueuedCount > 0
+          ? `전체 티커 회고 분석 요청 완료 (${enqueuedCount}개)`
+          : "회고 분석 요청 완료";
+      }
+
       if (modalActiveTicker) {
         await modalToggleTicker(modalActiveTicker);
       }
