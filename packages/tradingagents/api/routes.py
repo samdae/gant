@@ -1170,6 +1170,140 @@ async def get_reflections(
     return reflections
 
 
+@router.get("/reflections/retry-candidates", response_model=List[dict], tags=["Reflections"])
+async def get_reflection_retry_candidates(
+    limit: int = Query(30, ge=1, le=200),
+):
+    """List closed positions that need reflection retry (missing/legacy fallback)."""
+    scheduler = app_module.scheduler
+    if not scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    rows = scheduler.db.get_connection().execute(
+        """
+        SELECT p.id AS position_id,
+               p.ticker,
+               p.return_pct,
+               p.closed_at,
+               r.id AS reflection_id,
+               r.reflection,
+               r.key_lessons,
+               r.created_at AS reflection_created_at
+        FROM positions p
+        LEFT JOIN LATERAL (
+            SELECT id, reflection, key_lessons, created_at
+            FROM reflections
+            WHERE position_id = p.id
+            ORDER BY id DESC
+            LIMIT 1
+        ) r ON TRUE
+        WHERE p.status = 'closed'
+        ORDER BY p.closed_at DESC NULLS LAST, p.id DESC
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+
+    results: List[dict] = []
+    for row in rows:
+        reflection = row.get("reflection") or ""
+        key_lessons = row.get("key_lessons") or ""
+
+        is_missing = row.get("reflection_id") is None
+        is_legacy_fallback = (
+            reflection.startswith("Position ")
+            and " closed with " in reflection
+            and key_lessons.startswith("Position outcome:")
+        )
+
+        if is_missing:
+            status = "missing"
+        elif is_legacy_fallback:
+            status = "failed"
+        else:
+            status = "completed"
+
+        results.append(
+            {
+                "position_id": row["position_id"],
+                "ticker": row["ticker"],
+                "return_pct": row.get("return_pct"),
+                "closed_at": row.get("closed_at"),
+                "reflection_id": row.get("reflection_id"),
+                "status": status,
+                "retryable": status in ["missing", "failed"],
+            }
+        )
+
+    return results
+
+
+@router.post("/reflections/retry/{position_id}", response_model=dict, tags=["Reflections"])
+async def retry_reflection(position_id: int):
+    """Manually retry reflection generation for a closed position."""
+    scheduler = app_module.scheduler
+    graph = app_module.graph
+    if not scheduler or not graph:
+        raise HTTPException(status_code=503, detail="System not initialized")
+
+    from tradingagents.storage import PositionRepository, ReflectionRepository
+
+    position = PositionRepository(scheduler.db).get_by_id(position_id)
+    if not position:
+        raise HTTPException(status_code=404, detail="Position not found")
+    if position.get("status") != "closed":
+        raise HTTPException(status_code=400, detail="Position is not closed")
+
+    try:
+        refl = graph.reflector.reflect_on_position(
+            position_id=position_id,
+            db=scheduler.db,
+            ticker=position.get("ticker"),
+        )
+    except Exception as e:
+        logger.error(f"Manual reflection retry failed for position {position_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Reflection generation failed: {e}")
+
+    repo = ReflectionRepository(scheduler.db)
+    existing = repo.get_by_position(position_id)
+    if existing:
+        scheduler.db.get_connection().execute(
+            """
+            UPDATE reflections
+            SET reflection=%s,
+                key_lessons=%s,
+                outcome=%s,
+                return_pct=%s,
+                created_at=%s
+            WHERE id=%s
+            """,
+            (
+                refl["reflection"],
+                refl["key_lessons"],
+                refl["outcome"],
+                refl["return_pct"],
+                datetime.now().isoformat(),
+                existing["id"],
+            ),
+        )
+        scheduler.db.get_connection().commit()
+        reflection_id = int(existing["id"])
+    else:
+        reflection_id = repo.create(
+            position_id=position_id,
+            reflection=refl["reflection"],
+            key_lessons=refl["key_lessons"],
+            outcome=refl["outcome"],
+            return_pct=float(refl["return_pct"]),
+        )
+
+    return {
+        "ok": True,
+        "position_id": position_id,
+        "reflection_id": reflection_id,
+    }
+
+
 @router.get("/reflections/detail/{reflection_id}", response_model=dict, tags=["Reflections"])
 async def get_reflection_detail(reflection_id: int):
     """Get single reflection detail by id (PUBLIC)."""

@@ -60,6 +60,12 @@ export const fetchReflections = (limit = 15, outcome?: string, cursor?: number) 
 export const fetchReflectionDetail = (reflectionId: number) =>
   getJson(`/reflections/detail/${reflectionId}`);
 
+export const fetchReflectionRetryCandidates = (limit = 30) =>
+  getJson(`/reflections/retry-candidates?limit=${limit}`);
+
+export const requestReflectionRetry = (positionId: number) =>
+  postJson(`/reflections/retry/${positionId}`);
+
 export const fetchRetroTickers = () => getJson("/retrospective/tickers");
 
 export const fetchRetroSummary = () => getJson("/retrospective/summary");

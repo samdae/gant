@@ -1,6 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fetchReflections } from "../lib/api/endpoints";
+  import {
+    fetchReflections,
+    fetchReflectionRetryCandidates,
+    requestReflectionRetry,
+  } from "../lib/api/endpoints";
   import { formatPercent, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
   import AnalysisTabs from "../components/AnalysisTabs.svelte";
@@ -14,14 +18,40 @@
     created_at: string;
   };
 
+  type RetryCandidate = {
+    position_id: number;
+    ticker: string;
+    return_pct: number | null;
+    closed_at: string | null;
+    reflection_id: number | null;
+    status: "missing" | "failed" | "completed";
+    retryable: boolean;
+  };
+
   let loading = true;
   let error = "";
   let reflections: Reflection[] = [];
+  let candidates: RetryCandidate[] = [];
+  let candidateLoading = false;
+  let retrying: Record<number, boolean> = {};
+
   let filter: "all" | "win" | "loss" = "all";
   let hasMore = true;
   let loadingMore = false;
 
   const PAGE_SIZE = 15;
+
+  const loadCandidates = async () => {
+    candidateLoading = true;
+    try {
+      const rows = (await fetchReflectionRetryCandidates(40)) as RetryCandidate[];
+      candidates = (rows || []).filter((r) => r.retryable);
+    } catch (err) {
+      console.error("failed to load retry candidates", err);
+    } finally {
+      candidateLoading = false;
+    }
+  };
 
   const loadData = async (append = false) => {
     if (append) {
@@ -55,8 +85,25 @@
     loadData();
   };
 
+  const retryOne = async (row: RetryCandidate) => {
+    retrying[row.position_id] = true;
+    retrying = { ...retrying };
+    error = "";
+
+    try {
+      await requestReflectionRetry(row.position_id);
+      await Promise.all([loadCandidates(), loadData(false)]);
+    } catch (err) {
+      error = formatErrorMessage(err, `${displayName(row.ticker) || row.ticker} 반성 재실행 실패`);
+    } finally {
+      retrying[row.position_id] = false;
+      retrying = { ...retrying };
+    }
+  };
+
   onMount(() => {
     loadData();
+    loadCandidates();
   });
 
   const formatDate = (iso: string | null) => {
@@ -80,6 +127,38 @@
       <h2>AI분석</h2>
     </div>
     <AnalysisTabs />
+
+    {#if candidates.length > 0}
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-header">
+          <h3>반성 재실행 필요</h3>
+        </div>
+        <div class="retry-list">
+          {#each candidates as c}
+            <div class="retry-row">
+              <div class="retry-left">
+                <span class="ticker-badge">{c.ticker}</span>
+                {#if displayName(c.ticker)}
+                  <span class="ticker-tag">{displayName(c.ticker)}</span>
+                {/if}
+                <span class="badge badge-warn">{c.status === "missing" ? "미생성" : "실패"}</span>
+              </div>
+              <div class="retry-right">
+                <span class={c.return_pct != null && c.return_pct >= 0 ? "text-gain" : "text-loss"}>
+                  {c.return_pct != null ? formatPercent(c.return_pct) : "-"}
+                </span>
+                <span class="reflection-date">{formatDate(c.closed_at)}</span>
+                <button class="btn btn-primary retry-btn" on:click={() => retryOne(c)} disabled={!!retrying[c.position_id]}>
+                  {retrying[c.position_id] ? "재실행 중..." : "재실행"}
+                </button>
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {:else if candidateLoading}
+      <div class="card" style="padding:12px;margin-bottom:14px;color:var(--text-dim)">반성 상태 확인 중...</div>
+    {/if}
 
     <div class="tab-bar" style="margin-bottom:16px">
       <button class={`tab-btn ${filter === "all" ? "active" : ""}`} on:click={() => setFilter("all")}>전체</button>
@@ -132,6 +211,40 @@
 </section>
 
 <style>
+  .retry-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .retry-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .retry-left {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .retry-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .retry-btn {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
   .reflection-list {
     display: flex;
     flex-direction: column;
