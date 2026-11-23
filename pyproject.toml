@@ -43,3 +43,6 @@ package-dir = {"" = "packages"}
 [tool.setuptools.packages.find]
 where = ["packages"]
 include = ["tradingagents*"]
+
+[tool.setuptools.package-data]
+"tradingagents.forecast_lab" = ["web/*.html", "web/*.js", "web/*.css"]

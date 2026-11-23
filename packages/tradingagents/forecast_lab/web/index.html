@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>시장 예측 연구실</title>
+    <link rel="stylesheet" href="/lab.css" />
+    <script defer src="/lab.js"></script>
+  </head>
+  <body>
+    <header>
+      <span>FORECAST LAB</span><span id="runtime" role="status">연결 중</span>
+    </header>
+    <main>
+      <h1>시장 예측 연구실</h1>
+      <p class="intro">
+        같은 시장 근거에서 발행한 상승 확률을 다섯 거래일 뒤의 가격으로
+        평가합니다.
+      </p>
+      <form id="filters" class="filters">
+        <label
+          >시장<select id="market">
+            <option value="">전체 시장</option>
+            <option value="kr">한국</option>
+            <option value="us">미국</option>
+          </select></label
+        ><label>관측 기준일 시작<input id="from-date" type="date" /></label
+        ><label>관측 기준일 종료<input id="to-date" type="date" /></label
+        ><button type="submit">기간 적용</button>
+      </form>
+      <p id="error" role="alert"></p>
+      <section aria-labelledby="overview">
+        <h2 id="overview">관측 현황</h2>
+        <div id="counts" class="counts"></div>
+        <details>
+          <summary>관찰 종목과 수집 진행</summary>
+          <div id="tickers"></div>
+        </details>
+      </section>
+      <section>
+        <h2>방법별 성과</h2>
+        <p>
+          같은 실험 버전에서 공통으로 채점된 사례만 비교합니다. Brier 점수는 0에
+          가까울수록 정확하며, 개선량은 비교 기준의 점수에서 실험 방법의 점수를
+          뺀 값입니다. 표본 수가 적거나 관측 기간이 겹치면 결과를 일반화하기
+          어렵습니다.
+        </p>
+        <div id="comparisons"></div>
+        <details>
+          <summary>기존 운영 모델과의 관측 비교</summary>
+          <p>
+            두 서비스가 개장 전에 같은 종목·기간에 발행한 예측을 비교합니다.
+            수집한 시장 정보와 분석 과정이 서로 달라 성과 차이에는 입력의 차이도
+            포함됩니다.
+          </p>
+          <div id="reference"></div>
+        </details>
+        <details>
+          <summary>예측 확률과 실제 상승 빈도</summary>
+          <p>
+            동일 방법·버전의 예측을 확률 구간별로 묶었습니다. 각 구간의 평균
+            예측과 실제 상승 비율을 함께 봅니다.
+          </p>
+          <div id="calibration"></div>
+        </details>
+      </section>
+      <section>
+        <h2>예측 사례</h2>
+        <nav class="pages" aria-label="사례 목록 페이지">
+          <button id="prev" disabled>이전 페이지</button
+          ><span id="page" role="status">불러오는 중</span
+          ><button id="next" disabled>다음 페이지</button>
+        </nav>
+        <div class="case-layout">
+          <div id="cases"></div>
+          <article id="detail" aria-live="polite">
+            <p>사례를 선택하면 당시 근거와 관측 결과를 확인할 수 있습니다.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

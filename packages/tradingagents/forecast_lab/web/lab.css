@@ -1,0 +1,206 @@
+:root {
+  color-scheme: light;
+  font:
+    15px/1.6 "Malgun Gothic",
+    system-ui,
+    sans-serif;
+  color: #192b2e;
+  background: #f7f8f4;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+header {
+  background: #193d3f;
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 15px max(5vw, 20px);
+  font-size: 0.85rem;
+}
+header span:first-child {
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+main {
+  max-width: 1160px;
+  margin: auto;
+  padding: 36px 24px 72px;
+}
+h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  letter-spacing: -0.07em;
+  margin: 0;
+}
+.intro,
+p {
+  color: #40565a;
+}
+.intro {
+  margin-top: 3px;
+}
+section {
+  margin: 32px 0;
+  border-top: 1px solid #b8c9c3;
+  padding-top: 15px;
+}
+h2,
+h3 {
+  margin: 0.3em 0;
+}
+h2 {
+  font-size: 1.35rem;
+}
+.counts,
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+}
+.tile,
+article,
+.comparison {
+  border: 1px solid #cfdbd5;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fff;
+}
+.tile strong {
+  display: block;
+  font-size: 1.7rem;
+  color: #17574b;
+}
+.tile small {
+  color: #4b625c;
+}
+details {
+  margin: 0.7rem 0;
+}
+summary,
+button {
+  cursor: pointer;
+}
+.case-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 2.5fr;
+  gap: 16px;
+  align-items: start;
+}
+button {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  border: 1px solid #c6d8d0;
+  background: white;
+  color: inherit;
+  border-radius: 6px;
+  margin-bottom: 5px;
+  padding: 9px 12px;
+}
+button[aria-pressed="true"] {
+  border-color: #287459;
+  background: #e3f1e6;
+}
+button:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #1363ae;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 27em;
+  overflow: auto;
+  font-size: 0.82rem;
+  background: #f1f4ef;
+  padding: 10px;
+}
+article {
+  min-width: 0;
+}
+.comparison {
+  margin: 7px 0;
+}
+.arm {
+  padding: 10px 0;
+  border-bottom: 1px solid #d7dfd9;
+}
+.label {
+  color: #315d53;
+  font-size: 0.86rem;
+}
+.error,
+#error {
+  color: #ab2434;
+}
+#cases {
+  max-height: 620px;
+  overflow: auto;
+}
+#runtime {
+  font-size: 0.78rem;
+}
+article p {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 680px) {
+  main {
+    padding: 24px 14px 48px;
+  }
+  .case-layout {
+    grid-template-columns: 1fr;
+  }
+  #cases {
+    max-height: 220px;
+  }
+  .counts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .tile {
+    padding: 9px;
+  }
+  .tile small {
+    font-size: 0.75rem;
+  }
+}
+
+.filters,
+.pages {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.filters label {
+  font-size: 0.83rem;
+  color: #3b5d54;
+}
+.filters select,
+.filters input {
+  display: block;
+  font: inherit;
+  color: inherit;
+  border: 1px solid #bed0c7;
+  border-radius: 5px;
+  padding: 7px;
+  background: white;
+}
+.filters button,
+.pages button {
+  width: auto;
+  margin: 0;
+  padding: 6px 12px;
+}
+.pages {
+  align-items: center;
+  margin-bottom: 12px;
+}
+.pages button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

@@ -1,5 +1,16 @@
 # G-ANT
 
+## 예측 연구실 · `codex/forecast-lab`
+
+이 브랜치의 연구실은 장 시작 전에 5거래일 상승 확률을 발행한다. 같은 시장 근거로 통계 기준선, 단일 모델, 토론 모델을 비교하고, 성숙한 교훈이 생기면 같은 단일 모델을 기억 제공 전후로 비교한다. 사례에서 당시 확률·근거·관측 가격을 열어 볼 수 있다. 만기 이후에는 공통 표본의 Brier 점수, 확률 구간별 실제 상승 빈도와 기억 효과를 확인한다.
+
+- [기획과 인수 기준](docs/forecast-lab/PRODUCT.md)
+- [실험 규약·설계 결정·검증 기록](docs/forecast-lab/DESIGN.md)
+- [연구실 실행과 복구](docs/forecast-lab/OPERATIONS.md)
+- [이 Windows PC에서 연구실 열기](http://127.0.0.1:8014/)
+
+아래는 기존 공개 서비스의 운영·가상매매 문서다.
+
 [Windows 배포·복구 Launchpad](LAUNCHPAD.md)
 
 **Live** — [https://daehun.app](https://daehun.app)

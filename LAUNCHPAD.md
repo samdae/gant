@@ -1,5 +1,7 @@
 # TradingAgents Windows 배포 Launchpad
 
+이 브랜치의 신규 예측 연구실은 전용 DB와 별도 웹 포트를 사용한다. 연구실을 시작·백업·복구하려면 [Windows 연구실 운영 문서](docs/forecast-lab/OPERATIONS.md)를 따른다. 아래 절차는 기존 공개 사이트에 적용한다.
+
 이 저장소를 처음 여는 운영자와 LLM을 위한 배포·복구 절차다. Windows PowerShell에서 실행한다. 기준 경로는 C:\Users\samda\dev\TradingAgents다. 경로와 포트는 아래 실측값을 출발점으로 삼고 실행 직전에 다시 확인한다.
 
 ## 현재 운영 상태 — 2026-11-23 KST
