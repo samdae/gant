@@ -1,13 +1,22 @@
 import "./styles/base.css";
 import App from "./App.svelte";
 
+import { isForecastLab } from "./lib/workspace";
+
+if (isForecastLab) {
+  document.documentElement.lang = "ko";
+  document.querySelector('meta[name="viewport"]')?.setAttribute("content", "width=device-width, initial-scale=1, viewport-fit=cover");
+  document.title = "Forecast Lab · 시장 예측 연구";
+  if (!window.location.hash) history.replaceState(history.state, "", "#/research");
+}
+
 const target = document.getElementById("app");
 
 if (target) {
   new App({ target });
 }
 
-if (import.meta.env.PROD && "serviceWorker" in navigator) {
+if (!isForecastLab && import.meta.env.PROD && "serviceWorker" in navigator) {
   // The bundle filename changes per build. Older CDN entries for /sw.js
   // must not precache the previous dashboard on a fresh visit.
   const worker = new URL("/sw.js", location.origin);

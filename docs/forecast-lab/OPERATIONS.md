@@ -7,6 +7,7 @@
 | 구성 | 연구실 설정 |
 |---|---|
 | DB | 별도 Windows PostgreSQL 17 클러스터, `127.0.0.1:55434`, DB `forecast_lab_research`, 비관리자 앱 역할 `forecast_lab_app`, 시간대 UTC |
+| 가상매매 콘솔 | 같은 클러스터의 별도 DB `forecast_lab_console`, 전용 비관리자 역할 `forecast_lab_console_app`, `console.env`. 콘솔의 에이전트·포트폴리오 모드와 24개 예약은 이 DB를 사용 |
 | 검증 | 같은 연구 클러스터 안에 별도 DB `forecast_lab_acceptance`, 테스트마다 임시 스키마 사용 |
 | 런타임 | `%LOCALAPPDATA%\TradingAgentsForecastLab` 아래 `pgdata`, 운영용 `lab.env`, 테스트용 `acceptance.env`, 작업 상태·로그 |
 | 모델 | 현재 Windows 사용자의 Codex ChatGPT 로그인. 모델은 `FORECAST_LAB_MODEL`에 명시 |
@@ -22,16 +23,45 @@ Windows PowerShell에서 해당 프로젝트를 열고 다음을 실행한다.
 Set-Location 'C:\Users\samda\dev\TradingAgents-ForecastLab'
 uv sync --frozen
 codex login status
+Push-Location apps/web
+try {
+    npm ci
+    if ($LASTEXITCODE) { throw '프런트엔드 의존성 설치 실패' }
+    $env:VITE_FORECAST_LAB = '1'
+    $env:VITE_API_BASE_URL = '/workspace-api'
+    npm run build
+    if ($LASTEXITCODE) { throw '통합 프런트엔드 빌드 실패' }
+} finally {
+    Remove-Item Env:VITE_FORECAST_LAB,Env:VITE_API_BASE_URL -ErrorAction SilentlyContinue
+    Pop-Location
+}
 .\scripts\start-forecast-lab.ps1
 Invoke-RestMethod http://127.0.0.1:8014/ready
 Invoke-RestMethod http://127.0.0.1:8014/api/status
+Invoke-RestMethod http://127.0.0.1:8014/workspace-api/health
 ```
 
-작업 스케줄러의 **TradingAgents Forecast Lab**은 같은 사용자 로그온 시, 그리고 로그인 중 15분마다 이 시작 스크립트를 호출한다. 수동 기동·준비 상태 점검 명령은 `Start-ScheduledTask -TaskName 'TradingAgents Forecast Lab'`이다. 스크립트는 전용 pgdata와 포트 소유를 확인한 후 필요한 프로세스를 시작한다. 이미 실행 중인 연구 앱은 계속 동작한다. 현재 사용자 로그인과 Codex 로그인 상태가 필요하다. 서비스의 HTTP 라우트는 조회 전용이다. 오류는 런타임의 `logs/app.err.log`, 진행 상태는 `scan-progress.json`과 `/api/status`에서 확인한다.
+작업 스케줄러의 **TradingAgents Forecast Lab**은 같은 사용자 로그온 시, 그리고 로그인 중 15분마다 이 시작 스크립트를 호출한다. 수동 기동·준비 상태 점검 명령은 `Start-ScheduledTask -TaskName 'TradingAgents Forecast Lab'`이다. 스크립트는 전용 pgdata와 포트 소유를 확인한 후 필요한 프로세스를 시작한다. 이미 실행 중인 연구 앱은 계속 동작한다. 현재 사용자 로그인과 Codex 로그인 상태가 필요하다. 연구 HTTP API는 조회용이고, 가상매매 콘솔의 쓰기에는 전용 관리자 인증이 필요하다. 오류는 런타임의 `logs/app.err.log`, 진행 상태는 `scan-progress.json`과 `/api/status`에서 확인한다.
 
 백그라운드 스캔은 시작 직후와 한 차례 스캔이 끝난 뒤 지정된 간격(현재 900초)에 다시 돈다. 시장별로 완료된 거래 세션과 다음 개장 시각을 확인한다. 장중에 이미 열린 진입 창은 건너뛴다. 독립 프로세스가 동시에 실행되면 PostgreSQL 잠금을 획득한 하나만 무거운 작업을 한다. 최초 며칠 동안 성과 공통 표본이 비어 있고 기억 방법이 보류되는 것이 정상이다.
 
 대시보드의 사례 수는 입력을 동결해 DB에 기록한 사례 수다. 사전 입력 검증에서 탈락한 티커나 이미 개장한 시장은 현재 스캔의 보류 사유에서 확인한다. 백테스트로 빈 날짜를 채우지 않는다. 날짜 필터는 시장 현지의 데이터 기준일을 사용하고, 화면의 발행·개장·만기 시각은 한국시간(KST)으로 표시한다.
+
+## 콘솔의 데이터와 권한
+
+브라우저에서 `/#/research`는 연구, `/#/`는 대시보드, `/#/portfolio`는 포트폴리오, `/#/schedules`는 가상매매 분석 예약이다. `/research/`는 연구 단독 보기다. `/api/`는 전향 연구, `/workspace-api/`는 이 앱의 가상매매 REST·WebSocket 경로다. 연구의 관찰 티커와 콘솔의 분석 예약은 주기와 용도가 다르다. 8014 콘솔의 변경은 별도 DB에 저장한다.
+
+처음 통합할 때 기존 운영 DB의 읽기 전용 스냅샷을 비어 있던 콘솔 DB로 한 번 복원했고 15개 테이블의 행 수를 대조했다. 이 시점에 분석 예약 24개, 실제 리포트 2개, 예약 실행 기록 3개, 포트폴리오 계좌 0개였다. 이후에는 각 DB가 독립적으로 누적된다. 이전 콘솔의 리포트·거래는 연구실 Brier 점수의 표본에 포함되지 않는다. 최초 계좌의 통화·자본은 포트폴리오 화면에서 설정한다.
+
+새 PC에서는 `forecast_lab_console_app`을 전용 비관리자 로그인 역할로 만들고 이 역할이 소유한 `forecast_lab_console`을 준비한다. 접근을 제한한 런타임 디렉터리의 `console.env`에 `FORECAST_LAB_CONSOLE_DSN`(호스트 127.0.0.1, 포트 55434, 전용 역할과 DB)과 이 콘솔만의 `TRADINGAGENTS_ADMIN_TOKEN`을 둔다. 콘솔 캐시와 벡터 저장소는 런타임의 `console` 아래에 둔다. 새 설치 시 전용 콘솔 백업이 있으면 해당 덤프를 복원한다.
+
+예약·가상계좌를 변경할 때는 8014의 ‘관리자 인증’에 **콘솔 전용** 토큰을 입력한다. 이 PC의 Windows 사용자 세션에서 아래 명령으로 값을 화면에 출력하지 않고 클립보드에 복사할 수 있다. 입력 후 클립보드를 비운다.
+
+```powershell
+$consoleEnv = Join-Path $env:LOCALAPPDATA 'TradingAgentsForecastLab/console.env'
+$entry = Get-Content -LiteralPath $consoleEnv | Where-Object { $_ -like 'TRADINGAGENTS_ADMIN_TOKEN=*' }
+Set-Clipboard -Value $entry.Substring('TRADINGAGENTS_ADMIN_TOKEN='.Length)
+```
 
 ## 연구 대상과 수동 검증
 
@@ -64,6 +94,6 @@ finally { Remove-Item Env:FORECAST_LAB_ACCEPTANCE_DSN -ErrorAction SilentlyConti
 
 두 Windows 작업은 현재 사용자, 대화형 로그온, 일반 권한으로 등록되어 있다. 기동 작업은 Windows PowerShell을 숨김 모드로 실행하며 인수는 `-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "C:\Users\samda\dev\TradingAgents-ForecastLab\scripts\start-forecast-lab.ps1"`이다. 트리거는 사용자 로그온과 15분 간격의 반복이다. 앱 내부 스캔과 별개로 프로세스 종료에서 복구한다. 시장 공급자 조회 한 번은 60초, 모델 응답 한 번은 최대 300초로 제한한다. 개장이 더 가까우면 남은 시간이 모델 호출의 상한이다.
 
-**TradingAgents Forecast Lab Backup**은 매일 03:25 KST에 이 체크아웃의 `.venv\Scripts\python.exe`로 `scripts\backup-forecast-lab.py`를 실행한다. 수동 실행은 프로젝트 루트에서 `.\.venv\Scripts\python.exe scripts\backup-forecast-lab.py`다. 전체 아카이브를 읽어 검증한 파일만 `%LOCALAPPDATA%\TradingAgentsForecastLab\backups\*.dump`에 저장한다. 이 백업은 연구 DB와 동일한 PC에 있다. 디스크 자체의 장애에 대비하려면 검증된 덤프를 다른 저장소에도 보관한다.
+**TradingAgents Forecast Lab Backup**은 매일 03:25 KST에 이 체크아웃의 `.venv\Scripts\python.exe`로 `scripts\backup-forecast-lab.py`를 실행한다. 수동 실행은 프로젝트 루트에서 `.\.venv\Scripts\python.exe scripts\backup-forecast-lab.py`다. 연구·콘솔 DB를 별도 덤프로 만들고 각각 전체 아카이브를 읽어 검증한 파일만 `%LOCALAPPDATA%\TradingAgentsForecastLab\backups\*.dump`에 저장한다. 이 백업은 연구 DB와 동일한 PC에 있다. 디스크 자체의 장애에 대비하려면 검증된 덤프를 다른 저장소에도 보관한다.
 
 복원 검증 시 연구 클러스터에 새 이름의 빈 DB를 만들고 앱 역할을 소유자로 지정한다. 연구실 접속 환경에서 `pg_restore --single-transaction --exit-on-error -d <새 검증 DB명> <덤프 경로>`로 복원한다. `lab_watchlist`, `lab_cases`, `lab_arms`, `lab_outcomes`, `lab_memories`의 건수와 알려진 완료 사례의 발행 시각·확률을 비교한다. 마지막으로 확인한 실제 복원 결과는 [설계 인수 기록](DESIGN.md)에 있다.

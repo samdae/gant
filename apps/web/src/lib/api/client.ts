@@ -1,7 +1,9 @@
 import { get } from "svelte/store";
 import { clearToken, tokenStore } from "../../stores/auth";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+import { isForecastLab } from "../workspace";
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || (isForecastLab ? "/workspace-api" : "http://localhost:8000");
 const CACHE_PREFIX = "gant_api_cache:";
 const CACHE_TTL_MS = 60 * 5 * 1000;
 
@@ -98,4 +100,4 @@ const deleteJson = <T>(path: string) =>
     method: "DELETE",
   });
 
-export { BASE_URL, getJson, postJson, deleteJson };
+export { BASE_URL, getJson, postJson, deleteJson, redirectToAuth };

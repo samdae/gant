@@ -2,8 +2,7 @@
   import { params } from "svelte-spa-router";
   import { fetchReportsByTicker } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
-  import { marked } from "marked";
-  import DOMPurify from "dompurify";
+  import { renderNarrative } from "../lib/utils/researchMarkdown";
   import SelectMenu from "../components/SelectMenu.svelte";
 
   type Report = {
@@ -117,11 +116,7 @@
     return typeof val === "string" ? val : "";
   };
 
-  const renderMd = (text?: string | null): string => {
-    if (!text) return "<em>데이터 없음</em>";
-    const raw = marked.parse(text, { async: false }) as string;
-    return DOMPurify.sanitize(raw);
-  };
+  const renderMd = (text?: string | null) => renderNarrative(text, "데이터 없음");
 
   const normalizeDecision = (value: string): string => {
     const upper = value.trim().toUpperCase();

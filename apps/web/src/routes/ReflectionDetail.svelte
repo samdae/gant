@@ -1,7 +1,6 @@
 <script lang="ts">
   import { params } from "svelte-spa-router";
-  import { marked } from "marked";
-  import DOMPurify from "dompurify";
+  import { renderNarrative } from "../lib/utils/researchMarkdown";
   import { fetchReflectionDetail } from "../lib/api/endpoints";
   import { formatPercent, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
@@ -61,11 +60,7 @@
     }
   };
 
-  const renderMd = (text?: string | null): string => {
-    if (!text) return "<em>내용 없음</em>";
-    const raw = marked.parse(text, { async: false }) as string;
-    return DOMPurify.sanitize(raw);
-  };
+  const renderMd = (text?: string | null) => renderNarrative(text, "내용 없음");
 
   const displayName = (ticker?: string) => {
     if (!ticker) return "";

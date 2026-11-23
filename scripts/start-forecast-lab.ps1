@@ -11,7 +11,7 @@ $pgCtl = Join-Path $env:LOCALAPPDATA 'TradingAgentsDeploy/pgsql/bin/pg_ctl.exe'
 $pgReady = Join-Path $env:LOCALAPPDATA 'TradingAgentsDeploy/pgsql/bin/pg_isready.exe'
 $python = Join-Path $project '.venv/Scripts/python.exe'
 $logDir = Join-Path $runtime 'logs'
-foreach ($file in @($EnvFile, $pgCtl, $pgReady, $python, (Join-Path $pgData 'PG_VERSION'))) {
+foreach ($file in @($EnvFile, (Join-Path $runtime 'console.env'), (Join-Path $project 'apps/web/dist/index.html'), $pgCtl, $pgReady, $python, (Join-Path $pgData 'PG_VERSION'))) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Required lab file is missing: $file" }
 }
 $EnvFile = (Resolve-Path -LiteralPath $EnvFile).Path
@@ -42,15 +42,16 @@ try {
         foreach ($listener in $listeners) {
             $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)"
             if ($listener.LocalAddress -ne '127.0.0.1' -or $proc.CommandLine -notmatch 'tradingagents\.forecast_lab\.app' -or
-                 $proc.CommandLine.IndexOf($EnvFile,[StringComparison]::OrdinalIgnoreCase) -lt 0) {
-                throw 'Port 8014 belongs to another process.'
+                 $proc.CommandLine -notmatch 'serve\s+--console' -or
+                $proc.CommandLine.IndexOf($EnvFile,[StringComparison]::OrdinalIgnoreCase) -lt 0) {
+                throw 'Port 8014 is occupied by another process or the prior standalone lab. Stop the verified lab process before upgrading.'
             }
         }
     } else {
         $env:PYTHONPATH = Join-Path $project 'packages'
         $env:PYTHONUTF8 = '1'
-        $arguments = "-m tradingagents.forecast_lab.app --env-file `"$EnvFile`" serve"
-        Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $project -WindowStyle Hidden `
+        $arguments = "-m tradingagents.forecast_lab.app --env-file `"$EnvFile`" serve --console"
+        Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $runtime -WindowStyle Hidden `
             -RedirectStandardOutput (Join-Path $logDir 'app.out.log') `
             -RedirectStandardError (Join-Path $logDir 'app.err.log') | Out-Null
     }
@@ -58,7 +59,7 @@ try {
         try {
             $health = Invoke-RestMethod 'http://127.0.0.1:8014/health' -TimeoutSec 2
             $ready = Invoke-RestMethod 'http://127.0.0.1:8014/ready' -TimeoutSec 2
-            if ($health.service -eq 'forecast-lab' -and $ready.ready) {
+            if ($health.service -eq 'forecast-lab' -and $ready.ready -and $ready.console) {
                 Write-Output 'Forecast Lab ready at http://127.0.0.1:8014/'
                 return
             }

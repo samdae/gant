@@ -1,9 +1,9 @@
 import { BASE_URL } from "../api/client";
 
 const toWsUrl = (baseUrl: string) => {
-  if (baseUrl.startsWith("https://")) return baseUrl.replace("https://", "wss://");
-  if (baseUrl.startsWith("http://")) return baseUrl.replace("http://", "ws://");
-  return baseUrl;
+  const url = new URL(baseUrl, window.location.origin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.href.replace(/\/$/, "");
 };
 
 export const connectLiveStream = (
@@ -12,7 +12,7 @@ export const connectLiveStream = (
   onError?: (err: Event) => void
 ) => {
   const wsBase = toWsUrl(BASE_URL);
-  const ws = new WebSocket(`${wsBase}/ws/analyze/${ticker}`);
+  const ws = new WebSocket(`${wsBase}/ws/analyze/${encodeURIComponent(ticker)}`);
 
   ws.onmessage = (event) => {
     try {

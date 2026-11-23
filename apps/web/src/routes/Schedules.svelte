@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import {
     createSchedule,
@@ -234,9 +235,12 @@
 <section class="page" id="page-schedules">
   <div class="page-container">
     <div class="page-header">
-      <h2>예약</h2>
+      <h2>{isForecastLab ? "분석 예약" : "예약"}</h2>
       <button class="btn btn-primary" id="addScheduleBtn" on:click={openAdd}>+ 추가</button>
     </div>
+    {#if isForecastLab}
+      <p class="scope-note">이 목록은 콘솔 전용 DB의 에이전트 실행 일정입니다. <a href="#/research">예측 연구 관찰 종목 보기</a></p>
+    {/if}
 
     {#if loading}
       <div class="card" style="padding:16px">불러오는 중...</div>

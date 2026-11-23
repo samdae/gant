@@ -11,32 +11,31 @@ from psycopg import ProgrammingError
 from psycopg.conninfo import conninfo_to_dict
 
 
-def main():
-    local = Path(os.environ["LOCALAPPDATA"])
-    lab = local / "TradingAgentsForecastLab"
-    tools = local / "TradingAgentsDeploy" / "pgsql" / "bin"
-    config = dotenv_values(lab / "lab.env", interpolate=False)
+def credentials(lab, filename, field, database, user=None):
+    config = dotenv_values(lab / filename, interpolate=False)
     try:
-        db = conninfo_to_dict(config.get("FORECAST_LAB_DSN") or "")
+        db = conninfo_to_dict(config.get(field) or "")
     except ProgrammingError:
         raise SystemExit("Invalid Forecast Lab backup configuration") from None
     if (
         db.get("host") != "127.0.0.1"
         or db.get("port") != "55434"
-        or db.get("dbname") != "forecast_lab_research"
+        or db.get("dbname") != database
         or not db.get("user")
+        or (user and db["user"] != user)
         or not db.get("password")
-        or {"hostaddr", "service", "options"} & db.keys()
+        or set(db) - {"host", "port", "dbname", "user", "password"}
     ):
-        raise SystemExit(
-            "Expected the dedicated loopback Forecast Lab research database"
-        )
+        raise SystemExit("Expected dedicated Forecast Lab database credentials")
+    return db
 
+
+def backup(lab, tools, db):
     backups = lab / "backups"
     backups.mkdir(exist_ok=True)
     if backups.resolve() != lab.resolve() / "backups":
         raise SystemExit("Backup directory must be inside the protected lab runtime")
-    prefix = datetime.now(UTC).strftime("forecast_lab_research-%Y%m%dT%H%M%SZ-")
+    prefix = datetime.now(UTC).strftime(f"{db['dbname']}-%Y%m%dT%H%M%SZ-")
     with NamedTemporaryFile(
         dir=backups, prefix=prefix, suffix=".partial", delete=False
     ) as tmp:
@@ -67,6 +66,24 @@ def main():
     finally:
         partial.unlink(missing_ok=True)
     print(target)
+
+
+def main():
+    local = Path(os.environ["LOCALAPPDATA"])
+    lab = local / "TradingAgentsForecastLab"
+    tools = local / "TradingAgentsDeploy" / "pgsql" / "bin"
+    databases = (
+        credentials(lab, "lab.env", "FORECAST_LAB_DSN", "forecast_lab_research"),
+        credentials(
+            lab,
+            "console.env",
+            "FORECAST_LAB_CONSOLE_DSN",
+            "forecast_lab_console",
+            "forecast_lab_console_app",
+        ),
+    )
+    for database in databases:
+        backup(lab, tools, database)
 
 
 if __name__ == "__main__":

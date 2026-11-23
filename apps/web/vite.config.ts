@@ -1,11 +1,12 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { VitePWA } from "vite-plugin-pwa";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     svelte(),
     VitePWA({
+      disable: loadEnv(mode, ".", "VITE_").VITE_FORECAST_LAB === "1",
       registerType: "autoUpdate",
       injectRegister: false,
       includeAssets: ["favicon.svg", "icon.svg"],
@@ -36,4 +37,4 @@ export default defineConfig({
   server: {
     port: 5173,
   },
-});
+}));

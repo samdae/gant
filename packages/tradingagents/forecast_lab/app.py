@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import threading
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import date
 from pathlib import Path
 from typing import Literal
@@ -13,6 +13,7 @@ from typing import Literal
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from psycopg import Error as DatabaseError
 from psycopg.conninfo import conninfo_to_dict
 
@@ -45,7 +46,17 @@ def settings():
     return dsn
 
 
-def application(store, worker, progress, enabled=True, interval=900):
+def application(
+    store,
+    worker,
+    progress,
+    enabled=True,
+    interval=900,
+    *,
+    console=None,
+    dist=None,
+    readiness=None,
+):
     stop = threading.Event()
 
     def scheduled():
@@ -63,28 +74,33 @@ def application(store, worker, progress, enabled=True, interval=900):
     @asynccontextmanager
     async def lifespan(app):
         store.init()
-        threads = []
-        if enabled:
-            thread = threading.Thread(
-                target=scheduled, name="forecast-lab", daemon=True
-            )
-            threads.append(thread)
-            if worker.reference:
-                threads.append(
-                    threading.Thread(
-                        target=capture_references,
-                        name="forecast-lab-reference",
-                        daemon=True,
-                    )
+        async with AsyncExitStack() as stack:
+            if console is not None:
+                await stack.enter_async_context(
+                    console.router.lifespan_context(console)
                 )
-            for thread in threads:
-                thread.start()
-        try:
-            yield
-        finally:
-            stop.set()
-            for thread in threads:
-                thread.join(timeout=1)
+            threads = []
+            if enabled:
+                thread = threading.Thread(
+                    target=scheduled, name="forecast-lab", daemon=True
+                )
+                threads.append(thread)
+                if worker.reference:
+                    threads.append(
+                        threading.Thread(
+                            target=capture_references,
+                            name="forecast-lab-reference",
+                            daemon=True,
+                        )
+                    )
+                for thread in threads:
+                    thread.start()
+            try:
+                yield
+            finally:
+                stop.set()
+                for thread in threads:
+                    thread.join(timeout=1)
 
     app = FastAPI(
         title="Forecast Lab", lifespan=lifespan, docs_url=None, redoc_url=None
@@ -98,9 +114,11 @@ def application(store, worker, progress, enabled=True, interval=900):
     def ready():
         try:
             store.list_tickers()
+            if console is not None and not readiness():
+                raise HTTPException(503, "Workspace console unavailable")
         except DatabaseError:
-            raise HTTPException(503, "Research database unavailable") from None
-        return {"ready": True}
+            raise HTTPException(503, "Database unavailable") from None
+        return {"ready": True, **({"console": True} if console is not None else {})}
 
     @app.get("/api/status")
     def status():
@@ -151,9 +169,14 @@ def application(store, worker, progress, enabled=True, interval=900):
             raise HTTPException(404, "Unknown case")
         return detail
 
-    @app.get("/")
-    def home():
-        return FileResponse(STATIC / "index.html")
+    app.mount("/research", StaticFiles(directory=STATIC, html=True), name="research")
+    if console is None:
+
+        @app.get("/")
+        def home():
+            return FileResponse(STATIC / "index.html")
+    else:
+        app.mount("/workspace-api", console)
 
     @app.get("/lab.js")
     def script():
@@ -163,6 +186,11 @@ def application(store, worker, progress, enabled=True, interval=900):
     def style():
         return FileResponse(STATIC / "lab.css", media_type="text/css")
 
+    if console is not None:
+        from .console import mount_frontend
+
+        mount_frontend(app, dist)
+
     return app
 
 
@@ -170,14 +198,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env-file", type=Path, default=runtime_root() / "lab.env")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("serve")
+    serve = sub.add_parser("serve")
+    serve.add_argument("--console", action="store_true")
     seed = sub.add_parser("seed")
     seed.add_argument("--us", nargs="+", default=[])
     seed.add_argument("--kr", nargs="+", default=[])
     run = sub.add_parser("run-once")
     run.add_argument("--limit", type=int)
     args = parser.parse_args()
-    load_dotenv(args.env_file, override=False, interpolate=False)
+    console = None
+    readiness = None
+    dist = None
+    if getattr(args, "console", False):
+        from .console import configure_runtime, console_ready
+
+        dist = Path(__file__).resolve().parents[3] / "apps" / "web" / "dist"
+        console = configure_runtime(runtime_root(), args.env_file)
+        readiness = console_ready
+    else:
+        load_dotenv(args.env_file, override=False, interpolate=False)
     dsn = settings()
     from .store import Store
 
@@ -232,7 +271,16 @@ def main():
     }
     interval = max(1, int(os.getenv("FORECAST_LAB_INTERVAL_SECONDS", "900")))
     uvicorn.run(
-        application(store, worker, progress, enabled, interval),
+        application(
+            store,
+            worker,
+            progress,
+            enabled,
+            interval,
+            console=console,
+            dist=dist,
+            readiness=readiness,
+        ),
         host="127.0.0.1",
         port=8014,
         access_log=False,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import { currencyFilter, type CurrencyFilter } from "../stores/currency";
   import { viewMode, type ViewMode } from "../stores/mode";
@@ -20,6 +21,7 @@
   let showActivateModal = false;
 
   async function checkPortfolioConfig() {
+    if (isForecastLab && ["#/", "#/portfolio"].includes(window.location.hash.split("?")[0])) return;
     try {
       const r = (await fetchPortfolioConfig()) as { config?: unknown };
       showActivateModal = $viewMode === "portfolio" && !r.config;
@@ -32,11 +34,13 @@
     const val = next as ViewMode;
     if (val === "portfolio") {
       viewMode.set("portfolio");
+      if (isForecastLab && window.location.hash === "#/") window.location.hash = "#/portfolio";
       checkPortfolioConfig();
       return;
     }
     showActivateModal = false;
     viewMode.set("analysis");
+    if (isForecastLab && window.location.hash === "#/portfolio") window.location.hash = "#/";
   }
 
   function onCurrencyChange(next: string) {

@@ -12,8 +12,7 @@
   } from "../lib/api/endpoints";
   import { viewMode } from "../stores/mode";
   import { formatMoney, formatMoneyPlain, formatPercent, formatDateTime, formatErrorMessage, formatAmount, formatSignedAmount } from "../lib/utils/format";
-  import { marked } from "marked";
-  import DOMPurify from "dompurify";
+  import { renderNarrative } from "../lib/utils/researchMarkdown";
 
   type PositionMarket = {
     position_id?: number;
@@ -696,11 +695,7 @@
     return "";
   };
 
-  const renderMd = (text?: string | null): string => {
-    if (!text) return "<em>데이터 없음</em>";
-    const raw = marked.parse(text, { async: false }) as string;
-    return DOMPurify.sanitize(raw);
-  };
+  const renderMd = (text?: string | null) => renderNarrative(text, "데이터 없음");
 
   const selectHistory = (reportId: string) => {
     selectedHistoryId = selectedHistoryId === reportId ? "" : reportId;

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { tokenStore } from "../stores/auth";
+  import { isForecastLab } from "../lib/workspace";
+  import { redirectToAuth } from "../lib/api/client";
   import { onMount } from "svelte";
   import { createPortfolioConfig } from "../lib/api/endpoints";
   import { formatErrorMessage } from "../lib/utils/format";
@@ -18,6 +21,10 @@
   async function handleActivate() {
     if (!Number.isFinite(capital) || capital <= 0) {
       error = "초기 자본을 입력해 주세요.";
+      return;
+    }
+    if (isForecastLab && !$tokenStore) {
+      redirectToAuth();
       return;
     }
     loading = true;
@@ -81,7 +88,7 @@
     <div class="modal-actions">
       <button class="btn-secondary" on:click={onClose} disabled={loading}>취소</button>
       <button class="btn-primary" on:click={handleActivate} disabled={loading}>
-        {loading ? "처리 중..." : "활성화"}
+        {loading ? "처리 중..." : isForecastLab && !$tokenStore ? "관리자 인증 후 활성화" : "활성화"}
       </button>
     </div>
 </dialog>

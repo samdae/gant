@@ -3,8 +3,7 @@
   import { fetchRetroByTicker } from "../lib/api/endpoints";
   import { formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
-  import { marked } from "marked";
-  import DOMPurify from "dompurify";
+  import { renderNarrative } from "../lib/utils/researchMarkdown";
   import SelectMenu from "../components/SelectMenu.svelte";
   import AnalysisTabs from "../components/AnalysisTabs.svelte";
 
@@ -71,11 +70,7 @@
     selectedId = event.detail;
   };
 
-  const renderMd = (text?: string | null): string => {
-    if (!text) return "<em>분석 결과 없음</em>";
-    const raw = marked.parse(text, { async: false }) as string;
-    return DOMPurify.sanitize(raw);
-  };
+  const renderMd = (text?: string | null) => renderNarrative(text, "분석 결과 없음");
 
   const formatDate = (iso: string | null) => {
     if (!iso) return "진행중";

@@ -20,8 +20,14 @@
   import NotFoundRedirect from "./routes/NotFoundRedirect.svelte";
   import { loadTickerNames } from "./stores/tickerNames";
 
+  import Research from "./routes/Research.svelte";
+  import Portfolio from "./routes/Portfolio.svelte";
+  import WorkspaceNav from "./components/WorkspaceNav.svelte";
+  import { isForecastLab } from "./lib/workspace";
+
   const routes = {
-    "/": Dashboard,
+    ...(isForecastLab ? { "/research": Research, "/portfolio": Portfolio } : {}),
+    "/": isForecastLab ? Portfolio : Dashboard,
     "/positions": Positions,
     "/schedules": Schedules,
     "/schedules/:ticker": ScheduleDetail,
@@ -55,14 +61,19 @@
 
 </script>
 
-<div class="app-shell">
-  <AppHeader />
+<div class="app-shell" class:workspace={isForecastLab}>
+  {#if isForecastLab}<WorkspaceNav />{/if}
+  {#if !isForecastLab || $location !== "/research"}
+    {#key isForecastLab && $location === "/portfolio"}
+      <AppHeader />
+    {/key}
+  {/if}
 
   <main class="main-content">
     <Router {routes} />
   </main>
 
-  <BottomNav />
+  {#if !isForecastLab}<BottomNav />{/if}
 </div>
 
 <style>
@@ -82,4 +93,9 @@
     right: auto;
     transform: translateX(-50%);
   }
+  .workspace { width:100%; max-width:none; border:0; }
+  .workspace .main-content { padding:0; }
+  .workspace :global(.app-header) { position:relative; left:auto; width:100%; transform:none; }
+  .workspace :global(.control-shell), .workspace :global(.page-container) { max-width:1160px; }
+  .workspace :global(.page-container) { padding-bottom:48px; }
 </style>
