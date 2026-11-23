@@ -6,6 +6,7 @@
     label: string;
   };
 
+  export let id: string | undefined = undefined;
   export let value = "";
   export let options: Option[] = [];
   export let placeholder = "선택";
@@ -23,8 +24,7 @@
     open = !open;
   };
 
-  const selectOption = (nextValue: string, event?: MouseEvent) => {
-    event?.stopPropagation();
+  const selectOption = (nextValue: string) => {
     if (disabled) return;
     value = nextValue;
     open = false;
@@ -50,6 +50,7 @@
 
 <div class="select-menu" class:compact class:minimal class:end={panelAlign === "end"} bind:this={container}>
   <button
+    {id}
     type="button"
     class={`select-trigger ${open ? "open" : ""}`}
     on:click={toggle}
@@ -68,7 +69,7 @@
         <button
           type="button"
           class={`select-option ${option.value === value ? "active" : ""}`}
-          on:pointerdown|preventDefault|stopPropagation={(event) => selectOption(option.value, event)}
+          on:click|stopPropagation={() => selectOption(option.value)}
         >
           <span>{option.label}</span>
           {#if option.value === value}

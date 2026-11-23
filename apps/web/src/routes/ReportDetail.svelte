@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { params } from "svelte-spa-router";
   import { fetchReportsByTicker } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
@@ -177,7 +176,9 @@
     loading = true;
     error = "";
     try {
-      reports = (await fetchReportsByTicker(t, 20)) as Report[];
+      const result = (await fetchReportsByTicker(t, 20)) as Report[];
+      if (ticker !== t) return;
+      reports = result;
       if (reports && reports.length > 0) {
         selectReport(String(reports[0].id));
       } else {
@@ -185,9 +186,10 @@
         selectedReportId = "";
       }
     } catch (err) {
+      if (ticker !== t) return;
       error = formatErrorMessage(err, "AI분석을 불러오지 못했습니다.");
     } finally {
-      loading = false;
+      if (ticker === t) loading = false;
     }
   };
 
@@ -211,9 +213,6 @@
     label: item.scheduled_cycle ? `${item.scheduled_cycle} 회차 · ${formatDateTime(item.created_at)}` : `AI분석 #${item.id} · ${formatDateTime(item.created_at)}`,
   }));
 
-  onMount(() => {
-    if (ticker) loadReport(ticker);
-  });
 </script>
 
 <section class="page" id="page-report-detail">
@@ -231,15 +230,14 @@
       <div class="card" style="padding:16px">{ticker} AI분석이 없습니다.</div>
     {:else}
       {#if reports.length > 0}
-        <label class="form-label">
-          회차
-          <SelectMenu
+        <div class="form-label"><label for="cycle-select">회차</label>
+            <SelectMenu id="cycle-select"
             value={selectedReportId}
             options={reportOptions}
             placeholder="회차 선택"
             on:change={(event) => handleReportChange(event.detail)}
           />
-        </label>
+        </div>
       {/if}
       <div class="report-meta">
         {#if decisionKey}

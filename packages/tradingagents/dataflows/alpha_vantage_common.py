@@ -63,8 +63,15 @@ def _make_api_request(function_name: str, params: dict) -> dict | str:
         # Remove entitlement if it's None or empty
         api_params.pop("entitlement", None)
     
-    response = requests.get(API_BASE_URL, params=api_params)
-    response.raise_for_status()
+    try:
+        response = requests.get(API_BASE_URL, params=api_params, timeout=(5, 30))
+    except requests.RequestException as exc:
+        # Request URLs contain the API key. Vendor exceptions enter persistent job logs.
+        raise RuntimeError(f"Alpha Vantage connection failed ({type(exc).__name__})") from None
+    if response.status_code == 429:
+        raise AlphaVantageRateLimitError("Alpha Vantage rate limit exceeded")
+    if not response.ok:
+        raise RuntimeError(f"Alpha Vantage returned HTTP {response.status_code}")
 
     response_text = response.text
     
@@ -72,10 +79,12 @@ def _make_api_request(function_name: str, params: dict) -> dict | str:
     try:
         response_json = json.loads(response_text)
         # Check for rate limit error
-        if "Information" in response_json:
+        if isinstance(response_json, dict) and "Error Message" in response_json:
+            raise ValueError("Alpha Vantage rejected the request parameters")
+        if isinstance(response_json, dict) and "Information" in response_json:
             info_message = response_json["Information"]
             if "rate limit" in info_message.lower() or "api key" in info_message.lower():
-                raise AlphaVantageRateLimitError(f"Alpha Vantage rate limit exceeded: {info_message}")
+                raise AlphaVantageRateLimitError("Alpha Vantage quota or API key restriction")
     except json.JSONDecodeError:
         # Response is not JSON (likely CSV data), which is normal
         pass
@@ -117,6 +126,4 @@ def _filter_csv_by_date_range(csv_data: str, start_date: str, end_date: str) -> 
         return filtered_df.to_csv(index=False)
 
     except Exception as e:
-        # If filtering fails, return original data with a warning
-        print(f"Warning: Failed to filter CSV data by date range: {e}")
-        return csv_data
+        raise ValueError("Invalid vendor CSV or date range") from e

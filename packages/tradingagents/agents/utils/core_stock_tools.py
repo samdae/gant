@@ -1,5 +1,6 @@
 from langchain_core.tools import tool
 from typing import Annotated
+from tradingagents.runtime_context import bounded_analysis_date
 from tradingagents.dataflows.interface import route_to_vendor
 
 
@@ -19,4 +20,7 @@ def get_stock_data(
     Returns:
         str: A formatted dataframe containing the stock price data for the specified ticker symbol in the specified date range.
     """
+    end_date = bounded_analysis_date(end_date)
+    if start_date > end_date:
+        return "No data within requested range before the analysis cutoff."
     return route_to_vendor("get_stock_data", symbol, start_date, end_date)

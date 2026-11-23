@@ -1,22 +1,12 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
-  import { fetchQueue, fetchLiveEvents } from "../lib/api/endpoints";
+  import { onMount } from "svelte";
+  import { fetchQueue, fetchLiveEvents, type LiveMessage as WsMessage } from "../lib/api/endpoints";
   import { connectLiveStream } from "../lib/ws/liveStream";
   import { tickerNames } from "../stores/tickerNames";
 
   type QueueStatus = {
     running: string | null;
     pending: string[];
-  };
-
-  type WsMessage = {
-    agent?: string;
-    status?: string;
-    message?: string;
-    step?: number;
-    phase?: string;
-    total_steps?: number;
-    timestamp?: string;
   };
 
   let queue: QueueStatus = { running: null, pending: [] };
@@ -76,14 +66,6 @@
     return "pending";
   };
 
-  const loadQueue = async () => {
-    try {
-      queue = (await fetchQueue()) as QueueStatus;
-    } catch {
-      queue = { running: null, pending: [] };
-    }
-  };
-
   const seedEvents = (events: WsMessage[]) => {
     messages = events.slice(0, 20);
     stepStates = {};
@@ -101,31 +83,50 @@
       stepStates = {};
       connectedTicker = ticker;
     }
-    fetchLiveEvents(ticker)
-      .then((events: WsMessage[]) => seedEvents(events))
-      .catch(() => {
-        messages = [];
-        stepStates = {};
-      });
-    ws = connectLiveStream(ticker, (data) => {
+    const socket = connectLiveStream(ticker, (data) => {
+      if (ws !== socket || !data || typeof data !== "object") return;
       const msg = data as WsMessage;
       messages = [msg, ...messages].slice(0, 20);
       if (msg.agent && msg.agent !== "system") {
         stepStates = { ...stepStates, [msg.agent]: msg };
       }
     });
+    ws = socket;
+    fetchLiveEvents(ticker).then((events) => {
+      if (ws === socket) seedEvents([...messages, ...events]);
+    }).catch(() => {});
   };
 
-  onMount(async () => {
-    await loadQueue();
-    if (queue.running) {
-      connect(queue.running);
-    }
+  onMount(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const next = (await fetchQueue()) as QueueStatus;
+        if (stopped) return;
+        queue = next;
+        if (!queue.running) {
+          ws?.close();
+          ws = null;
+          connectedTicker = null;
+        } else if (queue.running !== connectedTicker || !ws || ws.readyState >= WebSocket.CLOSING) {
+          connect(queue.running);
+        }
+      } catch {
+        // Retry on the next poll; keep the last confirmed queue state.
+      } finally {
+        if (!stopped) timer = setTimeout(poll, 5000);
+      }
+    };
+    poll();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      ws?.close();
+      ws = null;
+    };
   });
 
-  onDestroy(() => {
-    if (ws) ws.close();
-  });
 </script>
 
 <section class="page" id="page-live">

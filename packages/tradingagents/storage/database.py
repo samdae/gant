@@ -243,6 +243,20 @@ class Database:
         CREATE INDEX IF NOT EXISTS idx_rag_validation_retro
             ON rag_validation_results(retrospective_id);
 
+        CREATE TABLE IF NOT EXISTS rag_outcome_evaluations (
+            report_id     BIGINT PRIMARY KEY REFERENCES reports(id) ON DELETE CASCADE,
+            reflection_id BIGINT NOT NULL REFERENCES reflections(id) ON DELETE CASCADE,
+            score_delta   SMALLINT NOT NULL CHECK (score_delta BETWEEN -1 AND 1),
+            evidence      JSONB NOT NULL,
+            evaluated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_rag_outcomes_reflection
+            ON rag_outcome_evaluations(reflection_id);
+
+        CREATE OR REPLACE VIEW rag_outcome_scores AS
+            SELECT reflection_id, greatest(0, least(100, 50 + sum(score_delta))) AS score
+            FROM rag_outcome_evaluations GROUP BY reflection_id;
+
         CREATE TABLE IF NOT EXISTS portfolio_configs (
             id               BIGSERIAL PRIMARY KEY,
             name             TEXT      NOT NULL DEFAULT 'default',
@@ -349,6 +363,12 @@ class Database:
         self._ensure_column("reflections", "usefulness_score", "DOUBLE PRECISION NOT NULL DEFAULT 50")
         self._ensure_column("retrospective_analyses", "analysis_accuracy", "INTEGER")
         self._ensure_column("retrospective_analyses", "rag_contribution", "INTEGER")
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reports_rag_outcome_pending ON reports(id) "
+            "WHERE rag_used AND rag_docs ? 'decision_pair_v1'"
+        )
+        self.conn.commit()
 
         logger.info("Schema initialization complete")
 

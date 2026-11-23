@@ -74,10 +74,18 @@ class SignalProcessor:
             # Validate required fields
             if not isinstance(data, dict):
                 return None
-            action = data.get("action", "").upper()
+            action = str(data.get("action", "")).strip().upper()
             if action not in {"BUY", "SELL", "HOLD"}:
                 logger.warning(f"Invalid action in strategy_json: {action}")
                 return None
+            if "forecast_5s" in data:
+                forecast = data["forecast_5s"]
+                p_up = forecast.get("p_up") if isinstance(forecast, dict) else None
+                if type(p_up) in (int, float) and 0 <= p_up <= 1:
+                    data["forecast_5s"] = {"p_up": p_up}
+                else:
+                    # Keep the trade decision usable, without manufacturing an observation.
+                    del data["forecast_5s"]
             data["action"] = action
             return data
         except (json.JSONDecodeError, ValueError) as e:

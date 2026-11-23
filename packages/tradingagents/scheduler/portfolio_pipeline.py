@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections import defaultdict
+from math import isfinite
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -113,12 +113,11 @@ class PortfolioPipeline:
             return {}
 
         prices: Dict[str, float] = {}
-        multi = len(tickers) > 1
         for ticker in tickers:
             try:
-                close_series = data[ticker]["Close"] if multi else data["Close"]
-                price = float(close_series.iloc[-1])
-                if price > 0:
+                close_series = data[ticker]["Close"] if data.columns.nlevels > 1 else data["Close"]
+                price = float(close_series.dropna().iloc[-1])
+                if isfinite(price) and price > 0:
                     prices[ticker] = price
             except Exception:
                 continue
@@ -141,6 +140,7 @@ class PortfolioPipeline:
                    r.market_report,
                    r.final_trade_decision,
                    r.decision_position,
+                   r.pipeline_strategy, r.portfolio_rationale,
                    r.portfolio_action,
                    r.portfolio_shares,
                    r.pa_opinion,
@@ -222,10 +222,9 @@ class PortfolioPipeline:
         base_currency: str,
         exchange_rate: float,
         available_cash_base: float,
+        prices: Dict[str, float],
+        conn,
     ) -> float:
-        tickers = [ticker for ticker, row in holdings_state.items() if float(row.get("shares") or 0) > 0]
-        prices = self._fetch_current_prices(tickers)
-
         total_value_base = max(float(available_cash_base), 0.0)
         per_ticker_values_base: Dict[str, float] = {}
         per_ticker_values_krw: Dict[str, float] = {}
@@ -235,7 +234,9 @@ class PortfolioPipeline:
             if shares <= 0:
                 continue
             currency = str(row.get("currency") or "USD").upper()
-            price = float(prices.get(ticker) or row.get("avg_cost") or 0.0)
+            if ticker not in prices:
+                raise ValueError(f"Missing valuation price for {ticker}")
+            price = prices[ticker]
             value_local = shares * price
             value_base = self._to_base(value_local, currency, base_currency, exchange_rate)
             value_krw = self._to_krw(value_local, currency, exchange_rate)
@@ -258,10 +259,9 @@ class PortfolioPipeline:
                 currency=str(row.get("currency") or "USD"),
                 current_value_krw=per_ticker_values_krw.get(ticker, 0.0),
                 allocation_pct=allocation_pct,
-                commit=False,
+                commit=False, conn=conn,
             )
 
-        self.db.get_connection().commit()
         return total_value_base
 
     def _execute_trades(
@@ -270,11 +270,13 @@ class PortfolioPipeline:
         plan: List[Dict[str, Any]],
         config_row: Dict[str, Any],
         exchange_rate: float,
+        snapshot_date: str,
+        prices: Dict[str, float],
+        conn,
     ) -> Dict[str, Any]:
         base_currency = str(config_row.get("base_currency") or "KRW").upper()
         available_cash_base = float(config_row.get("available_cash") or 0.0)
         holdings_state = self._load_latest_holdings_state(int(config_row["id"]))
-        prices = self._fetch_current_prices([item.get("ticker", "") for item in plan])
         trade_rows: List[Dict[str, Any]] = []
         errors: List[str] = []
 
@@ -382,26 +384,25 @@ class PortfolioPipeline:
                 }
             )
 
-        trade_ids = self.trade_repo.create_batch(trade_rows) if trade_rows else []
+        trade_ids = self.trade_repo.create_batch(trade_rows, commit=False, conn=conn) if trade_rows else []
 
-        snapshot_date = self._today_kst().date().isoformat()
         total_fund_base = self._rebuild_snapshots(
             config_id=int(config_row["id"]),
             snapshot_date=snapshot_date,
             holdings_state=holdings_state,
             base_currency=base_currency,
             exchange_rate=exchange_rate,
-            available_cash_base=available_cash_base,
+            available_cash_base=available_cash_base, prices=prices, conn=conn,
         )
 
         self.config_repo.update_fund(
             config_id=int(config_row["id"]),
             total_fund=total_fund_base,
-            available_cash=available_cash_base,
+            available_cash=available_cash_base, commit=False, conn=conn,
         )
         self.holding_repo.cleanup_old_snapshots(
             config_id=int(config_row["id"]),
-            days=self.snapshot_retention_days,
+            days=self.snapshot_retention_days, commit=False, conn=conn,
         )
 
         return {
@@ -418,8 +419,8 @@ class PortfolioPipeline:
 
         today = self._today_kst().date().isoformat()
         existing = self.decision_repo.get_by_date(int(cfg["id"]), today)
-        if existing and existing.get("status") == "completed":
-            return {"status": "skipped", "reason": "already completed", "decision": existing}
+        if existing and existing.get("status") in {"completed", "partial_failed"}:
+            return {"status": "skipped", "reason": "already executed", "decision": existing}
 
         reports = self._load_today_reports(today)
         skipped_tickers = self._load_today_skipped_tickers(today)
@@ -448,42 +449,70 @@ class PortfolioPipeline:
         latest_holdings = self.holding_repo.list_latest(int(cfg["id"]))
         briefing = self.briefing_agent.generate_briefing(reports, latest_holdings)
         tickers = [str(item.get("ticker") or "").upper() for item in (briefing.get("items") or [])]
+        tickers.extend(str(row["ticker"]).upper() for row in latest_holdings)
         current_prices = self._fetch_current_prices(tickers)
         exchange_rate = self.exchange_rate_service.get_usd_krw()
+
+        base_currency = str(cfg.get("base_currency") or "KRW").upper()
+        buy_costs = {}
+        for ticker, price in current_prices.items():
+            currency, market = self._ticker_currency_market(ticker)
+            base_price = self._to_base(price, currency, base_currency, exchange_rate)
+            fee = self.fee_calculator.calculate(market, "buy", base_price, config=cfg)
+            buy_costs[ticker] = base_price + fee.amount
 
         plan_payload = self.pm_agent.decide_allocation(
             briefing=briefing,
             holdings=latest_holdings,
             available_cash=float(cfg.get("available_cash") or 0.0),
             exchange_rate=exchange_rate,
-            current_prices=current_prices,
+            base_currency=base_currency,
+            current_prices=buy_costs,
         )
 
-        decision_id = self.decision_repo.create(
-            portfolio_config_id=int(cfg["id"]),
-            decision_date=today,
-            briefing_summary=briefing,
-            allocation_plan=plan_payload.get("allocation_plan") or [],
-            rationale=plan_payload.get("rationale"),
-            total_fund_snapshot=float(cfg.get("total_fund") or 0.0),
-            available_cash_snapshot=float(cfg.get("available_cash") or 0.0),
-            exchange_rate_snapshot=exchange_rate,
-            status="executing",
-            error_message=None,
-        )
+        decision_id = None
+        errors = []
 
-        execution = self._execute_trades(
-            decision_id=decision_id,
-            plan=plan_payload.get("allocation_plan") or [],
-            config_row=cfg,
-            exchange_rate=exchange_rate,
-        )
-        errors = execution.get("errors") or []
-        if errors:
-            status = "partial_failed" if execution.get("trade_ids") else "failed"
-            self.decision_repo.update_status(decision_id, status, error_message="; ".join(errors)[:1000])
-        else:
-            self.decision_repo.update_status(decision_id, "completed")
+        def execute_day(conn):
+            nonlocal cfg, decision_id, errors
+            cfg = conn.execute(
+                "SELECT * FROM portfolio_configs WHERE id=%s FOR UPDATE", (cfg["id"],)
+            ).fetchone()
+            if not cfg or cfg["status"] != "active":
+                raise RuntimeError("Portfolio configuration changed before execution")
+            prior = self.decision_repo.get_by_date(int(cfg["id"]), today)
+            if prior and (prior["status"] in {"completed", "partial_failed"} or self.trade_repo.list_by_decision(prior["id"])):
+                # A previous execution (including an interrupted legacy run) already filled orders.
+                return
+            decision_id = self.decision_repo.create(
+                portfolio_config_id=int(cfg["id"]),
+                decision_date=today,
+                briefing_summary=briefing,
+                allocation_plan=plan_payload.get("allocation_plan") or [],
+                rationale=plan_payload.get("rationale"),
+                total_fund_snapshot=float(cfg.get("total_fund") or 0.0),
+                available_cash_snapshot=float(cfg.get("available_cash") or 0.0),
+                exchange_rate_snapshot=exchange_rate,
+                status="executing",
+                error_message=None, commit=False, conn=conn,
+            )
+
+            execution = self._execute_trades(
+                decision_id=decision_id,
+                plan=plan_payload.get("allocation_plan") or [],
+                config_row=cfg,
+                exchange_rate=exchange_rate, snapshot_date=today, prices=current_prices, conn=conn,
+            )
+            errors = execution.get("errors") or []
+            if errors:
+                status = "partial_failed" if execution.get("trade_ids") else "failed"
+                self.decision_repo.update_status(decision_id, status, error_message="; ".join(errors)[:1000], commit=False, conn=conn)
+            else:
+                self.decision_repo.update_status(decision_id, "completed", commit=False, conn=conn)
+
+        self.db.execute_in_transaction(execute_day)
+        if decision_id is None:
+            return {"status": "skipped", "reason": "already executed", "decision": self.decision_repo.get_by_date(int(cfg["id"]), today)}
 
         decision = self.decision_repo.get_by_id(decision_id)
         return {
@@ -492,18 +521,6 @@ class PortfolioPipeline:
             "errors": errors,
             "decision": decision,
         }
-
-    @staticmethod
-    def _aggregate_weekly_totals(holdings: List[Dict[str, Any]]) -> Dict[str, float]:
-        by_date: Dict[str, float] = defaultdict(float)
-        for row in holdings:
-            snapshot = row.get("snapshot_date")
-            if hasattr(snapshot, "isoformat"):
-                key = snapshot.isoformat()
-            else:
-                key = str(snapshot)
-            by_date[key] += float(row.get("current_value_krw") or 0.0)
-        return dict(by_date)
 
     def run_weekly(self, config_id: Optional[int] = None) -> Dict[str, Any]:
         cfg = self._get_active_config(config_id)
@@ -520,14 +537,13 @@ class PortfolioPipeline:
         trades = self.trade_repo.list_by_week(int(cfg["id"]), week_start, week_end)
         holdings = self.holding_repo.list_by_date_range(int(cfg["id"]), week_start, week_end)
 
-        totals = self._aggregate_weekly_totals(holdings)
-        sorted_days = sorted(totals.keys())
-        total_return_pct: Optional[float] = None
-        if len(sorted_days) >= 2:
-            start_value = totals.get(sorted_days[0], 0.0)
-            end_value = totals.get(sorted_days[-1], 0.0)
-            if start_value > 0:
-                total_return_pct = ((end_value - start_value) / start_value) * 100.0
+        executed = [row for row in decisions if row["status"] in {"completed", "partial_failed"}]
+        total_return_pct = None
+        if executed:
+            opening_nav = float(executed[0].get("total_fund_snapshot") or 0.0)
+            closing_nav = cfg.get("total_fund")
+            if opening_nav > 0 and closing_nav is not None:
+                total_return_pct = (float(closing_nav) / opening_nav - 1) * 100
 
         reflection = self.reflector.reflect_weekly(
             config_id=int(cfg["id"]),

@@ -150,7 +150,7 @@ class PositionRepository:
         connection.execute(
             """
             UPDATE positions
-            SET stop_loss = %s, target = %s
+            SET stop_loss = COALESCE(%s, stop_loss), target = COALESCE(%s, target)
             WHERE id = %s
             """,
             (stop_loss, target, position_id),
@@ -164,7 +164,7 @@ class PositionRepository:
     def close_position(
         self,
         position_id: int,
-        return_pct: float,
+        return_pct: Optional[float],
         commit: bool = True,
         conn=None,
     ) -> None:
@@ -189,7 +189,7 @@ class PositionRepository:
             connection.commit()
 
         logger.info(
-            f"Closed position {position_id}: return {return_pct:.2f}%"
+            "Closed position %s: lifecycle return %s", position_id, return_pct
         )
 
 

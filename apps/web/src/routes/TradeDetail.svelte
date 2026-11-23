@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { params } from "svelte-spa-router";
+  import { params, querystring } from "svelte-spa-router";
   import {
     fetchPositionDetail,
     fetchPositions,
@@ -16,6 +16,7 @@
   import DOMPurify from "dompurify";
 
   type PositionMarket = {
+    position_id?: number;
     ticker: string;
     shares: number;
     avg_cost: number | null;
@@ -156,9 +157,15 @@
   let scrollContainerEl: HTMLDivElement;
   let chartSvgEl: SVGSVGElement;
 
-  /* pinch zoom state */
+  /* pinch zoom + touch gesture state */
   let pinchStartDist = 0;
   let pinchStartPW = DEFAULT_PW;
+  let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  let longPressActive = false;
+  let touchStartX = 0;
+  let touchStartY = 0;
+  const LONG_PRESS_MS = 280;
+  const MOVE_CANCEL_PX = 10;
 
   /* ── helpers ── */
   const mapDecision = (value?: string | null) => {
@@ -205,7 +212,16 @@
   };
 
   /* ── data loading ── */
-  const loadDetail = async (t: string) => {
+  let detailRequest = 0;
+  const loadDetail = async (t: string, query: string) => {
+    const requestId = ++detailRequest;
+    const selected = new URLSearchParams(query).get("position");
+    positionId = null;
+    summary = null;
+    positionOpenedAt = null;
+    avgCost = null;
+    trades = [];
+    reports = [];
     loading = true;
     error = "";
     resetChart();
@@ -215,6 +231,7 @@
           fetchPortfolioHoldings(),
           fetchPortfolioTrades(t, undefined, 100),
         ]);
+        if (requestId !== detailRequest) return;
         const h = holdingsRes as { holdings?: Array<{ ticker: string; shares: number; current_value_base?: number }> };
         const holding = h?.holdings?.find((x) => x.ticker.toUpperCase() === t.toUpperCase());
         portfolioHolding = holding ? { shares: holding.shares, current_value_base: holding.current_value_base } : null;
@@ -240,16 +257,22 @@
 
       tab = "report";
       const positionsMarket = (await fetchPositionsMarket()) as PositionMarket[];
-      summary = positionsMarket.find((p) => p.ticker.toLowerCase() === t.toLowerCase()) || null;
-
-      const active = (await fetchPositions("active")) as Array<{ id: number; ticker: string }>;
-      let target = active.find((p) => p.ticker.toLowerCase() === t.toLowerCase()) || null;
-      if (!target) {
+      if (requestId !== detailRequest) return;
+      const current = positionsMarket.find((p) => p.ticker.toUpperCase() === t);
+      let targetId = selected ? Number(selected) : current?.position_id;
+      if (!selected && !targetId) {
         const closed = (await fetchPositions("closed")) as Array<{ id: number; ticker: string }>;
-        target = closed.find((p) => p.ticker.toLowerCase() === t.toLowerCase()) || null;
+        if (requestId !== detailRequest) return;
+        targetId = closed.find((p) => p.ticker.toUpperCase() === t)?.id;
       }
-      if (!target) {
-        reports = (await fetchReportsByTicker(t)) as PositionDetail["reports"];
+      if (selected && (!Number.isSafeInteger(targetId) || Number(targetId) <= 0)) {
+        throw new Error("잘못된 포지션 번호입니다.");
+      }
+      summary = current && current.position_id === targetId ? current : null;
+      if (!targetId) {
+        const latest = (await fetchReportsByTicker(t)) as PositionDetail["reports"];
+        if (requestId !== detailRequest) return;
+        reports = latest;
         positionId = null;
         positionOpenedAt = null;
         portfolioHolding = null;
@@ -258,25 +281,29 @@
         return;
       }
 
-      positionId = target.id;
+
       portfolioHolding = null;
       portfolioTrades = [];
-      const detail = (await fetchPositionDetail(target.id)) as PositionDetail;
+      const detail = (await fetchPositionDetail(targetId)) as PositionDetail;
+      if (requestId !== detailRequest) return;
+      if (detail.position.ticker.toUpperCase() !== t) throw new Error("종목과 포지션이 일치하지 않습니다.");
+      positionId = targetId;
       reports = detail.reports || [];
       trades = detail.trades || [];
       positionOpenedAt = detail.position?.opened_at || null;
       avgCost = detail.position?.avg_cost ?? summary?.avg_cost ?? null;
       selectedHistoryId = "";
     } catch (err) {
+      if (requestId !== detailRequest) return;
       error = formatErrorMessage(err, "데이터를 불러오지 못했습니다.");
     } finally {
-      loading = false;
+      if (requestId === detailRequest) loading = false;
     }
   };
 
   $: if ($params?.ticker) { ticker = String($params.ticker).toUpperCase(); }
-  $: if (ticker && $viewMode) { loadDetail(ticker); }
-  $: totalAmount = summary?.avg_cost ? summary.avg_cost * summary.shares : null;
+  $: if (ticker && $viewMode) { loadDetail(ticker, $querystring ?? ""); }
+  $: totalAmount = summary?.current_price != null ? summary.current_price * summary.shares : null;
 
   /* ── chart building ── */
   const resetChart = () => {
@@ -305,10 +332,13 @@
     if (validPoints.length === 0) return;
 
     const len = points.length;
-    const pw = pointWidth;
     const PAD_LEFT = 6;   // small left padding inside scrollable area
     const PAD_RIGHT = 8;
-    const chartW = PAD_LEFT + len * pw + PAD_RIGHT;
+
+    // Fill available mobile viewport width first, then allow horizontal expansion by zoom.
+    const minInnerW = Math.max(0, (scrollContainerEl?.clientWidth || 0) - PAD_LEFT - PAD_RIGHT);
+    const effectivePw = Math.max(pointWidth, len > 0 ? minInnerW / len : pointWidth);
+    const chartW = PAD_LEFT + len * effectivePw + PAD_RIGHT;
     svgWidth = chartW;
 
     /* price range */
@@ -324,8 +354,8 @@
     chartBaselineY = PAD_TOP + PLOT_H;
 
     const toY = (v: number) => PAD_TOP + (1 - (v - yMin) / range) * PLOT_H;
-    const toX = (idx: number) => PAD_LEFT + idx * pw + pw / 2;
-    const barW = Math.min(pw * 0.65, 10);
+    const toX = (idx: number) => PAD_LEFT + idx * effectivePw + effectivePw / 2;
+    const barW = Math.min(effectivePw * 0.65, 10);
 
     /* line points */
     const mapped: MappedPoint[] = [];
@@ -498,18 +528,18 @@
     renderChart();
   }
 
-  const loadChart = async () => {
-    if (!positionId) return;
+  const loadChart = async (id: number) => {
     chartLoading = true;
     try {
-      const res = (await fetchPositionGraph(positionId, 30)) as { points: OHLCPoint[] };
+      const res = (await fetchPositionGraph(id, 30)) as { points: OHLCPoint[] };
+      if (id !== positionId) return;
       rawPoints = res.points || [];
       // scroll to the right (latest data) after render
       requestAnimationFrame(() => {
         if (scrollContainerEl) scrollContainerEl.scrollLeft = scrollContainerEl.scrollWidth;
       });
-    } catch { resetChart(); }
-    finally { chartLoading = false; }
+    } catch { if (id === positionId) resetChart(); }
+    finally { if (id === positionId) chartLoading = false; }
   };
 
   /* ── crosshair ── */
@@ -535,31 +565,90 @@
   const handleChartLeave = () => { crosshair = { ...crosshair, visible: false }; };
 
   /* ── pinch zoom ── */
+  const clearLongPressTimer = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
+
   const handleTouchStart = (e: TouchEvent) => {
     if (e.touches.length === 2) {
+      clearLongPressTimer();
+      longPressActive = false;
       e.preventDefault();
       const dx = e.touches[1].clientX - e.touches[0].clientX;
       const dy = e.touches[1].clientY - e.touches[0].clientY;
       pinchStartDist = Math.sqrt(dx * dx + dy * dy);
       pinchStartPW = pointWidth;
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      touchStartX = t.clientX;
+      touchStartY = t.clientY;
+      longPressActive = false;
+      clearLongPressTimer();
+      longPressTimer = setTimeout(() => {
+        longPressActive = true;
+        handleChartPointer(e);
+      }, LONG_PRESS_MS);
     }
   };
 
   const handleTouchMove = (e: TouchEvent) => {
     if (e.touches.length === 2) {
+      clearLongPressTimer();
+      longPressActive = false;
       e.preventDefault();
+      if (!scrollContainerEl) return;
+
       const dx = e.touches[1].clientX - e.touches[0].clientX;
       const dy = e.touches[1].clientY - e.touches[0].clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const scale = dist / pinchStartDist;
-      pointWidth = Math.min(MAX_PW, Math.max(MIN_PW, Math.round(pinchStartPW * scale)));
-    } else if (e.touches.length === 1) {
-      handleChartPointer(e);
+
+      const prevSvgWidth = Math.max(1, svgWidth);
+      const nextPointWidth = Math.min(MAX_PW, Math.max(MIN_PW, Math.round(pinchStartPW * scale)));
+
+      // Keep pinch midpoint anchored while zooming (instead of always expanding from left edge).
+      const midClientX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const containerRect = scrollContainerEl.getBoundingClientRect();
+      const pinchX = Math.max(0, Math.min(containerRect.width, midClientX - containerRect.left));
+      const anchorRatio = (scrollContainerEl.scrollLeft + pinchX) / prevSvgWidth;
+
+      pointWidth = nextPointWidth;
+
+      requestAnimationFrame(() => {
+        if (!scrollContainerEl) return;
+        const nextSvgWidth = Math.max(1, svgWidth);
+        const target = anchorRatio * nextSvgWidth - pinchX;
+        const maxScroll = Math.max(0, nextSvgWidth - scrollContainerEl.clientWidth);
+        scrollContainerEl.scrollLeft = Math.max(0, Math.min(maxScroll, target));
+      });
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const moved = Math.abs(t.clientX - touchStartX) > MOVE_CANCEL_PX || Math.abs(t.clientY - touchStartY) > MOVE_CANCEL_PX;
+      if (moved && !longPressActive) {
+        clearLongPressTimer();
+      }
+
+      // Crosshair mode only after long press; otherwise keep native horizontal pan.
+      if (longPressActive) {
+        e.preventDefault();
+        handleChartPointer(e);
+      }
     }
   };
 
   const handleTouchEnd = (e: TouchEvent) => {
-    if (e.touches.length < 2) {
+    if (e.touches.length === 0) {
+      clearLongPressTimer();
+      longPressActive = false;
       crosshair = { ...crosshair, visible: false };
     }
   };
@@ -617,9 +706,20 @@
     selectedHistoryId = selectedHistoryId === reportId ? "" : reportId;
   };
 
-  onMount(() => { if (ticker) loadDetail(ticker); });
+  const handleResize = () => {
+    if (rawPoints.length > 0) renderChart();
+  };
 
-  $: if (positionId && positionOpenedAt) { loadChart(); }
+  onMount(() => {
+    window.addEventListener("resize", handleResize);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener("resize", handleResize);
+  });
+
+  $: if (positionId && positionOpenedAt) { loadChart(positionId); }
+  $: if (scrollContainerEl && rawPoints.length > 0) { renderChart(); }
 </script>
 
 <section class="page" id="page-trade">
@@ -627,9 +727,11 @@
     <div class="page-header">
       <button class="back-btn" on:click={() => history.back()}>&larr;</button>
       <h2>{ticker}</h2>
-      <span class={`pnl-banner ${summary && summary.return_pct >= 0 ? "pnl-pos" : "pnl-neg"}`}>
-        {summary ? formatPercent(summary.return_pct) : "-"}
-      </span>
+      {#if summary?.current_price != null && summary.avg_cost != null}
+        <span class={`pnl-banner ${summary.return_pct >= 0 ? "pnl-pos" : "pnl-neg"}`}>
+          {formatPercent(summary.return_pct)}
+        </span>
+      {/if}
     </div>
 
     <div class={`price-panel ${chartTrend}`}>
@@ -713,8 +815,9 @@
               on:mousemove={handleChartPointer}
               on:mouseleave={handleChartLeave}
               on:touchstart={handleTouchStart}
-              on:touchmove|preventDefault={handleTouchMove}
+              on:touchmove={handleTouchMove}
               on:touchend={handleTouchEnd}
+              on:touchcancel={handleTouchEnd}
             >
               <defs>
                 <linearGradient id="chart-area-gradient" x1="0" y1="0" x2="0" y2="1">

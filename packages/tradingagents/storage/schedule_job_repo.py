@@ -87,6 +87,16 @@ class ScheduleJobRepository:
 
         logger.info(f"Updated schedule_job {job_id} status to {status}")
 
+    def fail_if_running(self, job_id: int, message: str, detail: str) -> None:
+        """Record failures before analysis starts without overwriting specific outcomes."""
+        connection = self.db.get_connection()
+        connection.execute(
+            """UPDATE schedule_jobs SET status='failed', error_type='analysis_failure',
+               error_message=%s, error_detail=%s WHERE id=%s AND status='running'""",
+            (message, detail, job_id),
+        )
+        connection.commit()
+
     def get_latest_by_config(
         self, schedule_config_id: int
     ) -> Optional[Dict[str, Any]]:

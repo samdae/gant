@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -74,37 +75,6 @@ def _config_to_response(config: Dict[str, Any]) -> Dict[str, Any]:
 def _ticker_currency(ticker: str) -> str:
     tk = str(ticker).upper()
     return "KRW" if tk.endswith(".KS") or tk.endswith(".KQ") else "USD"
-
-
-def _fetch_prices(tickers: List[str]) -> Dict[str, Optional[float]]:
-    if not tickers:
-        return {}
-    try:
-        import yfinance as yf
-
-        data = yf.download(
-            tickers=tickers,
-            period="5d",
-            interval="1d",
-            auto_adjust=False,
-            progress=False,
-            group_by="ticker",
-        )
-    except Exception:
-        return {ticker: None for ticker in tickers}
-
-    if data is None or data.empty:
-        return {ticker: None for ticker in tickers}
-
-    multi = len(tickers) > 1
-    prices: Dict[str, Optional[float]] = {}
-    for ticker in tickers:
-        try:
-            series = data[ticker]["Close"] if multi else data["Close"]
-            prices[ticker] = float(series.iloc[-1])
-        except Exception:
-            prices[ticker] = None
-    return prices
 
 
 @router.get("/portfolio/config")
@@ -211,9 +181,13 @@ async def get_portfolio_holdings(_: bool = Depends(check_portfolio_read_access))
             "holdings": [],
         }
 
-    exchange_rate = ExchangeRateService().get_usd_krw()
+    from tradingagents.api.routes import _fetch_latest_prices
+
     tickers = [str(h["ticker"]).upper() for h in holdings]
-    prices = _fetch_prices(tickers)
+    exchange_rate, prices = await asyncio.gather(
+        asyncio.to_thread(ExchangeRateService().get_usd_krw),
+        asyncio.to_thread(_fetch_latest_prices, tickers),
+    )
 
     base_currency = str(config.get("base_currency") or "KRW").upper()
     snapshot_date = holdings[0].get("snapshot_date")

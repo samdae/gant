@@ -21,6 +21,7 @@ Integration Flow:
 import asyncio
 import os
 import logging
+import math
 import threading
 import time
 import traceback
@@ -243,6 +244,16 @@ class TickerScheduler:
     def start(self):
         self._self_heal()
         self._init_weekly_schedule()
+        self.scheduler.add_job(
+            self._evaluate_memory_outcomes,
+            CronTrigger(hour=16, minute=10, timezone="Asia/Seoul"),
+            id="rag_outcomes",
+            name="Evaluate matured lesson decisions",
+            next_run_time=datetime.now(ZoneInfo("Asia/Seoul")),
+            coalesce=True,
+            max_instances=1,
+            replace_existing=True,
+        )
         self.scheduler.start()
         logger.info("TickerScheduler started")
         import pytz
@@ -251,6 +262,12 @@ class TickerScheduler:
             nft = job.trigger.get_next_fire_time(None, datetime.now(job.trigger.timezone))
             nft_kst = nft.astimezone(kst) if nft else None
             logger.info(f"  Job '{job.id}': next={nft_kst:%Y-%m-%d %H:%M KST}" if nft_kst else f"  Job '{job.id}': next=None")
+
+    def _evaluate_memory_outcomes(self):
+        from tradingagents.rag_validator.outcome import evaluate_pending
+
+        result = evaluate_pending(self.db, as_of=datetime.now(ZoneInfo("Asia/Seoul")))
+        logger.info("Lesson outcome evaluation: %s", result)
 
     def stop(self):
         self.scheduler.shutdown(wait=False)
@@ -463,11 +480,11 @@ class TickerScheduler:
         self,
         ticker: str,
         schedule_job_id: Optional[int] = None,
-    ):
+    ) -> bool:
         lock = self._ticker_locks.get(ticker)
         if not lock:
             logger.error(f"No lock found for ticker {ticker}, skipping cycle")
-            return
+            return False
 
         acquired = lock.acquire(timeout=600)
         if not acquired:
@@ -475,8 +492,10 @@ class TickerScheduler:
                 f"Failed to acquire lock for {ticker} within 600s, "
                 "skipping this cycle"
             )
-            return
+            return False
 
+        retry_attempt = schedule_job_id in self._requeued_job_ids
+        job_repo = None
         try:
             from tradingagents.storage import ScheduleConfigRepository, ScheduleJobRepository
 
@@ -486,8 +505,13 @@ class TickerScheduler:
             cfg = config_repo.get_by_ticker(ticker)
             if not cfg:
                 logger.error(f"No schedule_config for {ticker}")
-                return
+                return False
             config_id = cfg["id"]
+            if schedule_job_id is not None:
+                latest = job_repo.get_latest_by_config(config_id)
+                if not latest or latest["id"] != schedule_job_id or latest["status"] == "done":
+                    logger.info("%s: Ignoring stale or completed job %s", ticker, schedule_job_id)
+                    return False
 
             latest_market_date = self._get_latest_market_date(ticker)
             if latest_market_date is None:
@@ -502,7 +526,7 @@ class TickerScheduler:
                         "system", "skipped", "No market data available",
                     )
                 logger.info(f"{ticker}: Skipped (no market data)")
-                return
+                return False
 
             last_data_date = cfg.get("last_data_date")
             if hasattr(last_data_date, "isoformat"):
@@ -523,11 +547,15 @@ class TickerScheduler:
                 logger.info(
                     f"{ticker}: Skipped (no new data since {latest_market_date})"
                 )
-                return
+                return False
 
             if schedule_job_id is None:
-                cycle = config_repo.increment_cycle(ticker)
-                schedule_job_id = job_repo.create(config_id, cycle, "running")
+                def start_job(conn):
+                    nonlocal schedule_job_id
+                    cycle = config_repo.increment_cycle(ticker, commit=False, conn=conn)
+                    schedule_job_id = job_repo.create(config_id, cycle, "running", commit=False, conn=conn)
+
+                self.db.execute_in_transaction(start_job)
             else:
                 job_repo.update_status(
                     schedule_job_id,
@@ -547,15 +575,17 @@ class TickerScheduler:
                     ticker,
                     schedule_job_id,
                 )
-
-                config_repo.update_last_data_date(ticker, latest_market_date)
+                return True
             finally:
                 reset_schedule_context(context_tokens)
 
         except Exception as e:
-            logger.error(f"Analysis cycle failed for {ticker}: {e}")
+            if schedule_job_id is not None and job_repo is not None:
+                job_repo.fail_if_running(schedule_job_id, str(e)[:500], traceback.format_exc())
+            logger.exception("Analysis cycle failed for %s", ticker)
+            raise
         finally:
-            if schedule_job_id is not None:
+            if retry_attempt:
                 self._requeued_job_ids.discard(schedule_job_id)
             try:
                 self._on_all_tickers_complete()
@@ -623,6 +653,19 @@ class TickerScheduler:
                             ticker, current_price, trade_date,
                             commit=False, conn=conn,
                         )
+                        quantity = float(active_position["shares"])
+                        report_id = report_repo.create(
+                            schedule_job_id, position_id, {
+                                "decision_position": "SELL", "portfolio_action": "SELL",
+                                "portfolio_shares": quantity,
+                                "portfolio_rationale": f"Automatic liquidation: {reason}",
+                            }, commit=False, conn=conn,
+                        )
+                        trade_repo.create(
+                            position_id, report_id, "SELL", quantity, current_price,
+                            ticker_currency, trade_date, commit=False, conn=conn,
+                        )
+                        config_repo.update_last_data_date(ticker, trade_date, commit=False, conn=conn)
                         job_repo.update_status(
                             schedule_job_id, "done",
                             error_type=None, error_message=None, error_detail=None,
@@ -632,21 +675,7 @@ class TickerScheduler:
                     self.db.execute_in_transaction(auto_close_txn)
                     logger.info(f"{ticker}: Auto-liquidation complete, running reflection...")
 
-                    try:
-                        refl = self.graph.reflector.reflect_on_position(
-                            position_id=position_id, db=self.db, ticker=ticker,
-                        )
-                        if refl:
-                            from tradingagents.storage import ReflectionRepository
-                            ReflectionRepository(self.db).create(
-                                position_id=position_id,
-                                reflection=refl["reflection"],
-                                key_lessons=refl["key_lessons"],
-                                outcome=refl["outcome"],
-                                return_pct=refl["return_pct"],
-                            )
-                    except Exception as e:
-                        logger.error(f"{ticker}: Post-liquidation reflection failed: {e}")
+                    self._reflect_closed_position(ticker, position_id)
                     return
 
         position_summary = self.trade_manager.get_position_summary(ticker)
@@ -654,7 +683,7 @@ class TickerScheduler:
         try:
             logger.info(f"{ticker}: Collecting macro context...")
             from tradingagents.dataflows.macro_collector import collect_macro_context
-            macro_ctx = collect_macro_context(ticker, cfg.get("market", "us"))
+            macro_ctx = collect_macro_context(ticker, cfg.get("market", "us"), trade_date)
             if macro_ctx:
                 logger.info(f"{ticker}: Macro context collected ({len(macro_ctx)} chars)")
 
@@ -663,7 +692,7 @@ class TickerScheduler:
                 final_state, (pipeline_decision, pipeline_strategy) = self.graph.propagate(
                     company_name=ticker,
                     trade_date=trade_date,
-                    current_position="",
+                    current_position=position_summary,
                     macro_context=macro_ctx,
                 )
             except (DecisionParseError, DataVendorError):
@@ -733,8 +762,6 @@ class TickerScheduler:
                     "ignoring invalid PA strategy values"
                 )
                 pa_sl, pa_tgt = None, None
-            if position_id and (pa_sl is not None or pa_tgt is not None):
-                position_repo.update_stop_loss_target(position_id, pa_sl, pa_tgt)
 
             logger.info(f"{ticker}: Generating summaries...")
             summaries = self.summary_agent.summarize(final_state, pa_opinion)
@@ -742,6 +769,10 @@ class TickerScheduler:
             summaries["portfolio_action"] = action
             summaries["portfolio_shares"] = shares
             summaries["portfolio_rationale"] = pa_opinion
+            if pipeline_strategy and "forecast_5s" in pipeline_strategy:
+                forecast = pipeline_strategy["forecast_5s"]
+                forecast["market_data_date"] = trade_date
+                forecast["judge_model"] = self.config.get("deep_think_llm")
             summaries["pipeline_strategy"] = pipeline_strategy
             summaries["rag_used"] = portfolio_decision.get("rag_used", False)
             summaries["rag_docs"] = portfolio_decision.get("rag_docs")
@@ -803,6 +834,9 @@ class TickerScheduler:
                     if position:
                         position_id = position.get("id")
 
+                if position_id and not is_closed and (pa_sl is not None or pa_tgt is not None):
+                    position_repo.update_stop_loss_target(position_id, pa_sl, pa_tgt, commit=False, conn=conn)
+                config_repo.update_last_data_date(ticker, trade_date, commit=False, conn=conn)
                 report_id = report_repo.create(
                     schedule_job_id=schedule_job_id,
                     position_id=position_id,
@@ -837,76 +871,13 @@ class TickerScheduler:
                             conn=conn,
                         )
                     else:
-                        logger.warning(f"{ticker}: Trade record skipped (no position id)")
+                        raise RuntimeError(f"{ticker}: Executed trade has no position id")
 
             self.db.execute_in_transaction(transaction_operations)
             logger.info(f"{ticker}: Transaction committed")
 
             if is_closed:
-                reflection_result = None
-                reflection_metadata = {
-                    "sector": None,
-                    "industry": None,
-                    "market": None,
-                }
-                try:
-                    logger.info(f"{ticker}: Position closed, running reflection...")
-                    reflection_result = self.graph.reflector.reflect_on_position(
-                        position_id=position_id,
-                        db=self.db,
-                        ticker=ticker,
-                    )
-                    logger.info(f"{ticker}: Reflection complete")
-                except Exception as e:
-                    logger.error(f"{ticker}: Reflection failed: {e}")
-                    reflection_result = None
-
-                if reflection_result:
-                    try:
-                        import yfinance as yf
-                        info = yf.Ticker(ticker).info
-                        reflection_metadata["sector"] = info.get("sector")
-                        reflection_metadata["industry"] = info.get("industry")
-                        reflection_metadata["market"] = (
-                            info.get("fullExchangeName") or info.get("exchange")
-                        )
-                        if info.get("quoteType") == "CRYPTOCURRENCY":
-                            reflection_metadata["market"] = "Crypto"
-                    except Exception:
-                        pass
-
-                    from tradingagents.storage import ReflectionRepository
-                    reflection_repo = ReflectionRepository(self.db)
-                    reflection_id = reflection_repo.create(
-                        position_id=position_id,
-                        reflection=reflection_result["reflection"],
-                        key_lessons=reflection_result["key_lessons"],
-                        outcome=reflection_result["outcome"],
-                        return_pct=reflection_result["return_pct"],
-                        market=reflection_metadata["market"],
-                        sector=reflection_metadata["sector"],
-                        industry=reflection_metadata["industry"],
-                    )
-
-                    try:
-                        metadata = {
-                            "position_id": position_id,
-                            "ticker": ticker,
-                            "outcome": reflection_result["outcome"],
-                            "return_pct": reflection_result["return_pct"],
-                            "sector": reflection_metadata["sector"],
-                            "industry": reflection_metadata["industry"],
-                            "market": reflection_metadata["market"],
-                        }
-                        self.graph.memory.add_situations(
-                            [(reflection_result["key_lessons"], reflection_result["reflection"])],
-                            metadata=metadata,
-                            reflection_id=reflection_id,
-                            store_sqlite=False,
-                        )
-                        logger.info(f"{ticker}: Reflection stored to ChromaDB")
-                    except Exception as e:
-                        logger.warning(f"{ticker}: ChromaDB storage failed: {e}")
+                self._reflect_closed_position(ticker, position_id)
 
             logger.info(f"{ticker}: Analysis cycle complete")
 
@@ -950,6 +921,76 @@ class TickerScheduler:
             raise
 
     # ── helpers ──
+
+    def _reflect_closed_position(self, ticker, position_id):
+        reflection_result = None
+        reflection_metadata = {
+            "sector": None,
+            "industry": None,
+            "market": None,
+        }
+        try:
+            logger.info(f"{ticker}: Position closed, running reflection...")
+            reflection_result = self.graph.reflector.reflect_on_position(
+                position_id=position_id,
+                db=self.db,
+                ticker=ticker,
+            )
+            logger.info(f"{ticker}: Reflection complete")
+        except Exception as e:
+            logger.error(f"{ticker}: Reflection failed: {e}")
+            reflection_result = None
+
+        if reflection_result:
+            try:
+                import yfinance as yf
+                info = yf.Ticker(ticker).info
+                reflection_metadata["sector"] = info.get("sector")
+                reflection_metadata["industry"] = info.get("industry")
+                reflection_metadata["market"] = (
+                    info.get("fullExchangeName") or info.get("exchange")
+                )
+                if info.get("quoteType") == "CRYPTOCURRENCY":
+                    reflection_metadata["market"] = "Crypto"
+            except Exception:
+                pass
+
+            try:
+                from tradingagents.storage import ReflectionRepository
+                reflection_repo = ReflectionRepository(self.db)
+                reflection_id = reflection_repo.create(
+                    position_id=position_id,
+                    reflection=reflection_result["reflection"],
+                    key_lessons=reflection_result["key_lessons"],
+                    outcome=reflection_result["outcome"],
+                    return_pct=reflection_result["return_pct"],
+                    market=reflection_metadata["market"],
+                    sector=reflection_metadata["sector"],
+                    industry=reflection_metadata["industry"],
+                )
+            except Exception:
+                logger.exception("%s: Failed to store post-trade reflection", ticker)
+                return
+
+            try:
+                metadata = {
+                    "position_id": position_id,
+                    "ticker": ticker,
+                    "outcome": reflection_result["outcome"],
+                    "return_pct": reflection_result["return_pct"],
+                    "sector": reflection_metadata["sector"],
+                    "industry": reflection_metadata["industry"],
+                    "market": reflection_metadata["market"],
+                }
+                self.graph.memory.add_situations(
+                    [(reflection_result["key_lessons"], reflection_result["reflection"])],
+                    metadata=metadata,
+                    reflection_id=reflection_id,
+                    store_sqlite=False,
+                )
+                logger.info(f"{ticker}: Reflection stored to ChromaDB")
+            except Exception as e:
+                logger.warning(f"{ticker}: ChromaDB storage failed: {e}")
 
     def _log_schedule_job(
         self,
@@ -1032,6 +1073,8 @@ class TickerScheduler:
                     except Exception:
                         data_date = datetime.now().date()
 
+                if not math.isfinite(price) or price <= 0:
+                    raise ValueError("Close price must be positive and finite")
                 return price, data_date.isoformat()
 
             except Exception as e:

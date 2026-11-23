@@ -1,5 +1,11 @@
 from .alpha_vantage_common import _make_api_request, format_datetime_for_api
 
+def _end_time(value):
+    if isinstance(value, str) and len(value) == 10:
+        return format_datetime_for_api(value + " 23:59")
+    return format_datetime_for_api(value)
+
+
 def get_news(ticker, start_date, end_date) -> dict[str, str] | str:
     """Returns live and historical market news & sentiment data from premier news outlets worldwide.
 
@@ -17,7 +23,7 @@ def get_news(ticker, start_date, end_date) -> dict[str, str] | str:
     params = {
         "tickers": ticker,
         "time_from": format_datetime_for_api(start_date),
-        "time_to": format_datetime_for_api(end_date),
+        "time_to": _end_time(end_date),
     }
 
     return _make_api_request("NEWS_SENTIMENT", params)
@@ -45,7 +51,7 @@ def get_global_news(curr_date, look_back_days: int = 7, limit: int = 50) -> dict
     params = {
         "topics": "financial_markets,economy_macro,economy_monetary",
         "time_from": format_datetime_for_api(start_date),
-        "time_to": format_datetime_for_api(curr_date),
+        "time_to": _end_time(curr_date),
         "limit": str(limit),
     }
 

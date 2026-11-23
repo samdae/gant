@@ -4,6 +4,8 @@ Constructs the LLM prompt based on position status (open vs closed)
 with all relevant reports, trades, and context injected.
 """
 
+import json
+from tradingagents.storage.trade_repo import closed_position_return
 from typing import Dict, Any, List, Optional
 
 
@@ -36,7 +38,6 @@ def build_retrospective_prompt(
 
 **시스템 규칙:**
 - stop_loss 또는 target 도달 시 자동 청산
-- ±30% 도달 시에도 자동 청산
 
 **분석 사이클 히스토리 ({len(reports)}건):**
 {reports_text}
@@ -68,20 +69,21 @@ def build_retrospective_prompt(
 
 3. **전략 파라미터 판단**: PA가 손절선, 목표가, 포지션 사이즈를 결정하거나 변경했다면, 그 시점의 데이터 대비 적절했는가?
 
-4. **RAG 경험 활용**: [RAG 경험 사용됨]으로 표시된 사이클이 있다면, PA가 과거 경험을 판단에 적절히 반영했는가? 경험을 무시하고 판단한 부분이 있는가?
+4. **RAG 경험 활용**: [RAG 경험 제시됨]으로 표시된 사이클이 있다면, PA가 과거 경험을 판단에 적절히 반영했는가? 경험을 무시하고 판단한 부분이 있는가?
 
 5. **중간 경고**: 현재까지 PA의 판단 패턴에서 우려되는 점이 있는가? (예: 손실 구간에서의 비합리적 낙관, 특정 신호에 대한 과잉 반응 등)
 
 한국어로 작성하세요. 반드시 구체적 사이클 번호, PA의 실제 행동, 근거 데이터를 인용하여 분석하세요.
 """
     else:
-        return_pct = position.get("return_pct") or 0
-        outcome = "승" if return_pct >= 0 else "패"
+        return_pct = closed_position_return(trades, position["currency"])
+        outcome = "확인 불가" if return_pct is None else ("승" if return_pct >= 0 else "패")
+        return_text = "체결 내역 불완전" if return_pct is None else f"{return_pct:+.2f}%"
 
         return common_context + f"""
 **최종 결과: CLOSED**
 - 청산일: {position.get('closed_at', 'N/A')}
-- 실현 손익: {return_pct:+.2f}%
+- 실현 손익: {return_text}
 - 결과: {outcome}
 
 ---
@@ -102,7 +104,7 @@ def build_retrospective_prompt(
 
 3. **전략 파라미터 판단**: PA가 설정한 손절선, 목표가, 포지션 사이즈는 해당 시점 데이터 대비 적절했는가? 변경이 있었다면 그 근거는?
 
-4. **RAG 경험 활용**: [RAG 경험 사용됨]으로 표시된 사이클이 있다면, PA가 과거 경험을 적절히 반영했는가? 경험이 없었던 사이클에서, 있었다면 판단이 달라졌을 가능성이 있는가?
+4. **RAG 경험 활용**: [RAG 경험 제시됨]으로 표시된 사이클이 있다면, PA가 과거 경험을 적절히 반영했는가? 경험이 없었던 사이클에서, 있었다면 판단이 달라졌을 가능성이 있는가?
 
 5. **PA 편향 패턴**: 전체 사이클을 통해 PA의 판단에 반복되는 편향이 있는가?
    - 확증 편향: 보유 방향을 지지하는 신호만 수용하고 반대 신호를 무시
@@ -116,15 +118,36 @@ def build_retrospective_prompt(
 """
 
 
+def report_memories(report):
+    if not report.get("rag_used"):
+        return []
+    payload = report.get("rag_docs")
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except ValueError:
+            return []
+    memories = payload.get("memories") if isinstance(payload, dict) else None
+    if not isinstance(memories, list):
+        return []
+    return [doc for doc in memories if isinstance(doc, dict)
+            and str(doc.get("reflection_id", "")).isascii()
+            and str(doc.get("reflection_id", "")).isdigit()
+            and int(doc["reflection_id"]) > 0 and doc.get("matched_situation")]
+
+
 def _format_reports(reports: List[Dict[str, Any]]) -> str:
     if not reports:
         return "(없음)"
 
     parts = []
-    for i, r in enumerate(reports, 1):
+    for r in sorted(reports, key=lambda row: (row["created_at"], row["id"])):
+        i = r.get("scheduled_cycle") or "?"
         rag_info = ""
         if r.get("rag_used"):
-            rag_info = " [RAG 경험 사용됨]"
+            rag_info = " [RAG 경험 제시됨] " + ", ".join(
+                f"#{doc['reflection_id']} {doc['matched_situation']}" for doc in report_memories(r)
+            )
 
         parts.append(f"""
 --- 사이클 {i} ({r.get('created_at', 'N/A')}){rag_info} ---

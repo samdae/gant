@@ -6,6 +6,7 @@ FR-026: READ public + WRITE authenticated model
 """
 
 import os
+import secrets
 import logging
 from fastapi import HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -46,8 +47,8 @@ def check_admin_token(credentials: HTTPAuthorizationCredentials = Security(secur
         )
 
     # Verify token
-    if credentials.credentials != admin_token:
-        logger.warning(f"Invalid token attempt: {credentials.credentials[:10]}...")
+    if not secrets.compare_digest(credentials.credentials.encode(), admin_token.encode()):
+        logger.warning("Invalid admin authentication attempt")
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing token"
@@ -67,6 +68,6 @@ def check_portfolio_read_access(
     if not admin_token:
         raise HTTPException(status_code=500, detail="Server authentication not configured")
 
-    if credentials is None or credentials.credentials != admin_token:
+    if credentials is None or not secrets.compare_digest(credentials.credentials.encode(), admin_token.encode()):
         raise HTTPException(status_code=401, detail="Invalid or missing token")
     return True

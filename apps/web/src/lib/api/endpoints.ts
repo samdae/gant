@@ -14,8 +14,18 @@ export const fetchPositions = (status?: string) =>
   getJson(status ? `/positions?status=${encodeURIComponent(status)}` : "/positions");
 export const fetchQueue = () => getJson("/queue");
 export const fetchScheduleSummary = () => getJson("/schedules/summary");
+export type LiveMessage = {
+  agent?: string;
+  status?: string;
+  message?: string;
+  step?: number;
+  phase?: string;
+  total_steps?: number;
+  timestamp?: string;
+};
+
 export const fetchLiveEvents = (ticker: string, limit = 50) =>
-  getJson(`/live/${encodeURIComponent(ticker)}/events?limit=${limit}`);
+  getJson<LiveMessage[]>(`/live/${encodeURIComponent(ticker)}/events?limit=${limit}`);
 export const fetchActivity = () => getJson("/activity");
 export const fetchSchedules = () => getJson("/schedules?limit=100");
 export const fetchScheduleCycles = (ticker: string, limit = 1, cursor?: number) => {

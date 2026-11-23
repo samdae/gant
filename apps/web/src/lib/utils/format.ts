@@ -49,13 +49,13 @@ const formatErrorMessage = (error: unknown, fallback = "Request failed.") => {
   if (error instanceof Error) {
     const message = error.message || fallback;
     if (/failed to fetch/i.test(message)) {
-      return "Network error. Please try again.";
+      return "서버에 연결할 수 없습니다. 연결 상태를 확인해 주세요.";
     }
     if (/(unauthorized|forbidden|401|403)/i.test(message)) {
-      return "Authorization required. Please sign in again.";
+      return "관리자 인증이 필요합니다. 토큰을 확인해 주세요.";
     }
     if (/(not found|404)/i.test(message)) {
-      return "Requested data was not found.";
+      return "요청한 데이터를 찾을 수 없습니다.";
     }
     return message;
   }

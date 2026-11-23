@@ -1,3 +1,4 @@
+from .fundamental_dates import unavailable_snapshot
 from .alpha_vantage_common import _make_api_request
 
 
@@ -7,11 +8,15 @@ def get_fundamentals(ticker: str, curr_date: str = None) -> str:
 
     Args:
         ticker (str): Ticker symbol of the company
-        curr_date (str): Current date you are trading at, yyyy-mm-dd (not used for Alpha Vantage)
+        curr_date (str): Current date you are trading at, yyyy-mm-dd
 
     Returns:
         str: Company overview data including financial ratios and key metrics
     """
+    unavailable = unavailable_snapshot(ticker, curr_date)
+    if unavailable:
+        return unavailable
+
     params = {
         "symbol": ticker,
     }
@@ -26,11 +31,15 @@ def get_balance_sheet(ticker: str, freq: str = "quarterly", curr_date: str = Non
     Args:
         ticker (str): Ticker symbol of the company
         freq (str): Reporting frequency: annual/quarterly (default quarterly) - not used for Alpha Vantage
-        curr_date (str): Current date you are trading at, yyyy-mm-dd (not used for Alpha Vantage)
+        curr_date (str): Current date you are trading at, yyyy-mm-dd
 
     Returns:
         str: Balance sheet data with normalized fields
     """
+    unavailable = unavailable_snapshot(ticker, curr_date)
+    if unavailable:
+        return unavailable
+
     params = {
         "symbol": ticker,
     }
@@ -45,11 +54,15 @@ def get_cashflow(ticker: str, freq: str = "quarterly", curr_date: str = None) ->
     Args:
         ticker (str): Ticker symbol of the company
         freq (str): Reporting frequency: annual/quarterly (default quarterly) - not used for Alpha Vantage
-        curr_date (str): Current date you are trading at, yyyy-mm-dd (not used for Alpha Vantage)
+        curr_date (str): Current date you are trading at, yyyy-mm-dd
 
     Returns:
         str: Cash flow statement data with normalized fields
     """
+    unavailable = unavailable_snapshot(ticker, curr_date)
+    if unavailable:
+        return unavailable
+
     params = {
         "symbol": ticker,
     }
@@ -64,11 +77,15 @@ def get_income_statement(ticker: str, freq: str = "quarterly", curr_date: str = 
     Args:
         ticker (str): Ticker symbol of the company
         freq (str): Reporting frequency: annual/quarterly (default quarterly) - not used for Alpha Vantage
-        curr_date (str): Current date you are trading at, yyyy-mm-dd (not used for Alpha Vantage)
+        curr_date (str): Current date you are trading at, yyyy-mm-dd
 
     Returns:
         str: Income statement data with normalized fields
     """
+    unavailable = unavailable_snapshot(ticker, curr_date)
+    if unavailable:
+        return unavailable
+
     params = {
         "symbol": ticker,
     }

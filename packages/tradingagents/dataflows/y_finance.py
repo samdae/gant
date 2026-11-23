@@ -1,9 +1,10 @@
+from .fundamental_dates import unavailable_snapshot
 from typing import Annotated
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import yfinance as yf
 import os
-from .stockstats_utils import StockstatsUtils
+from .stockstats_utils import StockstatsUtils, load_price_window
 from .config import get_config
 
 def get_YFin_data_online(
@@ -12,14 +13,18 @@ def get_YFin_data_online(
     end_date: Annotated[str, "End date in yyyy-mm-dd format"],
 ):
 
-    datetime.strptime(start_date, "%Y-%m-%d")
-    datetime.strptime(end_date, "%Y-%m-%d")
+    start = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    if end < start:
+        raise ValueError("end_date precedes start_date")
 
     # Create ticker object
     ticker = yf.Ticker(symbol.upper())
 
     # Fetch historical data for the specified date range
-    data = ticker.history(start=start_date, end=end_date)
+    data = ticker.history(start=start_date, end=(end + timedelta(days=1)).isoformat())
+    if not data.empty:
+        data = data.loc[(data.index.date >= start) & (data.index.date <= end)].copy()
 
     # Check if data is empty
     if data.empty:
@@ -139,50 +144,37 @@ def get_stock_stats_indicators_window(
     before = curr_date_dt - relativedelta(days=look_back_days)
 
     # Optimized: Get stock data once and calculate indicators for all dates
-    try:
-        config = get_config()
-        download_buffer = int(config.get("stock_download_buffer_days", 300))
-        download_days = max(look_back_days + download_buffer, 1)
+    config = get_config()
+    download_buffer = int(config.get("stock_download_buffer_days", 300))
+    download_days = max(look_back_days + download_buffer, 1)
 
-        indicator_data = _get_stock_stats_bulk(
-            symbol,
-            indicator,
-            curr_date,
-            download_days,
-        )
-        
-        # Generate the date range we need
-        current_dt = curr_date_dt
-        date_values = []
-        
-        while current_dt >= before:
-            date_str = current_dt.strftime('%Y-%m-%d')
-            
-            # Look up the indicator value for this date
-            if date_str in indicator_data:
-                indicator_value = indicator_data[date_str]
-            else:
-                indicator_value = "N/A: Not a trading day (weekend or holiday)"
-            
-            date_values.append((date_str, indicator_value))
-            current_dt = current_dt - relativedelta(days=1)
-        
-        # Build the result string
-        ind_string = ""
-        for date_str, value in date_values:
-            ind_string += f"{date_str}: {value}\n"
-        
-    except Exception as e:
-        print(f"Error getting bulk stockstats data: {e}")
-        # Fallback to original implementation if bulk method fails
-        ind_string = ""
-        curr_date_dt = datetime.strptime(curr_date, "%Y-%m-%d")
-        while curr_date_dt >= before:
-            indicator_value = get_stockstats_indicator(
-                symbol, indicator, curr_date_dt.strftime("%Y-%m-%d")
-            )
-            ind_string += f"{curr_date_dt.strftime('%Y-%m-%d')}: {indicator_value}\n"
-            curr_date_dt = curr_date_dt - relativedelta(days=1)
+    indicator_data = _get_stock_stats_bulk(
+        symbol,
+        indicator,
+        curr_date,
+        download_days,
+    )
+
+    # Generate the date range we need
+    current_dt = curr_date_dt
+    date_values = []
+
+    while current_dt >= before:
+        date_str = current_dt.strftime('%Y-%m-%d')
+
+        # Look up the indicator value for this date
+        if date_str in indicator_data:
+            indicator_value = indicator_data[date_str]
+        else:
+            indicator_value = "N/A: Not a trading day (weekend or holiday)"
+
+        date_values.append((date_str, indicator_value))
+        current_dt = current_dt - relativedelta(days=1)
+
+    # Build the result string
+    ind_string = ""
+    for date_str, value in date_values:
+        ind_string += f"{date_str}: {value}\n"
 
     result_str = (
         f"## {indicator} values from {before.strftime('%Y-%m-%d')} to {end_date}:\n\n"
@@ -212,7 +204,6 @@ def _get_stock_stats_bulk(
     
     config = get_config()
     online = config["data_vendors"]["technical_indicators"] != "local"
-    stale_days = int(config.get("stock_cache_stale_days", 3))
     
     if not online:
         # Local data path
@@ -227,47 +218,7 @@ def _get_stock_stats_bulk(
         except FileNotFoundError:
             raise Exception("Stockstats fail: Yahoo Finance data not fetched yet!")
     else:
-        # Online data fetching with caching
-        today_date = pd.Timestamp.today()
-        curr_date_dt = pd.to_datetime(curr_date)
-        
-        end_date = today_date
-        start_date = today_date - pd.DateOffset(days=download_days)
-        start_date_str = start_date.strftime("%Y-%m-%d")
-        end_date_str = end_date.strftime("%Y-%m-%d")
-        
-        os.makedirs(config["data_cache_dir"], exist_ok=True)
-        
-        data_file = os.path.join(
-            config["data_cache_dir"],
-            f"{symbol}-YFin-data-{download_days}d.csv",
-        )
-
-        data = None
-        if os.path.exists(data_file):
-            data = pd.read_csv(data_file)
-            data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
-            data = data.dropna(subset=["Date"])
-            last_date = data["Date"].max()
-            if last_date is not None and last_date >= (today_date - pd.DateOffset(days=stale_days)):
-                pass
-            else:
-                data = None
-
-        if data is None:
-            data = yf.download(
-                symbol,
-                start=start_date_str,
-                end=end_date_str,
-                multi_level_index=False,
-                progress=False,
-                auto_adjust=True,
-            )
-            data = data.reset_index()
-            data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
-            data = data.dropna(subset=["Date"])
-            data.to_csv(data_file, index=False)
-        
+        data = load_price_window(symbol, pd.Timestamp(curr_date), download_days, config)
         df = wrap(data)
         df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
     
@@ -317,9 +268,13 @@ def get_stockstats_indicator(
 
 def get_fundamentals(
     ticker: Annotated[str, "ticker symbol of the company"],
-    curr_date: Annotated[str, "current date (not used for yfinance)"] = None
+    curr_date: Annotated[str, "as-of date for the fundamental snapshot"] = None
 ):
     """Get company fundamentals overview from yfinance."""
+    unavailable = unavailable_snapshot(ticker, curr_date)
+    if unavailable:
+        return unavailable
+
     try:
         ticker_obj = yf.Ticker(ticker.upper())
         info = ticker_obj.info
@@ -375,9 +330,13 @@ def get_fundamentals(
 def get_balance_sheet(
     ticker: Annotated[str, "ticker symbol of the company"],
     freq: Annotated[str, "frequency of data: 'annual' or 'quarterly'"] = "quarterly",
-    curr_date: Annotated[str, "current date (not used for yfinance)"] = None
+    curr_date: Annotated[str, "as-of date for the fundamental snapshot"] = None
 ):
     """Get balance sheet data from yfinance."""
+    unavailable = unavailable_snapshot(ticker, curr_date)
+    if unavailable:
+        return unavailable
+
     try:
         ticker_obj = yf.Ticker(ticker.upper())
         
@@ -405,9 +364,13 @@ def get_balance_sheet(
 def get_cashflow(
     ticker: Annotated[str, "ticker symbol of the company"],
     freq: Annotated[str, "frequency of data: 'annual' or 'quarterly'"] = "quarterly",
-    curr_date: Annotated[str, "current date (not used for yfinance)"] = None
+    curr_date: Annotated[str, "as-of date for the fundamental snapshot"] = None
 ):
     """Get cash flow data from yfinance."""
+    unavailable = unavailable_snapshot(ticker, curr_date)
+    if unavailable:
+        return unavailable
+
     try:
         ticker_obj = yf.Ticker(ticker.upper())
         
@@ -435,9 +398,13 @@ def get_cashflow(
 def get_income_statement(
     ticker: Annotated[str, "ticker symbol of the company"],
     freq: Annotated[str, "frequency of data: 'annual' or 'quarterly'"] = "quarterly",
-    curr_date: Annotated[str, "current date (not used for yfinance)"] = None
+    curr_date: Annotated[str, "as-of date for the fundamental snapshot"] = None
 ):
     """Get income statement data from yfinance."""
+    unavailable = unavailable_snapshot(ticker, curr_date)
+    if unavailable:
+        return unavailable
+
     try:
         ticker_obj = yf.Ticker(ticker.upper())
         

@@ -17,3 +17,4 @@ packages/tradingagents/memory/*.db
 tradingagents.egg-info/
 .idea
 apps/web/dist/
+.env.dev

@@ -21,7 +21,7 @@ API 키가 필요 없습니다. Google OAuth 기반으로 동작합니다.
 |---|---|---|
 | `gemini-cli` (기본) | 터미널에서 `gemini` 1회 실행 → OAuth 인증 | gemini-2.5-pro / gemini-2.5-flash |
 | `antigravity` | 자체 OAuth 플로우 (~/.antigravity_tokens.json) | gemini-3-pro-high / gemini-3-flash |
-| `codex` | oauth-codex 패키지 PKCE 인증 | gpt-5.3-codex |
+| `codex` | 공식 Codex SDK와 ChatGPT 로그인 | CODEX_MODEL (기본 gpt-6.2-sol) |
 
 프로바이더 변경은 환경변수 `LLM_PROVIDER`로 설정합니다.
 
@@ -337,10 +337,10 @@ uv run python scripts/reset_db.py --confirm --keep-chroma
 
 > `--confirm` 플래그 없이는 실행되지 않습니다 (안전장치).
 
-### DB 구조 (14 테이블)
+### DB 구조 (15개 테이블)
 
 ```
-[기본 9테이블]
+[종목 분석·검증 10개 테이블]
 schedule_configs       — 티커별 설정 (통화, 자금, 시장, 주기)
 schedule_jobs          — 사이클별 실행 기록
 schedule_job_events    — 에이전트별 진행 이벤트
@@ -349,7 +349,8 @@ reports                — 분석 리포트 (13개 요약 컬럼 + rag_used/rag_
 trades                 — 개별 BUY/SELL 기록
 reflections            — 청산 시 반성문 (Postgres FTS + ChromaDB 벡터 + usefulness_score)
 retrospective_analyses — 회고분석 결과 (v4, v6에서 analysis_accuracy/rag_contribution 추가)
-rag_validation_results — RAG Validator 평가 결과 (v5)
+rag_validation_results — 사람이 검토하는 문서별 인용 판정
+rag_outcome_evaluations — 리포트별 교훈 효과(−1·0·+1)와 두 판단의 관측 근거
 
 [포트폴리오 5테이블 — v6]
 portfolio_configs      — 포트폴리오 설정 (자금, 통화, 수수료, 활성화)
@@ -358,6 +359,8 @@ portfolio_trades       — 포트폴리오 매매 기록 (환율·수수료 포�
 portfolio_holdings     — 티커별 보유 현황 (비중, KRW 시가)
 portfolio_reflections  — 주간 회고 (배분 품질 평가)
 ```
+
+교훈별 관측 점수는 별도 집계 뷰 `rag_outcome_scores`로 읽는다. 배포 후 스케줄러가 활성화되면 시작 시점과 매일 16:10(한국시간)에 두 판단의 다음 거래일 시가와 다섯 번째 거래일 종가를 확인한다. 미국·한국 거래소에 상장된 주식·ETF만 평가한다. BTC-USD처럼 시장 코드가 us로 저장된 암호화폐도 제외한다. 비용과 배당은 계산에서 제외하며 주식분할이 있는 관측 구간은 평가하지 않는다.
 
 ## 8. 프로젝트 구조
 
@@ -372,8 +375,8 @@ portfolio_reflections  — 주간 회고 (배분 품질 평가)
 │   ├── virtual_trade/          # TradeManager + PortfolioAgent + PortfolioManagerAgent + FeeCalculator + ExchangeRate
 │   ├── scheduler/              # APScheduler + CronTrigger + PortfolioPipeline
 │   ├── storage/                # Postgres 13 Repository (기본 8 + 포트폴리오 5)
-│   ├── memory/                 # HybridMemory (FTS + ChromaDB + usefulness 필터 + 컬렉션 분리)
-│   ├── rag_validator/          # RAG Validator (usefulness_score ±1 평가)
+│   ├── memory/                 # HybridMemory (FTS + ChromaDB + 체결 근거 검증 + 컬렉션 분리)
+│   ├── rag_validator/          # RAG Validator (경험 채택·배제 근거 기록)
 │   ├── retrospective/          # 회고분석 서비스 (v6: analysis_accuracy/rag_contribution 배점)
 │   ├── llm_clients/            # gemini-cli, antigravity, codex
 │   ├── dataflows/              # yfinance, Alpha Vantage
@@ -412,7 +415,7 @@ Database URL is not configured
 
 - `gemini-cli`: 터미널에서 `gemini` 명령어 1회 실행하여 OAuth 인증
 - `antigravity`: `~/.antigravity_tokens.json` 토큰 파일 확인
-- `codex`: `oauth-codex` 패키지의 PKCE 인증 플로우 완료 필요
+- `codex`: Windows 사용자 계정에서 `codex login`으로 ChatGPT 로그인
 
 ### 분석이 실행되지 않음 (스케줄러)
 

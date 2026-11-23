@@ -113,6 +113,7 @@
     cycleError = "";
     try {
       const response = (await fetchScheduleCycles(t, 20)) as ScheduleCycle[];
+      if (t !== ticker) return;
       cycles = response || [];
       if (cycles.length > 0) {
         selectedCycleId = String(cycles[0].id);
@@ -123,9 +124,10 @@
         stepStates = {};
       }
     } catch (err) {
+      if (t !== ticker) return;
       cycleError = formatErrorMessage(err, "회차를 불러오지 못했습니다.");
     } finally {
-      loading = false;
+      if (t === ticker) loading = false;
     }
   };
 
@@ -135,6 +137,8 @@
       stepStates = {};
       return;
     }
+    const cycleId = selectedCycleId;
+    const eventTicker = ticker;
     loadingEvents = true;
     eventsError = "";
     try {
@@ -143,13 +147,14 @@
         Number(selectedCycleId),
         200,
       )) as ScheduleEvent[];
-      seedEvents(response || []);
+      if (eventTicker === ticker && cycleId === selectedCycleId) seedEvents(response || []);
     } catch (err) {
+      if (eventTicker !== ticker || cycleId !== selectedCycleId) return;
       eventsError = formatErrorMessage(err, "회차 이벤트를 불러오지 못했습니다.");
       events = [];
       stepStates = {};
     } finally {
-      loadingEvents = false;
+      if (eventTicker === ticker && cycleId === selectedCycleId) loadingEvents = false;
     }
   };
 
@@ -188,15 +193,14 @@
           {:else if cycles.length === 0}
             <div class="empty-state">회차가 없습니다.</div>
           {:else}
-            <label class="form-label">
-              회차
-              <SelectMenu
+            <div class="form-label"><label for="cycle-select">회차</label>
+            <SelectMenu id="cycle-select"
                 value={selectedCycleId}
                 options={cycleOptions}
                 placeholder="회차 선택"
                 on:change={(event) => handleCycleChange(event.detail)}
               />
-            </label>
+            </div>
             {#if selectedCycle()}
               <div class="stat-row">
                 <span class="stat-label">주기</span>

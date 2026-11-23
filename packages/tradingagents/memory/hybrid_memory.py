@@ -12,6 +12,7 @@ Storage:
 
 import os
 import logging
+import re
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict, Any
 
@@ -254,9 +255,9 @@ class HybridMemory:
                         "reflection_id": reflection_id,
                         "recommendation": recommendation,
                         "source_collection": self.collection_name,
-                        **metadata,
+                        **{key: value for key, value in metadata.items() if value is not None},
                     }
-                    self.chroma_collection.add(
+                    self.chroma_collection.upsert(
                         documents=[situation],  # Embed key_lessons for semantic search
                         ids=[doc_id],
                         metadatas=[metadata_payload],
@@ -290,7 +291,7 @@ class HybridMemory:
                 name=collection_name,
                 metadata={"hnsw:space": "cosine"},
             )
-            collection.add(
+            collection.upsert(
                 documents=[matched_situation],
                 ids=[f"reflection_{int(document_id)}"],
                 metadatas=[
@@ -299,7 +300,7 @@ class HybridMemory:
                         "recommendation": recommendation,
                         "source_table": source_table,
                         "source_collection": collection_name,
-                        **metadata,
+                        **{key: value for key, value in metadata.items() if value is not None},
                     }
                 ],
             )
@@ -329,7 +330,7 @@ class HybridMemory:
                 "usefulness_score": 50.0,
                 "created_at": row.get("created_at"),
             }
-        return self.reflection_repo.get_by_id(reflection_id)
+        return self.reflection_repo.get_verified_memory(reflection_id)
 
     def _search_portfolio_fts(self, query: str, limit: int = 10) -> List[Tuple[int, float]]:
         try:
@@ -352,6 +353,23 @@ class HybridMemory:
         except Exception as exc:
             logger.warning("Portfolio FTS search failed: %s", exc)
             return []
+
+    def _rank_close_matches(self, rows, source_table):
+        if source_table != "reflections" or len(rows) < 2:
+            return rows
+        scores = self.reflection_repo.outcome_scores([doc_id for doc_id, _ in rows])
+        if not scores:
+            return rows
+        ranked = []
+        i = 0
+        while i < len(rows):
+            anchor = rows[i][1]
+            j = i + 1
+            while j < len(rows) and abs(rows[j][1] - anchor) <= 0.01 * abs(anchor):
+                j += 1
+            ranked.extend(sorted(rows[i:j], key=lambda row: scores.get(row[0], 50), reverse=True))
+            i = j
+        return ranked
 
     def get_memories(
         self,
@@ -399,19 +417,11 @@ class HybridMemory:
             self.last_query_had_results = False
             return []
 
-        # FR-052: Keep top-3 by relevance (RRF), then filter/sort by usefulness.
-        fused_results = fused_results[:3]
-        filtered_results, usefulness_map = self._apply_usefulness_filter(
-            fused_results,
-            top_k=n_matches,
-        )
-        if not filtered_results:
-            self.last_query_had_results = False
-            return []
-
         # Build final results (FR-029: include metadata + labels)
         results = []
-        for reflection_id, rrf_score in filtered_results:
+        for reflection_id, rrf_score in self._rank_close_matches(fused_results[:3], self.source_table):
+            if len(results) >= n_matches:
+                break
             # Get reflection from DB
             reflection = self._get_document_by_id(reflection_id)
             if not reflection:
@@ -444,9 +454,7 @@ class HybridMemory:
                     "market": reflection.get("market"),
                     "sector": reflection.get("sector"),
                     "industry": reflection.get("industry"),
-                    "usefulness_score": usefulness_map.get(
-                        int(reflection.get("id")), 50.0
-                    ),
+                    "usefulness_score": reflection.get("usefulness_score", 50.0),
                     "source_collection": self.collection_name,
                 },
             })
@@ -456,40 +464,11 @@ class HybridMemory:
 
         return results
 
-    def _apply_usefulness_filter(
-        self,
-        fused_results: List[Tuple[int, float]],
-        top_k: int,
-    ) -> tuple:
-        """Filter by usefulness and return (top-k results, usefulness_map).
-
-        Returns:
-            Tuple of (filtered_results, usefulness_map) to avoid duplicate DB queries.
-        """
-        if not fused_results:
-            return [], {}
-
-        reflection_ids = [doc_id for doc_id, _ in fused_results]
-        if self.source_table == "reflections":
-            usefulness_map = self.reflection_repo.get_usefulness_scores(reflection_ids)
-        else:
-            usefulness_map = {int(reflection_id): 50.0 for reflection_id in reflection_ids}
-
-        filtered = []
-        for reflection_id, rrf_score in fused_results:
-            usefulness = usefulness_map.get(reflection_id, 50.0)
-            if self.source_table == "reflections" and usefulness < 40:
-                continue
-            filtered.append((reflection_id, rrf_score, usefulness))
-
-        filtered.sort(key=lambda x: (x[2], x[1]), reverse=True)
-        limit = max(int(top_k), 1)
-        return [(reflection_id, score) for reflection_id, score, _ in filtered[:limit]], usefulness_map
-
     def _fts_retrieve(
         self,
         query: str,
-        n_results: int = 10
+        n_results: int = 10,
+        source_table: Optional[str] = None,
     ) -> List[Tuple[int, float]]:
         """Retrieve top-n reflections using Postgres FTS.
 
@@ -500,9 +479,15 @@ class HybridMemory:
             Empty list if FTS search fails
         """
         try:
-            if self.source_table == "portfolio_reflections":
+            if (source_table or self.source_table) == "portfolio_reflections":
                 return self._search_portfolio_fts(query, limit=n_results)
             results_dicts = self.reflection_repo.search_fts(query, limit=n_results)
+            if not results_dicts:
+                pa_query = re.match(r"^([A-Z0-9.^=-]+) analysis: (.+)", query, re.S)
+                if pa_query:
+                    results_dicts = self.reflection_repo.search_ticker_lessons(
+                        pa_query[1], pa_query[2], n_results
+                    )
             return [(r["id"], float(r.get("ts_rank", 0.0))) for r in results_dicts]
 
         except Exception as e:
@@ -622,6 +607,26 @@ class HybridMemory:
             )
             return []
 
+    def _verified_collection_hits(self, query, collection, source_table, limit):
+        pool_size = max(3, limit)
+        seen = set()
+        count = 0
+        for search in ("vector", "fts"):
+            if search == "vector":
+                rows = self._vector_retrieve_from_collection(query, pool_size, collection)
+            else:
+                rows = self._fts_retrieve(query, pool_size, source_table=source_table)
+            for reflection_id, score in self._rank_close_matches(rows, source_table):
+                if reflection_id in seen:
+                    continue
+                seen.add(reflection_id)
+                doc = self._get_document_by_id(reflection_id, source_table=source_table)
+                if doc:
+                    yield doc, score
+                    count += 1
+                    if count >= limit:
+                        return
+
     def get_memories_cross(
         self,
         query: str,
@@ -631,27 +636,15 @@ class HybridMemory:
         secondary_k: int,
     ) -> List[Dict[str, Any]]:
         """Cross-collection retrieval for portfolio mode."""
-        primary = self._vector_retrieve_from_collection(
-            query=query,
-            n_results=max(int(primary_k), 0),
-            collection_name=primary_collection,
-        )
-        secondary = self._vector_retrieve_from_collection(
-            query=query,
-            n_results=max(int(secondary_k), 0),
-            collection_name=secondary_collection,
-        )
-
         candidates = []
-        for source_collection, rows in (
-            (primary_collection, primary),
-            (secondary_collection, secondary),
+        for source_collection, limit in (
+            (primary_collection, primary_k),
+            (secondary_collection, secondary_k),
         ):
+            if limit <= 0:
+                continue
             source_table = self._source_table_from_collection(source_collection)
-            for reflection_id, score in rows:
-                doc = self._get_document_by_id(reflection_id, source_table=source_table)
-                if not doc:
-                    continue
+            for doc, score in self._verified_collection_hits(query, source_collection, source_table, limit):
                 outcome = doc.get("outcome")
                 if outcome == "win":
                     outcome_label = "[✅ 성공 사례]"

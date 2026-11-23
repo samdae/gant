@@ -11,13 +11,7 @@
     const query = hash.slice(queryIndex + 1);
     const params = new URLSearchParams(query);
     const returnTo = params.get("return");
-    if (!returnTo) return "#/";
-    try {
-      const decoded = decodeURIComponent(returnTo);
-      return decoded.startsWith("#/") ? decoded : "#/";
-    } catch {
-      return "#/";
-    }
+    return returnTo?.startsWith("#/") ? returnTo : "#/";
   };
 
   const save = () => {

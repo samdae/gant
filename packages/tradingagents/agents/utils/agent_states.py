@@ -1,6 +1,7 @@
 from typing import Annotated, Sequence
 from datetime import date, timedelta, datetime
 from typing_extensions import TypedDict, Optional
+from typing_extensions import NotRequired
 from langgraph.prebuilt import ToolNode
 from langgraph.graph import END, StateGraph, START, MessagesState
 
@@ -46,6 +47,7 @@ class RiskDebateState(TypedDict):
 
 
 class AgentState(MessagesState):
+    debate_depth: NotRequired[int]
     company_of_interest: Annotated[str, "Company that we are interested in trading"]
     trade_date: Annotated[str, "What date we are trading at"]
 

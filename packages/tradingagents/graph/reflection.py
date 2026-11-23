@@ -2,6 +2,7 @@
 
 from typing import Dict, Any, Optional
 from langchain_core.language_models import BaseChatModel
+from tradingagents.storage.trade_repo import closed_position_return
 import logging
 import time
 
@@ -49,6 +50,8 @@ class Reflector:
 3. **Key Lessons (가장 중요)**
    - 잘된 점과 원인
    - 잘못된 점과 원인
+   - 당시 관찰한 사실과 사후 해석을 구분하고 근거 사이클 또는 체결을 명시
+   - 다음에 적용할 조건과 적용을 보류할 반례를 Key Lessons에 함께 작성
    - 재발 방지를 위한 구체 패턴
    - 섹터/시장 맥락에서 중요한 포인트
    - 리스크 관리 인사이트
@@ -111,8 +114,6 @@ class Reflector:
             raise ValueError(f"Position {position_id} is not closed (status={position['status']})")
 
         ticker = ticker or position["ticker"]
-        return_pct = position.get("return_pct", 0.0)
-        outcome = "win" if return_pct >= 0 else "loss"
 
         # 2. Get all reports for this position (전 사이클 요약)
         reports = report_repo.get_by_position(position_id)
@@ -123,6 +124,12 @@ class Reflector:
         trades = trade_repo.get_by_position(position_id)
         if not trades:
             raise ValueError(f"No trades found for position {position_id}")
+
+        return_pct = closed_position_return(trades, position["currency"])
+        if return_pct is None:
+            raise ValueError(f"Incomplete fill history for closed position {position_id}")
+        outcome = "win" if return_pct >= 0 else "loss"
+        position = {**position, "return_pct": return_pct}
 
         # 4. Build comprehensive context for LLM
         context = self._build_reflection_context(
@@ -206,8 +213,8 @@ class Reflector:
 
         # Analysis cycles (reports) - include key summaries only
         context += f"\n**Analysis Cycles** ({len(reports)} total):\n\n"
-        for i, report in enumerate(reports, 1):
-            context += f"--- Cycle {i} ({report['created_at']}) ---\n\n"
+        for report in sorted(reports, key=lambda row: (row["created_at"], row["id"])):
+            context += f"--- Cycle {report.get('scheduled_cycle') or '?'} ({report['created_at']}) ---\n\n"
 
             if report.get('market_report'):
                 context += f"Market: {report['market_report'][:300]}...\n\n"

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { createPortfolioConfig } from "../lib/api/endpoints";
   import { formatErrorMessage } from "../lib/utils/format";
   import { portfolioRefreshTrigger } from "../stores/mode";
@@ -6,13 +7,16 @@
   export let onClose: () => void;
   export let onActivated: () => void;
 
+  let dialog: HTMLDialogElement;
+  onMount(() => dialog.showModal());
+
   let capital = 100000000;
   let currency: "KRW" | "USD" = "KRW";
   let loading = false;
   let error = "";
 
   async function handleActivate() {
-    if (capital <= 0) {
+    if (!Number.isFinite(capital) || capital <= 0) {
       error = "초기 자본을 입력해 주세요.";
       return;
     }
@@ -23,7 +27,7 @@
         initial_capital: capital,
         base_currency: currency,
         fee_enabled: true,
-        reset_fund_to_initial: true,
+        reset_fund_to_initial: false,
       });
       portfolioRefreshTrigger.set(Date.now());
       onActivated();
@@ -35,9 +39,9 @@
   }
 </script>
 
-<div class="modal-backdrop" on:click={onClose} on:keydown={(e) => e.key === "Escape" && onClose()} role="button" tabindex="-1">
-  <div class="modal" on:click|stopPropagation>
-    <h3>포트폴리오 모드 활성화</h3>
+<dialog bind:this={dialog} class="modal" aria-labelledby="activate-title"
+  on:cancel={(event) => { event.preventDefault(); if (!loading) onClose(); }}>
+    <h3 id="activate-title">포트폴리오 모드 활성화</h3>
     <p class="modal-desc">공유 자금 풀로 전체 티커를 리밸런싱합니다. 활성화하시겠습니까?</p>
 
     <div class="form-group">
@@ -53,8 +57,8 @@
     </div>
 
     <div class="form-group">
-      <label>기준 통화</label>
-      <div class="currency-options">
+      <span id="currency-label">기준 통화</span>
+      <div class="currency-options" role="group" aria-labelledby="currency-label">
         <button
           class="currency-opt"
           class:active={currency === "KRW"}
@@ -80,21 +84,13 @@
         {loading ? "처리 중..." : "활성화"}
       </button>
     </div>
-  </div>
-</div>
+</dialog>
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 16px;
-  }
+  .modal::backdrop { background: rgba(0, 0, 0, 0.6); }
   .modal {
+    margin: auto;
+    color: inherit;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -114,7 +110,7 @@
   .form-group {
     margin-bottom: 16px;
   }
-  .form-group label {
+  .form-group label, #currency-label {
     display: block;
     font-size: 0.75rem;
     font-weight: 600;

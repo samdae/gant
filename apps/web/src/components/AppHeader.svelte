@@ -22,9 +22,9 @@
   async function checkPortfolioConfig() {
     try {
       const r = (await fetchPortfolioConfig()) as { config?: unknown };
-      if (!r.config) showActivateModal = true;
+      showActivateModal = $viewMode === "portfolio" && !r.config;
     } catch {
-      showActivateModal = true;
+      showActivateModal = false;
     }
   }
 
@@ -35,6 +35,7 @@
       checkPortfolioConfig();
       return;
     }
+    showActivateModal = false;
     viewMode.set("analysis");
   }
 

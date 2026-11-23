@@ -1,5 +1,9 @@
 # Backend Design Doc: TradingAgents Features (FR-013~063)
 
+> 2026-11-23 개정. 아래 v5의 회고 인용 판정에 따른 ±1 조정은 과거 설계다. 현재의 자동 점수 갱신은 같은 모델의 종목 PA가 기록한 두 판단의 관측 결과를 사용한다. 수동 RAG Validator는 인용 근거를 보존한다. 현재 계약은 spec.md의 ‘종목 PA의 경험 효과 평가’를 따른다.
+
+
+
 > Created: 2026-02-11
 > Updated: 2026-03-01
 > Service: tradingagents
@@ -26,7 +30,7 @@
 - 학습 효과: has_memory=true vs false 분석 결과 비교 가능
 - 스케줄: 지정 주기대로 자동 분석 실행, 1시간 이내 완료
 - 반성 품질: 청산 포지션마다 전 사이클 기반 반성문 생성
-- RAG 품질: usefulness_score < 40 문서 자동 배제, 쓰레기 경험 점진적 필터링
+- RAG 품질: 원장으로 검증한 후보에서 검색 관련도가 근접한 경우 관측 점수를 반영
 - RAG 맥락: 동일 market/sector 경험 우선 검색, 크로스 티커 노이즈 감소
 
 ---
@@ -71,8 +75,8 @@
 - **FR-047: Win/Loss 판정 기준 통일**
 - **FR-050: Codex(GPT-5.3) LLM Provider**
 - **FR-051: RAG 맥락 인식 검색 — 쿼리 enrichment (market/sector 텍스트 부착)**
-- **FR-052: RAG 검색 파이프라인 재설계 — RRF → usefulness 순서, usefulness_score, RAG_TOP_K**
-- **FR-053: RAG Validator — 회고분석 기반 문서별 usefulness_score ±1 자동 조정**
+- **FR-052: RAG 검색 파이프라인 재설계 — RRF 적합도, 원장 검증, 근접 후보의 관측 점수, RAG_TOP_K**
+- **FR-053: RAG Validator — 인용 근거를 기록하고 별도 일일 평가에서 관측 차이로 문서별 ±1 반영**
 - **FR-054: 매매검증 검색 — 키워드 + 시멘틱 이중 검색**
 - **FR-055: 회고분석 배점 — analysis_accuracy + rag_contribution 0~100 수치화** (Implemented)
 - **FR-056: 포트폴리오 모드 인프라 — 전용 테이블 5개, 활성화 설정** (Implemented)
@@ -246,7 +250,7 @@ dependencies:
 
 > 전체 DDL은 `tradingagents/storage/database.py` 참조
 > **FR-039**: `schedules` 테이블 제거. `schedule_configs` 확장, `schedule_jobs` FK 통합
-> v4에서 `retrospective_analyses` 추가, FR-053에서 `rag_validation_results` 추가 → 총 9테이블
+> v4에서 `retrospective_analyses` 추가, FR-053에서 `rag_validation_results` 추가 → 당시 총 9테이블. 현재는 `rag_outcome_evaluations`를 포함해 종목 분석·검증 테이블이 10개다.
 
 ```sql
 -- ① schedule_configs: 티커별 설정 (기존 + 확장)
@@ -499,10 +503,10 @@ CREATE INDEX idx_portfolio_reflections_config ON portfolio_reflections(portfolio
 CREATE UNIQUE INDEX idx_portfolio_reflections_week ON portfolio_reflections(portfolio_config_id, week_start_date);
 ```
 
-#### 테이블 관계 (9 기본 + 5 포트폴리오 = 14테이블)
+#### 테이블 관계 (종목 분석·검증 10 + 포트폴리오 5 = 물리 테이블 15개)
 
 ```
-[기본 9테이블]
+[종목 분석·검증 10개 테이블]
 schedule_configs ─── 1:N ─── schedule_jobs ─── 1:N ─── schedule_job_events
                              schedule_jobs ─── 1:1 ─── reports
                                                        reports ──N:1── positions ─── 1:N ─── trades
@@ -511,6 +515,8 @@ schedule_configs ─── 1:N ─── schedule_jobs ─── 1:N ─── s
                                                        reports ──1:N── trades (report_id FK)
 retrospective_analyses ─── 1:N ─── rag_validation_results
 rag_validation_results ──N:1── reflections
+reports ──1:0..1── rag_outcome_evaluations
+rag_outcome_evaluations ──N:1── reflections
 
 [포트폴리오 5테이블]
 portfolio_configs ─── 1:N ─── portfolio_decisions ─── 1:N ─── portfolio_trades
@@ -535,7 +541,7 @@ portfolio_configs ─── 1:N ─── portfolio_decisions ─── 1:N ─�
 #### Directory Structure (Runtime)
 
 ```
-Postgres DB (Supabase / Docker)  ← 14 테이블 (기본 9 + 포트폴리오 5)
+Postgres DB (Supabase / Docker)  ← 15개 테이블 (종목 분석·검증 10 + 포트폴리오 5), 집계 뷰 rag_outcome_scores
 ChromaDB                         ← 2 컬렉션 (analysis_reflections, portfolio_reflections)
 apps/web/dist/                   ← Svelte SPA 빌드 결과
 packages/tradingagents/
@@ -637,7 +643,7 @@ scripts/
 | 73 | FR-043 | executed_at 주입 | `storage/trade_repo.py` | `TradeRepository` | `create(..., executed_at=trade_date)` | `executed_at` 파라미터로 yfinance 데이터 기준일 주입. None이면 `datetime.now()` 폴백 | [x] |
 | 73-1 | FR-043 | opened_at 주입 | `storage/position_repo.py` | `PositionRepository` | `create(..., opened_at=date)` | `opened_at` 파라미터로 yfinance 데이터 기준일 주입. None이면 `datetime.now()` 폴백. `trade_manager.open_position()`에서 `date` 전달 | [x] |
 | 74 | FR-044 | CronTrigger 변경 | `scheduler/ticker_scheduler.py` | `TickerScheduler` | `_make_cron_trigger(market)` (staticmethod) | `kr` → `CronTrigger(hour=16, minute=30, timezone="Asia/Seoul")`, `us/기타` → `CronTrigger(hour=17, minute=0, timezone="US/Eastern")` | [x] |
-| 75 | FR-045 | 총손익 API | `api/routes.py` | — | `get_metrics` | `total_realized_pnl` = closed positions의 `SELL합-BUY합`, `total_unrealized_pnl` = active positions의 `(current_price-avg_cost)*shares`, `total_pnl` = 합산. 통화 필터 없음(FE에서 처리) | [x] |
+| 75 | FR-045 | 총손익 API | `api/routes.py` | — | `get_metrics` | `by_currency`에 통화별 체결 기준 실현손익과 보유분 평가손익을 반환. 각 매도 시점의 이동평균 원가와 대응되는 수량만 사용. 혼합 통화의 단일 손익은 null (spec §3.2.5) | [x] |
 | 76 | FR-046 | Closed positions API | `api/routes.py` | — | `get_positions_closed` | `GET /positions/closed` — `positions WHERE status='closed'` + `outcome` 계산 (`return_pct >= 0` → win) | [x] |
 | 77 | FR-047 | Win/Loss 판정 통일 | `graph/reflection.py:112`, `api/routes.py:518` | — | — | `return_pct >= 0` → `"win"`, `< 0` → `"loss"` 양쪽 일원화 | [x] |
 | 78 | FR-050 | Codex LLM 클라이언트 | `llm_clients/codex_client.py` | `ChatCodex(BaseChatModel)`, `CodexClient(BaseLLMClient)` | `_generate`, `bind_tools`, `_convert_messages` | `oauth_codex.Client` → `_engine.responses.create()`. Responses API + tool calling 지원. `gpt-5.3-codex` 단일 모델 | [x] |
@@ -900,45 +906,23 @@ PA: "반도체 대형주 모멘텀 진입 경험?"
          ▼
     2. 중복 제거 + RRF top-3 (적합성 커팅)
          ▼
-    3. usefulness_score < 40 하드 배제
-       → usefulness DESC 정렬
-       → top-K (env: RAG_TOP_K, 기본 1)
+    3. 원장으로 검증된 후보를 관련도로 정렬하고 근접 후보의 관측 점수를 반영해 최대 K건 선택
          ▼
-    4. 레이블 부착
-       [✅ 성공 사례] / [⚠️ 실패 사례]
-         ▼
-    PA에 주입 (파이프라인 60% + 경험 40%)
+    4. 적격 경험이 있을 때 같은 모델로 교훈을 가린 판단과 제공한 판단을 차례로 기록
 ```
 
-### 5.4 RAG Validator Flow (FR-053)
+### 5.4 종목 PA 경험 효과와 RAG Validator (FR-053)
 
-```
-회고분석 완료 (retrospective_analyses.status = 'completed')
-         │
-    사용자 또는 자동 트리거
-         │
-         ▼
-RAGValidatorService.validate(retrospective_id)
-         │
-    ┌────┴──────────────────────────────────────┐
-    │  retrospective_analyses.analysis_content  │
-    │  reports WHERE position_id = X            │
-    │  → rag_used=true인 reports의 rag_docs     │
-    │  → memories[*].reflection_id 추출         │
-    └────┬──────────────────────────────────────┘
-         │
-    각 RAG 문서별 LLM 평가:
-    "PA가 이 경험을 실제로 반영했는가?"
-    → verdict: reflected | not_reflected | ambiguous
-         │
-    ┌────┴────┐
-    │         │
-    ▼         ▼
- 점수 조정   리포트 생성
- ±1 UPDATE   효과 분석
- (0~100      보고서
-  클램핑)    (사람이 읽음)
-```
+| 경로 | 입력 | 결과 |
+| --- | --- | --- |
+| 일일 자동 평가 | 배포 이후 미리 기록한 두 PA 판단, 동일 시작 현금과 보유 수량, 다음 거래일 시가, 진입일 포함 다섯 번째 거래일 종가 | 동일한 가격으로 두 결정을 평가한다. 적용된 교훈 하나로 차이를 귀속할 수 있으면 최종 자산가치 차이의 부호에 따라 +1 또는 −1을 한 번만 반영한다. |
+| 수동 인용 검증 | 당시 PA가 받은 문서와 리포트에 남긴 적용 근거 | 문서별 채택·배제·불명 판정과 인용 근거를 사람이 검토하도록 기록한다. 이 판정의 점수 변화량은 0이다. |
+
+`rag_docs.decision_pair_v1`에 기록한 두 판단이 대상이다. 스케줄러 활성 시 시작 시점에 누락분을 확인하고 한국시간 매일 16:10에 재실행한다. `rag_outcome_evaluations.report_id`의 유일 제약이 중복 반영을 막는다. 교훈별 점수는 50 + 관측 변화량 합계이며 관련도 차이가 그룹 첫 후보 점수의 1% 이내인 문서 사이에서만 순위를 조정한다. 이전 인용 판정은 검색 점수에 합산하지 않는다.
+
+미국·한국 거래소에 상장된 주식·ETF만 평가한다. BTC-USD처럼 시장 코드가 us로 저장된 암호화폐도 제외한다. 비용과 배당은 계산에서 제외하며 주식분할이 있는 관측 구간은 평가하지 않는다.
+
+일일 평가는 동률과 귀속 불가 사례의 점수를 유지하며 누적 점수를 0~100으로 제한한다. 시세 미확인 사례는 다음 실행에서 다시 확인한다. 과거 리포트는 실제로 생성된 비교 판단이 없으므로 소급 평가 대상에서 제외한다.
 
 ### 5.3 Reflection Agent Flow (청산 시에만)
 

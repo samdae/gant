@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from typing import Any, Dict, List, Optional
 
@@ -33,6 +34,7 @@ class PortfolioManagerAgent:
         exchange_rate: float,
         rag_context: str = "",
         strict: bool = False,
+        base_currency: str = "KRW",
     ) -> str:
         brief_text = str(briefing.get("summary_text") or "")
         items = briefing.get("items") or []
@@ -64,7 +66,7 @@ class PortfolioManagerAgent:
 {holdings_text}
 
 [자금]
-- 가용 현금(기준통화): {float(available_cash):.2f}
+- 가용 현금({base_currency}): {float(available_cash):.2f}
 - 환율(USDKRW): {float(exchange_rate):.4f}
 
 {rag_context}
@@ -174,6 +176,8 @@ class PortfolioManagerAgent:
                 shares = float(item.get("shares", 0.0))
             except (TypeError, ValueError):
                 shares = 0.0
+            if not math.isfinite(shares) or not math.isfinite(allocation_pct):
+                raise ValueError(f"Non-finite allocation for {ticker}")
             plan.append(
                 {
                     "ticker": ticker,
@@ -267,7 +271,7 @@ class PortfolioManagerAgent:
             alloc_budget = max(float(available_cash), 0.0) * (float(item["allocation_pct"]) / 100.0)
             budget = min(cash_left, alloc_budget) if alloc_budget > 0 else cash_left
             adjusted = max(budget / price, 0.0)
-            item["shares"] = round(adjusted, 4)
+            item["shares"] = math.floor(adjusted * 10000) / 10000
             cash_left = max(cash_left - (item["shares"] * price), 0.0)
 
         return {
@@ -312,6 +316,7 @@ class PortfolioManagerAgent:
         available_cash: float,
         exchange_rate: float,
         current_prices: Optional[Dict[str, float]] = None,
+        base_currency: str = "KRW",
     ) -> Dict[str, Any]:
         """Return validated allocation plan + rationale."""
         rag_context = self._inject_rag(briefing)
@@ -326,6 +331,7 @@ class PortfolioManagerAgent:
                 exchange_rate=exchange_rate,
                 rag_context=rag_context,
                 strict=strict,
+                base_currency=base_currency,
             )
             try:
                 response = self.llm.invoke(prompt, config={"timeout": 180})

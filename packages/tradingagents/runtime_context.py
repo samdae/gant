@@ -1,5 +1,7 @@
 """Runtime context for schedule-scoped logging."""
 
+from contextlib import contextmanager
+from datetime import date
 from contextvars import ContextVar, Token
 from typing import Callable, Optional, Tuple
 
@@ -50,3 +52,21 @@ def log_schedule_error(
         error_logger(job_id, error_type, error_message, error_detail)
     except Exception:
         pass
+
+_analysis_date: ContextVar[Optional[date]] = ContextVar("analysis_date", default=None)
+
+
+@contextmanager
+def analysis_date_scope(trade_date: str):
+    token = _analysis_date.set(date.fromisoformat(trade_date))
+    try:
+        yield
+    finally:
+        _analysis_date.reset(token)
+
+
+def bounded_analysis_date(requested: Optional[str] = None) -> Optional[str]:
+    cutoff = _analysis_date.get()
+    if cutoff is None:
+        return requested
+    return min(date.fromisoformat(requested), cutoff).isoformat() if requested else cutoff.isoformat()

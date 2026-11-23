@@ -59,54 +59,35 @@ const request = async <T>(
   }
 
   const requestUrl = `${BASE_URL}${path}`;
-  const shouldCache = method === "GET" && !headers.has("Authorization");
+  const shouldCache = method === "GET" && !headers.has("Authorization") && /^\/reports(?:[/?]|$)/.test(path);
   const cacheKey = getCacheKey(requestUrl);
 
+  let res: Response;
   try {
-    const res = await fetch(requestUrl, {
-      ...options,
-      headers,
-    });
-
-    if (res.status === 401 || res.status === 403) {
-      clearToken();
-      redirectToAuth();
-      throw new Error("Unauthorized");
-    }
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || `Request failed: ${res.status}`);
-    }
-
-    if (res.status === 204) {
-      return {} as T;
-    }
-
-    const data = (await res.json()) as T;
-    if (shouldCache) {
-      writeCache(cacheKey, data);
-    }
-    return data;
+    res = await fetch(requestUrl, { ...options, headers, cache: "no-store" });
   } catch (err) {
-    if (shouldCache) {
-      const cached = readCache<T>(cacheKey);
-      if (cached) {
-        const isStale = Date.now() - cached.timestamp > CACHE_TTL_MS;
-        const isOnline = typeof navigator === "undefined" ? true : navigator.onLine;
-        if (!isOnline || !isStale) {
-          return cached.value;
-        }
-        return cached.value;
-      }
-    }
+    const cached = shouldCache ? readCache<T>(cacheKey) : null;
+    if (cached && Date.now() - cached.timestamp <= CACHE_TTL_MS) return cached.value;
     throw err;
   }
+
+  if (res.status === 401 || res.status === 403) {
+    if (get(tokenStore) === token) {
+      clearToken();
+      if (!window.location.hash.startsWith("#/auth")) redirectToAuth();
+    }
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) throw new Error((await res.text()) || `Request failed: ${res.status}`);
+  if (res.status === 204) return {} as T;
+  const data = (await res.json()) as T;
+  if (shouldCache) writeCache(cacheKey, data);
+  return data;
 };
 
 const getJson = <T>(path: string) => request<T>(path);
 
-const postJson = <T, U>(path: string, body: U) =>
+const postJson = <T, U>(path: string, body?: U) =>
   request<T>(path, {
     method: "POST",
     body: JSON.stringify(body),

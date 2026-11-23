@@ -146,6 +146,7 @@
   };
 
   const getAnalysisStatus = (row: PositionRow): { label: string; canAnalyze: boolean } => {
+    if (row.pos_status === "reset") return { label: "리셋", canAnalyze: false };
     if (!row.retro_status) return { label: "분석미완료", canAnalyze: true };
     if (row.retro_status === "pending" || row.retro_status === "running")
       return { label: "분석중", canAnalyze: false };

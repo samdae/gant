@@ -97,7 +97,7 @@ def broadcast_status(
     """Thread-safe broadcast to WebSocket subscribers.
 
     Can be called from any thread (including analysis worker thread).
-    Uses run_coroutine_threadsafe to push to async queues.
+    Schedules queue updates on the subscriber event loop.
     """
     step_info = _AGENT_STEPS.get(agent)
     msg = {
@@ -130,20 +130,14 @@ def broadcast_status(
     except Exception as e:
         logger.warning(f"Failed to store schedule event: {e}")
 
-    if ticker not in ws_subscribers or not ws_subscribers[ticker]:
-        return
+    def notify_subscribers():
+        for queue in ws_subscribers.get(ticker, ()):
+            if queue.full():
+                queue.get_nowait()
+            queue.put_nowait(msg)
 
-    logger.info(
-        "Status update: ticker=%s agent=%s status=%s message=%s",
-        ticker,
-        agent,
-        status,
-        message,
-    )
-
-    for q in ws_subscribers[ticker]:
-        if _event_loop and _event_loop.is_running():
-            asyncio.run_coroutine_threadsafe(q.put(msg), _event_loop)
+    if _event_loop and _event_loop.is_running():
+        _event_loop.call_soon_threadsafe(notify_subscribers)
 
 
 async def _queue_worker():
@@ -183,8 +177,9 @@ async def _queue_worker():
         return tickers
 
     while True:
+        entry = await analysis_queue.get()
         try:
-            priority, _seq, item = await analysis_queue.get()
+            _priority, _seq, item = entry
             if isinstance(item, dict):
                 ticker = item.get("ticker")
                 job_id = item.get("schedule_job_id")
@@ -194,7 +189,6 @@ async def _queue_worker():
 
             if not ticker:
                 logger.warning("Queue worker: Skipping empty ticker")
-                analysis_queue.task_done()
                 continue
 
             logger.info(
@@ -275,18 +269,16 @@ async def _queue_worker():
                         "Portfolio weekly reflection complete",
                     )
                 else:
-                    await asyncio.to_thread(
+                    completed = await asyncio.to_thread(
                         scheduler._run_analysis_cycle,
                         ticker,
                         job_id,
                     )
-                    broadcast_status(
-                        ticker, "system", "completed",
-                        f"Analysis complete for {ticker}",
-                        schedule_job_id=job_id,
-                    )
-                if graph:
-                    graph.set_status_callback(None)
+                    if completed:
+                        broadcast_status(
+                            ticker, "system", "completed", f"Analysis complete for {ticker}",
+                            schedule_job_id=job_id,
+                        )
             except Exception as e:
                 broadcast_status(
                     ticker, "system", "error",
@@ -309,25 +301,16 @@ async def _queue_worker():
                     ),
                     schedule_job_id=job_id,
                 )
-                if graph:
-                    graph.set_status_callback(None)
                 raise
-
-            analysis_queue.task_done()
-            current_running_ticker = None
-            logger.info(f"Queue worker: Completed {ticker}")
-
         except asyncio.CancelledError:
-            logger.info("Queue worker cancelled")
+            raise
+        except Exception:
+            logger.exception("Queue worker failed to process entry")
+        finally:
             current_running_ticker = None
-            break
-        except Exception as e:
-            logger.error(f"Queue worker error: {e}", exc_info=True)
-            current_running_ticker = None
-            try:
-                analysis_queue.task_done()
-            except ValueError:
-                pass
+            analysis_queue.task_done()
+            if graph:
+                graph.set_status_callback(None)
 
 
 @asynccontextmanager

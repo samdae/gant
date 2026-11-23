@@ -1,21 +1,12 @@
-import time
-import json
-
 from tradingagents.agents.utils.macro_mixin import get_macro_block
 
 
 def create_risk_manager(llm):
     def risk_manager_node(state) -> dict:
 
-        company_name = state["company_of_interest"]
-
-        history = state["risk_debate_state"]["history"]
         risk_debate_state = state["risk_debate_state"]
-        market_research_report = state["market_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["news_report"]
-        sentiment_report = state["sentiment_report"]
-        trader_plan = state["investment_plan"]
+        history = risk_debate_state["history"]
+        trader_plan = state["trader_investment_plan"]
         macro_block = get_macro_block(state)
 
         prompt = f"""As the Risk Management Judge and Debate Facilitator, your goal is to evaluate the debate between three risk analysts—Aggressive, Neutral, and Conservative—and determine the best course of action for the trader. Your decision must result in a clear recommendation: Buy, Sell, or Hold. Choose Hold only if strongly justified by specific arguments, not as a fallback when all sides seem valid. Strive for clarity and decisiveness.
@@ -44,9 +35,16 @@ This block will be consumed by downstream systems, so it must be valid JSON insi
 - conviction: Your confidence level — exactly one of "HIGH", "MEDIUM", or "LOW"
 - allocation_pct: Suggested position size as integer 0-100 (0 for HOLD, 25=low, 50=medium, 75=high conviction)
 
-Example:
+For stocks and ETFs also include forecast_5s, independently of your action and allocation.
+Estimate p_up (numeric probability from 0 to 1) that the close of the fifth trading
+session exceeds the opening price of the first trading session strictly after the
+report publication date in the ticker's market. Count the entry session as session
+one. An unchanged price is not up. Supply this estimate for HOLD and SELL as well.
+Use only evidence available for this analysis; conviction in a trade is a separate judgment.
+
+Example shape for a stock or ETF (choose your own action, allocation and probability):
 ```strategy_json
-{{"action": "BUY", "conviction": "MEDIUM", "allocation_pct": 50}}
+{{"action": "BUY", "conviction": "MEDIUM", "allocation_pct": 50, "forecast_5s": {{"p_up": 0.51}}}}
 ```
 
 You MUST include this block at the very end of your response. Do not omit it.

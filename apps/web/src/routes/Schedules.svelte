@@ -58,9 +58,6 @@
   let searchTimeout: ReturnType<typeof setTimeout> | null = null;
   let selectedIndex = -1;
 
-  const goSchedule = (ticker: string) => {
-    window.location.hash = `#/schedules/${ticker.toLowerCase()}`;
-  };
 
   const loadSchedules = async () => {
     loading = true;
@@ -251,9 +248,9 @@
       <div class="schedule-list list-grid">
         {#each filteredSchedules as schedule}
           {@const status = statusBadge(schedule.ticker)}
-          <div
+          <a
             class={`schedule-card list-row ${status.label === "실행중" ? "schedule-running" : status.label === "대기중" ? "schedule-queued" : "schedule-active"}`}
-            on:click={() => goSchedule(schedule.ticker)}
+            href={`#/schedules/${encodeURIComponent(schedule.ticker.toLowerCase())}`}
             on:touchstart|passive={(e) => {
               const t = e.currentTarget;
               t.dataset.sx = String(e.touches[0].clientX);
@@ -279,6 +276,7 @@
               t.style.transform = '';
               t.style.opacity = '';
               if (dx < -80) {
+                e.preventDefault();
                 openDelete(schedule.ticker);
               }
             }}
@@ -295,7 +293,7 @@
             <div class="schedule-details">
               <span>{formatInterval(schedule.interval_days)}{#if schedule.next_run_time} · {formatNextRun(schedule.next_run_time)} 예정{/if}</span>
             </div>
-          </div>
+          </a>
         {/each}
       </div>
     {/if}

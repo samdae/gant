@@ -74,11 +74,13 @@ class PortfolioHoldingRepository:
     def get_latest_snapshot_date(self, config_id: int) -> Optional[str]:
         row = self.db.get_connection().execute(
             """
-            SELECT MAX(snapshot_date) AS snapshot_date
-            FROM portfolio_holdings
-            WHERE portfolio_config_id = %s
+            SELECT GREATEST(
+                (SELECT MAX(snapshot_date) FROM portfolio_holdings WHERE portfolio_config_id = %s),
+                (SELECT MAX(decision_date) FROM portfolio_decisions
+                 WHERE portfolio_config_id = %s AND status IN ('completed','partial_failed'))
+            ) AS snapshot_date
             """,
-            (config_id,),
+            (config_id, config_id),
         ).fetchone()
         if not row or not row.get("snapshot_date"):
             return None

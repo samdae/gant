@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { params } from "svelte-spa-router";
   import { fetchRetroByTicker } from "../lib/api/endpoints";
   import { formatErrorMessage } from "../lib/utils/format";
@@ -39,7 +38,7 @@
 
   $: selectOptions = items.map((item) => {
     const seq = `${item.position_sequence}회차`;
-    const status = item.position_status === "open" ? "진행중" : "종료";
+    const status = item.pos_status === "reset" ? "리셋" : item.position_status === "open" ? "진행중" : "종료";
     const outcome = item.pos_status === "closed" && item.return_pct != null
       ? (item.return_pct >= 0 ? `승 +${item.return_pct.toFixed(1)}%` : `패 ${item.return_pct.toFixed(1)}%`)
       : "";
@@ -55,14 +54,16 @@
     selectedId = "";
     try {
       const res = (await fetchRetroByTicker(t)) as RetroItem[];
+      if (ticker !== t) return;
       items = res.filter((r) => r.status === "completed");
       if (items.length > 0) {
         selectedId = String(items[0].id);
       }
     } catch (err) {
+      if (ticker !== t) return;
       error = formatErrorMessage(err, "회고분석을 불러오지 못했습니다.");
     } finally {
-      loading = false;
+      if (ticker === t) loading = false;
     }
   };
 
@@ -94,9 +95,6 @@
     return $tickerNames[ticker] || "";
   };
 
-  onMount(() => {
-    if (ticker) loadData(ticker);
-  });
 
   $: if (ticker) loadData(ticker);
 </script>
@@ -124,15 +122,14 @@
       {:else if items.length === 0}
         <div class="card" style="padding:16px;color:var(--text-dim)">완료된 회고분석이 없습니다.</div>
       {:else}
-        <label class="form-label">
-          회차
-          <SelectMenu
+        <div class="form-label"><label for="cycle-select">회차</label>
+            <SelectMenu id="cycle-select"
             value={selectedId}
             options={selectOptions}
             placeholder="회차 선택"
             on:change={handleSelectChange}
           />
-        </label>
+        </div>
 
         {#if selectedItem}
           <div class="retro-meta" style="margin:12px 0;display:flex;gap:12px;flex-wrap:wrap;font-size:0.8125rem;color:var(--text-dim)">

@@ -8,6 +8,7 @@ from typing import Dict, Any, Tuple, List, Optional, Callable
 
 from langgraph.prebuilt import ToolNode
 
+from tradingagents.runtime_context import analysis_date_scope
 from tradingagents.llm_clients import create_llm_client
 
 from tradingagents.agents import *
@@ -107,7 +108,9 @@ class TradingAgentsGraph:
         self.tool_nodes = self._create_tool_nodes()
 
         # Initialize components
-        self.conditional_logic = ConditionalLogic()
+        self.conditional_logic = ConditionalLogic(
+            self.config.get("max_debate_rounds", 1), self.config.get("max_risk_discuss_rounds", 1)
+        )
         self.graph_setup = GraphSetup(
             self.quick_thinking_llm,
             self.deep_thinking_llm,
@@ -117,7 +120,7 @@ class TradingAgentsGraph:
             status_callback=self.status_callback,
         )
 
-        self.propagator = Propagator()
+        self.propagator = Propagator(self.config.get("max_recur_limit", 100))
         self.reflector = Reflector(self.deep_thinking_llm)  # FR-031: Changed to deep_thinking_llm
         self.signal_processor = SignalProcessor(self.quick_thinking_llm)
 
@@ -202,41 +205,30 @@ class TradingAgentsGraph:
             - strategy: Optional dict with conviction/allocation from Judge
         """
 
-        if depth is not None:
-            self.config["max_debate_rounds"] = depth
-            self.config["max_risk_discuss_rounds"] = depth
-
         self.ticker = company_name
 
         init_agent_state = self.propagator.create_initial_state(
             company_name, trade_date, current_position, macro_context=macro_context,
         )
+        if depth is not None:
+            if not isinstance(depth, int) or depth < 1:
+                raise ValueError("depth must be a positive number of debate rounds")
+            init_agent_state["debate_depth"] = depth
         args = self.propagator.get_graph_args()
 
-        if self.debug:
-            # Debug mode with tracing
-            trace = []
-            for chunk in self.graph.stream(init_agent_state, **args):
-                if len(chunk["messages"]) == 0:
-                    pass
-                else:
-                    msg = chunk["messages"][-1]
-                    # Compact pretty_print: collapse excessive blank lines
-                    import re, io, sys
-
-                    buf = io.StringIO()
-                    old_stdout = sys.stdout
-                    sys.stdout = buf
-                    msg.pretty_print()
-                    sys.stdout = old_stdout
-                    output = re.sub(r"\n{3,}", "\n\n", buf.getvalue())
-                    print(output, end="")
-                    trace.append(chunk)
-
-            final_state = trace[-1]
-        else:
-            # Standard mode without tracing
-            final_state = self.graph.invoke(init_agent_state, **args)
+        with analysis_date_scope(trade_date):
+            if self.debug:
+                # Debug mode with tracing
+                final_state = None
+                for chunk in self.graph.stream(init_agent_state, **args):
+                    final_state = chunk
+                    if chunk["messages"]:
+                        chunk["messages"][-1].pretty_print()
+                if final_state is None:
+                    raise RuntimeError("Analysis graph produced no state")
+            else:
+                # Standard mode without tracing
+                final_state = self.graph.invoke(init_agent_state, **args)
 
         # Store current state for reflection
         self.curr_state = final_state

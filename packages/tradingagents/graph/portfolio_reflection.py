@@ -47,9 +47,9 @@ class PortfolioReflector:
         holdings: List[Dict[str, Any]],
         total_return_pct: Optional[float],
     ) -> str:
-        decisions_text = json.dumps(decisions[:20], ensure_ascii=False)
-        trades_text = json.dumps(trades[:200], ensure_ascii=False)
-        holdings_text = json.dumps(holdings[:200], ensure_ascii=False)
+        decisions_text = json.dumps(decisions[:20], ensure_ascii=False, default=str)
+        trades_text = json.dumps(trades[:200], ensure_ascii=False, default=str)
+        holdings_text = json.dumps(holdings[:200], ensure_ascii=False, default=str)
         return f"""당신은 포트폴리오 회고 분석가입니다.
 주간 기간({week_start} ~ {week_end})의 의사결정 품질을 평가하세요.
 
@@ -74,8 +74,7 @@ class PortfolioReflector:
 {{
   "reflection_content": "주간 회고 본문",
   "allocation_accuracy": 0,
-  "key_lessons": "핵심 교훈",
-  "total_return_pct": {total_return_pct if total_return_pct is not None else "null"}
+  "key_lessons": "핵심 교훈"
 }}
 """
 
@@ -116,7 +115,6 @@ class PortfolioReflector:
         reflection_content = str(parsed.get("reflection_content") or "").strip()
         key_lessons = str(parsed.get("key_lessons") or "").strip()
         accuracy = self._clamp_score(parsed.get("allocation_accuracy"))
-        total_return_pct = parsed.get("total_return_pct")
 
         if accuracy is None:
             m = re.search(r"allocation_accuracy\s*[:=]\s*(\d+)", str(content), flags=re.IGNORECASE)
@@ -131,20 +129,11 @@ class PortfolioReflector:
         if not key_lessons:
             key_lessons = reflection_content[:400]
 
-        try:
-            total_return_pct_val = (
-                float(total_return_pct)
-                if total_return_pct is not None
-                else fallback_total_return_pct
-            )
-        except (TypeError, ValueError):
-            total_return_pct_val = fallback_total_return_pct
-
         return {
             "reflection_content": reflection_content,
             "allocation_accuracy": accuracy,
             "key_lessons": key_lessons,
-            "total_return_pct": total_return_pct_val,
+            "total_return_pct": fallback_total_return_pct,
         }
 
     def reflect_weekly(
@@ -166,21 +155,11 @@ class PortfolioReflector:
             total_return_pct=total_return_pct,
         )
 
-        try:
-            response = self.llm.invoke(prompt, config={"timeout": 180})
-            content = response.content if hasattr(response, "content") else str(response)
-            parsed = self._parse_output(str(content), total_return_pct)
-        except Exception as exc:
-            logger.warning("PortfolioReflector fallback due to LLM error: %s", exc)
-            parsed = {
-                "reflection_content": (
-                    f"{week_start_date}~{week_end_date} 포트폴리오 주간 회고를 생성하지 못했습니다. "
-                    "데이터를 기반으로 다음 주 위험 노출을 축소하세요."
-                ),
-                "allocation_accuracy": None,
-                "key_lessons": "LLM 실패로 기본 회고를 저장했습니다.",
-                "total_return_pct": total_return_pct,
-            }
+        response = self.llm.invoke(prompt, config={"timeout": 180})
+        content = response.content if hasattr(response, "content") else str(response)
+        if not self._parse_json(str(content)).get("reflection_content"):
+            raise ValueError("Portfolio reflection is missing reflection_content")
+        parsed = self._parse_output(str(content), total_return_pct)
 
         reflection_id = self.repo.create(
             config_id=config_id,
@@ -196,7 +175,8 @@ class PortfolioReflector:
             try:
                 outcome = None
                 if parsed["total_return_pct"] is not None:
-                    outcome = "win" if float(parsed["total_return_pct"]) >= 0 else "loss"
+                    observed = float(parsed["total_return_pct"])
+                    outcome = "win" if observed > 0 else "loss" if observed < 0 else "flat"
                 self.hybrid_memory.add_external_document(
                     document_id=reflection_id,
                     matched_situation=parsed["key_lessons"],

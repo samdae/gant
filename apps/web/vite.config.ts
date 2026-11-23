@@ -7,6 +7,7 @@ export default defineConfig({
     svelte(),
     VitePWA({
       registerType: "autoUpdate",
+      injectRegister: false,
       includeAssets: ["favicon.svg", "icon.svg"],
       manifest: {
         name: "GANT Trading Console",
@@ -26,36 +27,9 @@ export default defineConfig({
         ],
       },
       workbox: {
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith("/api/reports"),
-            handler: "CacheFirst",
-            options: {
-              cacheName: "api-reports-cache",
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 10,
-              },
-            },
-          },
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
-            handler: "StaleWhileRevalidate",
-            options: {
-              cacheName: "api-cache",
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 5,
-              },
-            },
-          },
-        ],
+        skipWaiting: true,
+        clientsClaim: true,
+        importScripts: ["cleanup-api-caches.js"],
       },
     }),
   ],

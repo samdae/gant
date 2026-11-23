@@ -1,12 +1,17 @@
 """Reflection repository for CRUD operations on reflections table and FTS search."""
 
 import logging
+from math import isclose, isfinite
+from .trade_repo import TradeRepository, closed_position_return
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from .database import Database
 
 logger = logging.getLogger(__name__)
+
+# Both retrieval and user-facing reflection queries expose the same evidence-derived score.
+_SCORE_COLUMN = "COALESCE((SELECT score FROM rag_outcome_scores WHERE reflection_id = r.id), 50) AS usefulness_score"
 
 
 class ReflectionRepository:
@@ -87,10 +92,10 @@ class ReflectionRepository:
             Reflection dict or None if not found
         """
         cursor = self.db.get_connection().execute(
-            """
+            f"""
             SELECT id, position_id, reflection, key_lessons, outcome, return_pct,
-                   market, sector, industry, usefulness_score, created_at
-            FROM reflections
+                   market, sector, industry, {_SCORE_COLUMN}, created_at
+            FROM reflections r
             WHERE id = %s
             """,
             (reflection_id,)
@@ -98,6 +103,54 @@ class ReflectionRepository:
 
         row = cursor.fetchone()
         return dict(row) if row else None
+
+    def get_verified_memory(self, reflection_id: int) -> Optional[Dict[str, Any]]:
+        """Only expose lessons whose original outcome agrees with complete executions."""
+        row = self.get_by_id(reflection_id)
+        if not row or row["return_pct"] is None or not isfinite(row["return_pct"]):
+            return None
+        position = self.db.get_connection().execute(
+            "SELECT status, currency FROM positions WHERE id = %s", (row["position_id"],)
+        ).fetchone()
+        if not position or position["status"] != "closed":
+            return None
+        trades = TradeRepository(self.db).get_by_position(row["position_id"])
+        measured = closed_position_return(trades, position["currency"])
+        if measured is None or not isclose(measured, row["return_pct"], abs_tol=0.01):
+            return None
+        return row if row["outcome"] == ("win" if measured >= 0 else "loss") else None
+
+    def search_ticker_lessons(self, ticker, query, limit):
+        """Fallback for long PA queries: same instrument plus overlapping lesson terms."""
+        return self.db.get_connection().execute(
+            """
+            SELECT r.id, overlap.matches AS ts_rank
+            FROM reflections r
+            JOIN positions p ON p.id = r.position_id
+            CROSS JOIN LATERAL (
+                SELECT count(*) AS matches FROM (
+                    SELECT unnest(tsvector_to_array(to_tsvector('simple', r.key_lessons)))
+                    INTERSECT
+                    SELECT unnest(tsvector_to_array(to_tsvector('simple', %s)))
+                ) AS shared(term)
+                WHERE length(term) >= 3 AND term ~ '[[:alpha:]]'
+                  AND term <> lower(%s)
+                  AND term NOT IN ('analysis', 'decision', 'market', 'sector', 'the',
+                                   'and', 'with', 'for', 'that', 'this', 'from')
+            ) AS overlap
+            WHERE p.ticker = %s AND overlap.matches >= 2
+            ORDER BY overlap.matches DESC, r.id DESC LIMIT %s
+            """, (query, ticker, ticker, limit)
+        ).fetchall()
+
+    def outcome_scores(self, ids):
+        """Bounded net observed five-session comparisons, independent of textual verdicts."""
+        rows = self.db.get_connection().execute(
+            """
+            SELECT reflection_id, score FROM rag_outcome_scores WHERE reflection_id = ANY(%s)
+            """, (list(ids),)
+        ).fetchall()
+        return {row["reflection_id"]: row["score"] for row in rows}
 
     def get_by_position(self, position_id: int) -> Optional[Dict[str, Any]]:
         """Get reflection for a position.
@@ -109,10 +162,10 @@ class ReflectionRepository:
             Reflection dict or None if not found
         """
         cursor = self.db.get_connection().execute(
-            """
+            f"""
             SELECT id, position_id, reflection, key_lessons, outcome, return_pct,
-                   market, sector, industry, usefulness_score, created_at
-            FROM reflections
+                   market, sector, industry, {_SCORE_COLUMN}, created_at
+            FROM reflections r
             WHERE position_id = %s
             """,
             (position_id,)
@@ -134,10 +187,10 @@ class ReflectionRepository:
         """
         try:
             cursor = self.db.get_connection().execute(
-                """
+                f"""
                 SELECT r.id, r.position_id, r.reflection, r.key_lessons,
                        r.outcome, r.return_pct, r.market, r.sector, r.industry,
-                       r.usefulness_score,
+                       {_SCORE_COLUMN},
                        r.created_at,
                        ts_rank_cd(
                            to_tsvector('simple', coalesce(r.reflection, '') || ' ' || coalesce(r.key_lessons, '')),
@@ -170,18 +223,18 @@ class ReflectionRepository:
             return {}
 
         cursor = self.db.get_connection().execute(
-            """
-            SELECT id, usefulness_score
-            FROM reflections
+            f"""
+            SELECT id, {_SCORE_COLUMN}
+            FROM reflections r
             WHERE id = ANY(%s)
             """,
             (deduped_ids,),
         )
         rows = cursor.fetchall()
-        return {int(row["id"]): float(row.get("usefulness_score") or 50.0) for row in rows}
+        return {int(row["id"]): float(row["usefulness_score"] if row.get("usefulness_score") is not None else 50.0) for row in rows}
 
     def update_usefulness_score(self, reflection_id: int, delta: int) -> Optional[float]:
-        """Apply usefulness delta (+1/-1/0) with 0~100 clamp."""
+        """Update the historical stored field only; active scores come from paired outcomes."""
         connection = self.db.get_connection()
         cursor = connection.execute(
             """
@@ -200,10 +253,10 @@ class ReflectionRepository:
         """Keyword search over reflection + key_lessons using ILIKE."""
         like_query = f"%{query}%"
         cursor = self.db.get_connection().execute(
-            """
+            f"""
             SELECT r.id, r.position_id, r.reflection, r.key_lessons,
                    r.outcome, r.return_pct, r.market, r.sector, r.industry,
-                   r.usefulness_score, r.created_at,
+                   {_SCORE_COLUMN}, r.created_at,
                    p.ticker
             FROM reflections r
             LEFT JOIN positions p ON p.id = r.position_id

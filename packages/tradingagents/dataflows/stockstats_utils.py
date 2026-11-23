@@ -3,7 +3,58 @@ import yfinance as yf
 from stockstats import wrap
 from typing import Annotated
 import os
+import time
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+from urllib.parse import quote
 from .config import get_config
+
+
+def _bounded_prices(data, start, end):
+    dates = pd.to_datetime(data["Date"], errors="coerce").dt.tz_localize(None)
+    return (data.assign(Date=dates).loc[dates.between(start, end)]
+            .sort_values("Date").drop_duplicates("Date", keep="last"))
+
+
+def load_price_window(symbol: str, end: pd.Timestamp, days: int, config: dict) -> pd.DataFrame:
+    """Read a complete published cache file or fetch the requested historical window."""
+    end = end.normalize()
+    start = end - pd.Timedelta(days=days)
+    directory = Path(config["data_cache_dir"])
+    directory.mkdir(parents=True, exist_ok=True)
+    # Encode the symbol as a single filename component (some vendor symbols contain '/').
+    file = directory / f"{quote(symbol, safe='')}-YFin-{days}d-{end:%Y%m%d}.csv"
+    if file.is_file():
+        try:
+            cached = pd.read_csv(file, parse_dates=["Date"])
+            if not cached.empty and {"Open", "High", "Low", "Close", "Volume"} <= set(cached):
+                age = time.time() - file.stat().st_mtime
+                if age < int(config.get("stock_cache_stale_days", 3)) * 86400:
+                    bounded = _bounded_prices(cached, start, end)
+                    if not bounded.empty:
+                        return bounded
+        except (ValueError, OSError, pd.errors.ParserError):
+            pass
+
+    data = yf.download(
+        symbol, start=start.strftime("%Y-%m-%d"),
+        end=(end + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+        multi_level_index=False, progress=False, auto_adjust=True,
+    )
+    if data.empty:
+        raise ValueError(f"No price history for {symbol} through {end.date()}")
+    data = data.reset_index()
+    data = _bounded_prices(data, start, end)
+    if data.empty:
+        raise ValueError(f"No price history for {symbol} through {end.date()}")
+    with NamedTemporaryFile(dir=directory, suffix=".tmp", delete=False) as tmp:
+        temporary = Path(tmp.name)
+    try:
+        data.to_csv(temporary, index=False)
+        os.replace(temporary, file)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return data
 
 
 class StockstatsUtils:
@@ -19,50 +70,8 @@ class StockstatsUtils:
     ):
         config = get_config()
 
-        today_date = pd.Timestamp.today()
         curr_date_dt = pd.to_datetime(curr_date)
-
-        download_days = int(config.get("stock_download_days", 330))
-        stale_days = int(config.get("stock_cache_stale_days", 3))
-
-        end_date = today_date
-        start_date = today_date - pd.DateOffset(days=download_days)
-        start_date_str = start_date.strftime("%Y-%m-%d")
-        end_date_str = end_date.strftime("%Y-%m-%d")
-
-        # Ensure cache directory exists
-        os.makedirs(config["data_cache_dir"], exist_ok=True)
-
-        data_file = os.path.join(
-            config["data_cache_dir"],
-            f"{symbol}-YFin-data-{download_days}d.csv",
-        )
-
-        data = None
-        if os.path.exists(data_file):
-            data = pd.read_csv(data_file)
-            data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
-            data = data.dropna(subset=["Date"])
-            last_date = data["Date"].max()
-            if last_date is not None and last_date >= (today_date - pd.DateOffset(days=stale_days)):
-                pass
-            else:
-                data = None
-
-        if data is None:
-            data = yf.download(
-                symbol,
-                start=start_date_str,
-                end=end_date_str,
-                multi_level_index=False,
-                progress=False,
-                auto_adjust=True,
-            )
-            data = data.reset_index()
-            data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
-            data = data.dropna(subset=["Date"])
-            data.to_csv(data_file, index=False)
-
+        data = load_price_window(symbol, curr_date_dt, int(config.get("stock_download_days", 330)), config)
         df = wrap(data)
         df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
         curr_date_str = curr_date_dt.strftime("%Y-%m-%d")

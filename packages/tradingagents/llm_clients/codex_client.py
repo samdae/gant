@@ -1,202 +1,106 @@
-"""OpenAI Codex (GPT-5.3) LLM client via oauth-codex Responses API.
-
-Uses oauth-codex's internal engine to call the Responses API directly,
-bypassing Cloudflare and supporting full tool calling for LangChain/LangGraph.
-"""
+"""LangChain adapter for the official, ChatGPT-authenticated Codex runtime."""
 
 import json
-import logging
-from typing import Any, Dict, List, Optional
+import os
+from tempfile import TemporaryDirectory
+from typing import Any
+from uuid import uuid4
 
-from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import (
-    AIMessage,
-    BaseMessage,
-    HumanMessage,
-    SystemMessage,
-    ToolMessage,
-)
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, messages_to_dict
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.utils.function_calling import convert_to_openai_tool
+from openai_codex import ApprovalMode, Codex, CodexConfig, Sandbox
 
 from .base_client import BaseLLMClient
 
-logger = logging.getLogger(__name__)
-
-_DEFAULT_MODEL = "gpt-5.3-codex"
-
 
 class ChatCodex(BaseChatModel):
-    """LangChain chat model using oauth-codex Responses API with tool support."""
-
-    model: str = _DEFAULT_MODEL
-    _engine: Any = None
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        from oauth_codex import Client
-
-        client = Client(authenticate_on_init=True)
-        client.refresh_if_needed()
-        self._engine = client._engine
+    model: str = "gpt-6.2-sol"
 
     @property
     def _llm_type(self) -> str:
         return "codex"
 
-    def bind_tools(self, tools: list, **kwargs) -> Any:
-        formatted = []
+    def bind_tools(self, tools: list, **kwargs: Any):
+        functions = []
         for tool in tools:
-            if hasattr(tool, "name") and hasattr(tool, "args_schema"):
-                schema = (
-                    tool.args_schema.model_json_schema()
-                    if tool.args_schema
-                    else {"type": "object", "properties": {}}
-                )
-                schema.pop("title", None)
-                formatted.append(
-                    {
-                        "type": "function",
-                        "name": tool.name,
-                        "description": getattr(tool, "description", "") or "",
-                        "parameters": schema,
-                    }
-                )
-            elif isinstance(tool, dict):
-                if "function" in tool:
-                    fn = tool["function"]
-                    formatted.append(
-                        {
-                            "type": "function",
-                            "name": fn["name"],
-                            "description": fn.get("description", ""),
-                            "parameters": fn.get(
-                                "parameters", {"type": "object", "properties": {}}
-                            ),
-                        }
-                    )
-                else:
-                    formatted.append(tool)
+            if isinstance(tool, dict) and "name" in tool and "parameters" in tool:
+                functions.append(tool)
             else:
-                from langchain_core.utils.function_calling import convert_to_openai_tool
+                functions.append(convert_to_openai_tool(tool)["function"])
+        return self.bind(tools=functions, **kwargs)
 
-                oai = convert_to_openai_tool(tool)
-                fn = oai["function"]
-                formatted.append(
-                    {
-                        "type": "function",
-                        "name": fn["name"],
-                        "description": fn.get("description", ""),
-                        "parameters": fn.get(
-                            "parameters", {"type": "object", "properties": {}}
-                        ),
-                    }
-                )
+    def _generate(self, messages: list[BaseMessage], stop=None, run_manager=None, **kwargs):
+        tools = kwargs.get("tools") or []
+        instructions = [
+            "You are a component of TradingAgents. Answer the supplied conversation. "
+            "The host runs all tools. Never use local files, shell, web or Codex tools."
+        ]
+        history = []
+        for message in messages:
+            if isinstance(message, SystemMessage):
+                instructions.append(str(message.content))
+            else:
+                history.append(message)
 
-        return self.bind(tools=formatted, **kwargs)
-
-    @staticmethod
-    def _convert_messages(messages: List[BaseMessage]) -> List[Dict[str, Any]]:
-        result: List[Dict[str, Any]] = []
-        for msg in messages:
-            if isinstance(msg, SystemMessage):
-                result.append({"role": "developer", "content": msg.content})
-            elif isinstance(msg, HumanMessage):
-                result.append({"role": "user", "content": msg.content})
-            elif isinstance(msg, AIMessage):
-                if msg.tool_calls:
-                    if msg.content:
-                        result.append(
-                            {
-                                "type": "message",
-                                "role": "assistant",
-                                "content": [
-                                    {"type": "output_text", "text": msg.content}
-                                ],
-                            }
-                        )
-                    for tc in msg.tool_calls:
-                        args = tc.get("args", {})
-                        result.append(
-                            {
-                                "type": "function_call",
-                                "name": tc["name"],
-                                "arguments": json.dumps(args)
-                                if isinstance(args, dict)
-                                else str(args),
-                                "call_id": tc.get("id", ""),
-                            }
-                        )
-                else:
-                    result.append({"role": "assistant", "content": msg.content or ""})
-            elif isinstance(msg, ToolMessage):
-                content = msg.content
-                if not isinstance(content, str):
-                    content = json.dumps(content)
-                result.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": msg.tool_call_id,
-                        "output": content,
-                    }
-                )
-        return result
-
-    def _generate(
-        self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> ChatResult:
-        input_msgs = self._convert_messages(messages)
-        tools = kwargs.pop("tools", None)
-
-        create_kwargs: Dict[str, Any] = {
-            "model": self.model,
-            "input": input_msgs,
-        }
+        schema = None
         if tools:
-            create_kwargs["tools"] = tools
+            instructions.append(
+                "Request needed host tools via calls with JSON-encoded arguments. "
+                "Use existing tool results when available. Return an empty calls array "
+                "and your final answer in content when finished. Available tools: "
+                + json.dumps(tools, ensure_ascii=False)
+            )
+            schema = {
+                "type": "object", "additionalProperties": False,
+                "required": ["content", "calls"],
+                "properties": {
+                    "content": {"type": "string"},
+                    "calls": {"type": "array", "items": {
+                        "type": "object", "additionalProperties": False,
+                        "required": ["name", "arguments"],
+                        "properties": {
+                            "name": {"type": "string", "enum": [t["name"] for t in tools]},
+                            "arguments": {"type": "string"},
+                        },
+                    }},
+                },
+            }
 
-        try:
-            response = self._engine.responses.create(**create_kwargs)
-        except Exception:
-            logger.exception("Codex responses.create failed")
-            raise
+        prompt = json.dumps(messages_to_dict(history), ensure_ascii=False, default=str)
+        with TemporaryDirectory() as cwd, Codex(CodexConfig(cwd=cwd)) as codex:
+            account = codex.account().account
+            if account is None or account.root.type != "chatgpt":
+                raise RuntimeError("TradingAgents requires ChatGPT sign-in. Run codex login.")
+            thread = codex.thread_start(
+                model=self.model, model_provider="openai", cwd=cwd, ephemeral=True,
+                sandbox=Sandbox.read_only, approval_mode=ApprovalMode.deny_all,
+                config={"features.shell_tool": False, "web_search": "disabled"},
+                base_instructions="\n\n".join(instructions),
+            )
+            result = thread.run(prompt, output_schema=schema)
+            content = result.final_response
+            if result.status.value != "completed" or not content:
+                raise RuntimeError(f"Codex returned no answer (turn status: {result.status}).")
 
-        content = ""
-        tool_calls = []
+        calls = []
+        if tools:
+            answer = json.loads(content)
+            content = answer["content"]
+            for call in answer["calls"]:
+                args = json.loads(call["arguments"])
+                if not isinstance(args, dict):
+                    raise ValueError("Codex tool arguments must be a JSON object")
+                calls.append({"name": call["name"], "args": args, "id": uuid4().hex})
 
-        for item in response.output:
-            item_type = item.get("type", "")
-            if item_type == "message":
-                for part in item.get("content", []):
-                    if part.get("type") == "output_text":
-                        content += part.get("text", "")
-            elif item_type == "function_call":
-                try:
-                    args = json.loads(item.get("arguments", "{}"))
-                except (json.JSONDecodeError, TypeError):
-                    args = {}
-                tool_calls.append(
-                    {
-                        "name": item.get("name", ""),
-                        "args": args,
-                        "id": item.get("call_id", ""),
-                        "type": "tool_call",
-                    }
-                )
-
-        ai_msg = AIMessage(content=content, tool_calls=tool_calls)
-        return ChatResult(generations=[ChatGeneration(message=ai_msg)])
+        message = AIMessage(content=content, tool_calls=calls)
+        return ChatResult(generations=[ChatGeneration(message=message)])
 
 
 class CodexClient(BaseLLMClient):
-    """Client for OpenAI Codex (GPT-5.3) via oauth-codex Responses API."""
-
-    def get_llm(self) -> Any:
-        return ChatCodex(model=self.model or _DEFAULT_MODEL, **self.kwargs)
+    def get_llm(self) -> ChatCodex:
+        return ChatCodex(model=self.model or os.getenv("CODEX_MODEL", "gpt-6.2-sol"), **self.kwargs)
 
     def validate_model(self) -> bool:
         return True

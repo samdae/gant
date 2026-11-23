@@ -47,7 +47,7 @@ async def analyze_ws(websocket: WebSocket, ticker: str):
     logger.info(f"WebSocket connected for {ticker}")
 
     # Create personal subscriber queue
-    subscriber_queue: asyncio.Queue = asyncio.Queue()
+    subscriber_queue: asyncio.Queue = asyncio.Queue(maxsize=128)
     app_module.ws_subscribers[ticker].append(subscriber_queue)
 
     try:
@@ -82,7 +82,7 @@ async def analyze_ws(websocket: WebSocket, ticker: str):
                 await websocket.send_json(msg)
 
                 # Close only when the system marks analysis end
-                if msg.get("agent") == "system" and msg.get("status") in ("completed", "error"):
+                if msg.get("agent") == "system" and msg.get("status") in ("completed", "error", "skipped"):
                     break
 
             except asyncio.TimeoutError:

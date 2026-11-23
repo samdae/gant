@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "============================================" -ForegroundColor Magenta
 Write-Host " G-ANT Dev Environment" -ForegroundColor Magenta
-Write-Host " DB: 5433 | BE: 8001 | FE: 5174" -ForegroundColor Magenta
+Write-Host " DB: 5433 | BE: 8011 | FE: 5174" -ForegroundColor Magenta
 Write-Host "============================================" -ForegroundColor Magenta
 Write-Host ""
 
@@ -15,9 +15,9 @@ Write-Host ""
 # 3. BE (background job)
 Write-Host ""
 Write-Host "[dev] Starting Backend (background)..." -ForegroundColor Cyan
+$devDirectory = $PSScriptRoot
 $beJob = Start-Job -ScriptBlock {
-    Set-Location $using:PSScriptRoot
-    & "$using:PSScriptRoot\start-be.ps1"
+    & (Join-Path $using:devDirectory start-be.ps1)
 }
 
 Start-Sleep -Seconds 3

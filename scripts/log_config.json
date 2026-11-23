@@ -4,6 +4,9 @@
   "formatters": {
     "default": {
       "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    },
+    "access": {
+      "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     }
   },
   "handlers": {
@@ -14,9 +17,37 @@
       "backupCount": 5,
       "formatter": "default"
     },
+    "access_file": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "filename": "logs/runtime.log",
+      "maxBytes": 512000,
+      "backupCount": 5,
+      "formatter": "access"
+    },
     "console": {
       "class": "logging.StreamHandler",
       "formatter": "default"
+    },
+    "access_console": {
+      "class": "logging.StreamHandler",
+      "formatter": "access"
+    }
+  },
+  "loggers": {
+    "uvicorn": {
+      "level": "INFO",
+      "handlers": ["file", "console"],
+      "propagate": false
+    },
+    "uvicorn.error": {
+      "level": "INFO",
+      "handlers": ["file", "console"],
+      "propagate": false
+    },
+    "uvicorn.access": {
+      "level": "INFO",
+      "handlers": ["access_file", "access_console"],
+      "propagate": false
     }
   },
   "root": {

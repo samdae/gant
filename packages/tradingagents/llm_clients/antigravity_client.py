@@ -24,12 +24,6 @@ from langchain_core.runnables import Runnable
 from .base_client import BaseLLMClient
 
 # --- Constants ---
-CLIENT_ID = base64.b64decode(
-    "MTA3MTAwNjA2MDU5MS10bWhzc2luMmgyMWxjcmUyMzV2dG9sb2poNGc0MDNlcC5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ=="
-).decode("utf-8")
-CLIENT_SECRET = base64.b64decode(
-    "R09DU1BYLUs1OEZXUjQ4NkxkTEoxbUxCOHNYQzR6NnFEQWY="
-).decode("utf-8")
 REDIRECT_PORT = 51121
 REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/oauth-callback"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -60,6 +54,51 @@ logger = logging.getLogger(__name__)
 
 # --- OAuth & Token Management ---
 TOKEN_FILE = os.path.expanduser("~/.antigravity_tokens.json")
+
+
+def _oauth_client_credentials(provider: str) -> tuple[str, str]:
+    id_key, secret_key = f"{provider}_CLIENT_ID", f"{provider}_CLIENT_SECRET"
+    client_id, secret = os.getenv(id_key), os.getenv(secret_key)
+    if not client_id or not secret:
+        raise RuntimeError(f"Set {id_key} and {secret_key} for Google OAuth sign-in or refresh.")
+    return client_id, secret
+
+
+def _receive_oauth_code(url: str, state: str):
+    """Wait for the callback path; incidental browser requests do not finish login."""
+    class OAuthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            parsed = urlparse(self.path)
+            if parsed.path != "/oauth-callback":
+                self.send_error(404)
+                return
+            query = parse_qs(parsed.query)
+            self.server.auth_code = query.get("code", [None])[0]
+            self.server.auth_state = query.get("state", [None])[0]
+            self.server.received_callback = True
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(
+                b"<html><body><h1>Auth Complete</h1><p>Close this window.</p></body></html>"
+            )
+
+        def log_message(self, format, *args):
+            pass
+
+    with HTTPServer(("localhost", REDIRECT_PORT), OAuthHandler) as server:
+        server.received_callback = False
+        print(f"Please authenticate via browser: {url}")
+        if not os.path.exists("/.dockerenv"):
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+        while not server.received_callback:
+            server.handle_request()
+        if not server.auth_state or not secrets.compare_digest(server.auth_state, state):
+            raise ValueError("OAuth state mismatch")
+        return server.auth_code
 
 
 class AntigravityAuth:
@@ -115,14 +154,14 @@ class AntigravityAuth:
             return False
         try:
             data = {
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
                 "refresh_token": self.refresh_token,
                 "grant_type": "refresh_token",
             }
             data_encoded = urlencode(data).encode("utf-8")
             req = urllib.request.Request(TOKEN_URL, data=data_encoded, method="POST")
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=90) as response:
                 tokens = json.loads(response.read().decode("utf-8"))
             self.access_token = tokens["access_token"]
             self.expires_at = time.time() + tokens.get("expires_in", 3600) - 300
@@ -146,7 +185,7 @@ class AntigravityAuth:
     def _get_auth_code(self, verifier, challenge):
         state = secrets.token_hex(16)
         params = {
-            "client_id": CLIENT_ID,
+            "client_id": self.client_id,
             "response_type": "code",
             "redirect_uri": REDIRECT_URI,
             "scope": " ".join(SCOPES),
@@ -158,50 +197,15 @@ class AntigravityAuth:
         }
         url = f"{AUTH_URL}?{urlencode(params)}"
 
-        class OAuthHandler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                parsed = urlparse(self.path)
-                if parsed.path != "/oauth-callback":
-                    self.send_error(404)
-                    return
-                query = parse_qs(parsed.query)
-                self.server.auth_code = query.get("code", [None])[0]
-                self.server.auth_state = query.get("state", [None])[0]
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h1>Auth Complete</h1><p>Close this window.</p></body></html>"
-                )
-
-            def log_message(self, format, *args):
-                pass
-
-        server = HTTPServer(("localhost", REDIRECT_PORT), OAuthHandler)
-        server.auth_code = None
-
-        print(f"\n[Antigravity] Please authenticate via browser: {url}\n")
-
-        if not os.path.exists("/.dockerenv"):
-            try:
-                webbrowser.open(url)
-            except:
-                pass
-
         try:
-            server.handle_request()
+            return _receive_oauth_code(url, state)
         except KeyboardInterrupt:
             return None
 
-        if server.auth_state != state:
-            raise Exception("State mismatch")
-
-        return server.auth_code
-
     def _exchange_token(self, code, verifier):
         data = {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
             "code": code,
             "grant_type": "authorization_code",
             "redirect_uri": REDIRECT_URI,
@@ -209,7 +213,7 @@ class AntigravityAuth:
         }
         data_encoded = urlencode(data).encode("utf-8")
         req = urllib.request.Request(TOKEN_URL, data=data_encoded, method="POST")
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=90) as response:
             return json.loads(response.read().decode("utf-8"))
 
     def _fetch_project_id(self):
@@ -229,14 +233,14 @@ class AntigravityAuth:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=90) as response:
                 data = json.loads(response.read().decode("utf-8"))
                 proj = data.get("cloudaicompanionProject")
                 if isinstance(proj, str):
                     return proj
                 if isinstance(proj, dict):
                     return proj.get("id")
-        except:
+        except Exception:
             pass
         return "rising-fact-p41fc"
 
@@ -244,6 +248,8 @@ class AntigravityAuth:
         # 1) Already have a valid token
         if self.access_token and time.time() < self.expires_at:
             return
+
+        self.client_id, self.client_secret = _oauth_client_credentials("ANTIGRAVITY")
 
         # 2) Try refresh_token (no browser needed)
         if self.refresh_token and self._refresh_access_token():
@@ -274,10 +280,6 @@ class AntigravityAuth:
 
 
 # --- Gemini CLI OAuth (alternative auth) ---
-GEMINI_CLI_CLIENT_ID = (
-    "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
-)
-GEMINI_CLI_CLIENT_SECRET = "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"
 GEMINI_CLI_TOKEN_FILE = os.path.expanduser("~/.gemini/oauth_creds.json")
 GEMINI_CLI_SCOPES = [
     "https://www.googleapis.com/auth/cloud-platform",
@@ -341,14 +343,14 @@ class GeminiCLIAuth:
             return False
         try:
             data = {
-                "client_id": GEMINI_CLI_CLIENT_ID,
-                "client_secret": GEMINI_CLI_CLIENT_SECRET,
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
                 "refresh_token": self.refresh_token,
                 "grant_type": "refresh_token",
             }
             data_encoded = urlencode(data).encode("utf-8")
             req = urllib.request.Request(TOKEN_URL, data=data_encoded, method="POST")
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=90) as response:
                 tokens = json.loads(response.read().decode("utf-8"))
             self.access_token = tokens["access_token"]
             self.expires_at = time.time() + tokens.get("expires_in", 3600) - 300
@@ -368,7 +370,7 @@ class GeminiCLIAuth:
         challenge = base64.urlsafe_b64encode(digest).decode("utf-8").replace("=", "")
 
         params = {
-            "client_id": GEMINI_CLI_CLIENT_ID,
+            "client_id": self.client_id,
             "response_type": "code",
             "redirect_uri": REDIRECT_URI,
             "scope": " ".join(GEMINI_CLI_SCOPES),
@@ -380,51 +382,14 @@ class GeminiCLIAuth:
         }
         url = f"{AUTH_URL}?{urlencode(params)}"
 
-        class OAuthHandler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                parsed = urlparse(self.path)
-                if parsed.path != "/oauth-callback":
-                    self.send_error(404)
-                    return
-                query = parse_qs(parsed.query)
-                self.server.auth_code = query.get("code", [None])[0]
-                self.server.auth_state = query.get("state", [None])[0]
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h1>Auth Complete</h1><p>Close this window.</p></body></html>"
-                )
-
-            def log_message(self, format, *args):
-                pass
-
-        server = HTTPServer(("localhost", REDIRECT_PORT), OAuthHandler)
-        server.auth_code = None
-
-        print(f"\n[GeminiCLI Auth] Please authenticate via browser: {url}\n")
-        if not os.path.exists("/.dockerenv"):
-            try:
-                webbrowser.open(url)
-            except:
-                pass
-
-        try:
-            server.handle_request()
-        except KeyboardInterrupt:
-            raise Exception("Auth cancelled by user")
-
-        if server.auth_state != state:
-            raise Exception("State mismatch")
-
-        code = server.auth_code
+        code = _receive_oauth_code(url, state)
         if not code:
             raise Exception("Failed to get auth code")
 
         # Exchange code for tokens
         data = {
-            "client_id": GEMINI_CLI_CLIENT_ID,
-            "client_secret": GEMINI_CLI_CLIENT_SECRET,
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
             "code": code,
             "grant_type": "authorization_code",
             "redirect_uri": REDIRECT_URI,
@@ -432,7 +397,7 @@ class GeminiCLIAuth:
         }
         data_encoded = urlencode(data).encode("utf-8")
         req = urllib.request.Request(TOKEN_URL, data=data_encoded, method="POST")
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=90) as response:
             tokens = json.loads(response.read().decode("utf-8"))
 
         self.access_token = tokens["access_token"]
@@ -477,7 +442,7 @@ class GeminiCLIAuth:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=90) as response:
                 data = json.loads(response.read().decode("utf-8"))
                 proj = data.get("cloudaicompanionProject")
                 if isinstance(proj, str):
@@ -490,16 +455,11 @@ class GeminiCLIAuth:
 
     def ensure_token(self):
         """Same interface as AntigravityAuth.ensure_token()."""
-        # 1) Already have a valid token
-        if self.access_token and time.time() < self.expires_at:
-            pass  # Token is valid, continue to project_id check below
-        # 2) Try refresh
-        elif self.refresh_token and self._refresh_access_token():
-            pass  # Refreshed, continue to project_id check below
-        else:
-            # 3) Full browser auth
-            print("[GeminiCLI Auth] Browser authentication required")
-            self._browser_auth()
+        if not self.access_token or time.time() >= self.expires_at:
+            self.client_id, self.client_secret = _oauth_client_credentials("GEMINI_CLI")
+            if not (self.refresh_token and self._refresh_access_token()):
+                print("[GeminiCLI Auth] Browser authentication required")
+                self._browser_auth()
 
         # Always ensure project_id is set
         if not self.project_id:
@@ -746,7 +706,7 @@ class ChatAntigravity(BaseChatModel):
                     method="POST",
                 )
 
-                with urllib.request.urlopen(req) as response:
+                with urllib.request.urlopen(req, timeout=90) as response:
                     resp_data = json.loads(response.read().decode("utf-8"))
                     logger.debug("[Antigravity] Response received")
 

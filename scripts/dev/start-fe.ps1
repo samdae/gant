@@ -7,9 +7,9 @@ if (-not (Test-Path "node_modules")) {
     npm install
 }
 
-$env:VITE_API_BASE_URL = "http://localhost:8001"
+$env:VITE_API_BASE_URL = "http://localhost:8011"
 
-Write-Host "[dev] Starting Vite on port 5174 (API -> localhost:8001)..." -ForegroundColor Cyan
+Write-Host "[dev] Starting Vite on port 5174 (API -> localhost:8011)..." -ForegroundColor Cyan
 npm run dev -- --port 5174
 
 Pop-Location

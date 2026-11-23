@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import datetime
@@ -39,9 +40,11 @@ class BriefingAgent:
         items: List[Dict[str, Any]] = []
         for report in reports:
             ticker = str(report.get("ticker") or "").upper()
-            if bool(report.get("analysis_skipped")):
+            automatic_exit = str(report.get("portfolio_rationale") or "").startswith("Automatic liquidation:")
+            if report.get("analysis_skipped") or automatic_exit:
                 skip_reason = str(
-                    report.get("skip_reason") or "오늘 분석 없음 (데이터 미갱신)"
+                    "종목 가상 포지션 자동 청산 · 신규 시장 분석 없음" if automatic_exit
+                    else report.get("skip_reason") or "오늘 분석 없음 (데이터 미갱신)"
                 )
                 items.append(
                     {
@@ -55,22 +58,25 @@ class BriefingAgent:
                 continue
 
             decision = (
-                report.get("portfolio_action")
-                or report.get("decision_position")
+                report.get("decision_position")
                 or _extract_decision(report.get("final_trade_decision"))
             )
-            final_reason = str(report.get("final_trade_decision") or "")
+            strategy = report.get("pipeline_strategy")
+            if isinstance(strategy, str):
+                try:
+                    strategy = json.loads(strategy)
+                except ValueError:
+                    strategy = None
+            confidence = str(strategy.get("conviction") or "").lower() if isinstance(strategy, dict) else ""
+            if confidence not in {"high", "medium", "low"}:
+                confidence = "unknown"
             key_summary = str(report.get("market_report") or "")[:400]
-            confidence = "medium"
-            if "high" in final_reason.lower() or "강한" in final_reason:
-                confidence = "high"
-            elif "low" in final_reason.lower() or "약한" in final_reason:
-                confidence = "low"
 
             items.append(
                 {
                     "ticker": ticker,
                     "action": str(decision).upper(),
+                    "ticker_pa_action": report.get("portfolio_action"),
                     "confidence": confidence,
                     "summary": key_summary,
                     "analysis_skipped": False,

@@ -5,10 +5,10 @@ import logging
 from typing import Any, Dict, List
 
 from tradingagents.llm_clients.factory import create_llm_client
+from tradingagents.retrospective.prompt import report_memories
 from tradingagents.rag_validator.prompt import build_validation_prompt
 from tradingagents.storage import (
     RAGValidationRepository,
-    ReflectionRepository,
     ReportRepository,
     RetrospectiveRepository,
 )
@@ -25,7 +25,6 @@ class RAGValidatorService:
         self.config = config
         self.retro_repo = RetrospectiveRepository(db)
         self.report_repo = ReportRepository(db)
-        self.reflection_repo = ReflectionRepository(db)
         self.validation_repo = RAGValidationRepository(db)
         self._llm = None
 
@@ -52,31 +51,34 @@ class RAGValidatorService:
         content = response.content if hasattr(response, "content") else str(response)
         parsed = self._parse_json(content)
 
-        verdict = str(parsed.get("verdict", "ambiguous")).strip().lower()
+        if not isinstance(parsed, dict):
+            raise ValueError("Expected a RAG verdict object")
+        verdict = str(parsed.get("verdict", "")).strip().lower()
         if verdict not in {"reflected", "not_reflected", "ambiguous"}:
-            verdict = "ambiguous"
-        justification = str(parsed.get("justification", "")).strip()
+            raise ValueError("Invalid or missing RAG verdict")
+        justification = parsed.get("justification")
+        if not isinstance(justification, str) or not justification.strip():
+            raise ValueError("Missing RAG verdict justification")
         reflection_id = int(rag_doc.get("reflection_id"))
 
-        if verdict == "reflected":
-            delta = 1
-        elif verdict == "not_reflected":
-            delta = -1
-        else:
-            delta = 0
+        if parsed.get("reflection_id") != reflection_id:
+            raise ValueError("RAG verdict references the wrong memory")
+        if verdict != "ambiguous":
+            quote = parsed.get("evidence_quote")
+            if not isinstance(quote, str) or not quote.strip():
+                raise ValueError("RAG verdict has no supporting PA quotation")
+            quote = quote.strip()
+            if not any(quote in (decision.get(field) or "") for decision in rag_doc["decisions"]
+                       for field in ("opinion", "rationale")):
+                raise ValueError("Quoted evidence is absent from the recorded PA decision")
+            justification = f"{justification} (당시 PA 기록: {quote})"
 
         return {
             "reflection_id": reflection_id,
             "verdict": verdict,
             "justification": justification,
-            "score_delta": delta,
+            "score_delta": 0,
         }
-
-    def _apply_score_adjustments(self, results: List[Dict[str, Any]]) -> None:
-        for result in results:
-            reflection_id = result["reflection_id"]
-            delta = int(result["score_delta"])
-            self.reflection_repo.update_usefulness_score(reflection_id, delta)
 
     def _generate_report(self, results: List[Dict[str, Any]]) -> Dict[str, int]:
         summary = {
@@ -96,48 +98,38 @@ class RAGValidatorService:
         if not retro:
             raise ValueError(f"Retrospective {retrospective_id} not found")
 
+        if retro.get("status") != "completed":
+            raise ValueError(f"Retrospective {retrospective_id} is not completed")
         retro_content = retro.get("analysis_content") or ""
         if not retro_content.strip():
             raise ValueError(f"Retrospective {retrospective_id} has empty analysis_content")
 
         reports = self.report_repo.get_by_position(retro["position_id"])
-        rag_docs: List[Dict[str, Any]] = []
-        for report in reports:
-            if not report.get("rag_used"):
-                continue
-            raw = report.get("rag_docs")
-            if not raw:
-                continue
-            payload = raw
-            if isinstance(raw, str):
-                try:
-                    payload = json.loads(raw)
-                except Exception:
-                    continue
-            memories = payload.get("memories", []) if isinstance(payload, dict) else []
-            for mem in memories:
-                if mem.get("reflection_id"):
-                    rag_docs.append(mem)
-
         deduped: Dict[int, Dict[str, Any]] = {}
-        for doc in rag_docs:
-            deduped[int(doc["reflection_id"])] = doc
+        for report in reports:
+            for memory in report_memories(report):
+                reflection_id = int(memory["reflection_id"])
+                doc = deduped.setdefault(reflection_id, {**memory, "decisions": []})
+                doc["decisions"].append({
+                    "cycle": report.get("scheduled_cycle"),
+                    "action": report.get("portfolio_action"),
+                    "opinion": report.get("pa_opinion"),
+                    "rationale": report.get("portfolio_rationale"),
+                })
 
         results: List[Dict[str, Any]] = []
         for reflection_id, doc in deduped.items():
             if self._is_already_evaluated(retrospective_id, reflection_id):
                 continue
             result = self._evaluate_document(retro_content, doc)
-            self.validation_repo.create(
+            inserted = self.validation_repo.create(
                 retrospective_id=retrospective_id,
                 reflection_id=result["reflection_id"],
                 verdict=result["verdict"],
                 justification=result["justification"],
-                score_delta=result["score_delta"],
             )
-            results.append(result)
-
-        self._apply_score_adjustments(results)
+            if inserted:
+                results.append(result)
         return {
             "retrospective_id": retrospective_id,
             "summary": self._generate_report(results),

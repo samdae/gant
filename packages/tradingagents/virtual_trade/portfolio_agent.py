@@ -14,6 +14,7 @@ Makes portfolio-level decision:
 """
 
 import os
+import math
 import json
 import logging
 from datetime import datetime
@@ -89,12 +90,10 @@ class PortfolioAgent:
         """
         # FR-030: Load from DB instead of files
         from tradingagents.storage import (
-            PositionRepository,
             TradeRepository,
             ReportRepository
         )
 
-        position_repo = PositionRepository(self.db)
         trade_repo = TradeRepository(self.db)
         report_repo = ReportRepository(self.db)
 
@@ -107,7 +106,7 @@ class PortfolioAgent:
         if position:
             reports = report_repo.get_by_position(position["id"])
             # Get recent 3 reports
-            reports = reports[-3:] if len(reports) > 3 else reports
+            reports = list(reversed(reports[:3]))  # Repository returns newest first.
 
         # Get position summary
         position_summary = self.trade_manager.get_position_summary(ticker)
@@ -122,6 +121,31 @@ class PortfolioAgent:
             current_position_value = position_calc["total_returned"]
             unrealized_return_pct = position_calc["realized_return_pct"]
 
+        ctx_capital = context.get("initial_capital") if context else None
+        cash_available = self._get_cash_available(ticker, trade_repo, ctx_capital)
+
+        prompt_inputs = dict(
+            ticker=ticker, position_summary=position_summary, trade_state=trade_state,
+            current_price=current_price, current_position_value=current_position_value,
+            unrealized_return_pct=unrealized_return_pct, reports=reports,
+            pipeline_decision=pipeline_decision, pipeline_state=pipeline_state,
+            cash_available=cash_available, pipeline_strategy=pipeline_strategy,
+            currency=(context or {}).get("currency") or (position or {}).get("currency", "USD"),
+        )
+
+        def request_decision(rag_context=""):
+            prompt = self._build_prompt(**prompt_inputs, rag_context=rag_context, paired=has_experience)
+            try:
+                text = self.llm.invoke(prompt, config={"timeout": 600}).content
+                decision = self._parse_decision(text, trade_state, current_price, cash_available)
+                if not has_experience and decision["action"] != pipeline_decision:
+                    raise DecisionParseError("Action changed without retrieved experience", raw_text=text)
+                return decision
+            except DecisionParseError:
+                raise
+            except Exception as exc:
+                raise AgentExecutionError("Portfolio agent failed") from exc
+
         # FR-022: RAG search for past experiences (if hybrid_memory available)
         rag_context = ""
         has_experience = False
@@ -131,30 +155,34 @@ class PortfolioAgent:
                 query = self._build_rag_query(pipeline_state, ticker, context=context)
                 memories = self.hybrid_memory.get_memories(query, n_matches=self.rag_top_k)
 
-                if memories:
+                rag_memories = []
+                parts = []
+                for mem in memories or []:
+                    if not isinstance(mem, dict) or not isinstance(mem.get("metadata"), dict):
+                        continue
+                    metadata = mem["metadata"]
+                    ref = str(metadata.get("reflection_id", ""))
+                    lesson = mem.get("matched_situation")
+                    if not (ref.isascii() and ref.isdigit() and int(ref) > 0
+                            and isinstance(lesson, str) and lesson.strip()):
+                        continue
+                    reflection_id = int(ref)
+                    matched_situation = lesson[:1000]
+                    return_pct = metadata.get("return_pct")
+                    outcome_label = metadata.get("outcome_label", "")
+                    parts.append(
+                        f"회고 #{reflection_id} {outcome_label}\n   Lessons: {matched_situation}\n"
+                        f"   Return: {return_pct if return_pct is not None else 'N/A'}%"
+                    )
+                    rag_memories.append({
+                        "reflection_id": reflection_id, "outcome_label": outcome_label,
+                        "matched_situation": matched_situation, "return_pct": return_pct,
+                    })
+                if rag_memories:
+                    rag_context = "\n**Past Experiences (from RAG):**\n" + "\n".join(parts)
                     has_experience = True
-                    rag_context = "\n**Past Experiences (from RAG):**\n"
-                    rag_memories = []
-                    for i, mem in enumerate(memories, 1):
-                        outcome_label = mem["metadata"].get("outcome_label", "")
-                        matched_situation = mem["matched_situation"][:200]
-                        return_pct = mem["metadata"].get("return_pct")
-                        rag_context += f"\n{i}. {outcome_label}\n"
-                        rag_context += f"   Lessons: {matched_situation}...\n"
-                        rag_context += f"   Return: {return_pct if return_pct is not None else 'N/A'}%\n"
-                        rag_memories.append({
-                            "reflection_id": mem["metadata"].get("reflection_id"),
-                            "outcome_label": outcome_label,
-                            "matched_situation": matched_situation,
-                            "return_pct": return_pct,
-                        })
-
-                    import json
-                    rag_docs = json.dumps({
-                        "memories": rag_memories,
-                        "raw_context": rag_context,
-                    }, ensure_ascii=False)
-                    logger.info(f"{ticker}: Found {len(memories)} relevant past experiences")
+                    rag_docs = {"memories": rag_memories, "raw_context": rag_context}
+                    logger.info("%s: found %d relevant past experiences", ticker, len(rag_memories))
                 else:
                     logger.info(f"{ticker}: No relevant past experiences found")
 
@@ -162,55 +190,56 @@ class PortfolioAgent:
                 logger.warning(f"{ticker}: RAG search failed: {e}")
                 rag_context = ""
                 rag_docs = None
+                has_experience = False
 
-        ctx_capital = context.get("initial_capital") if context else None
-        cash_available = self._get_cash_available(ticker, trade_repo, ctx_capital)
+        if not has_experience:
+            blind = request_decision()
+            blind.pop("applied_reflection_ids", None)
+            blind.update(rag_used=False, rag_docs=None)
+            return blind
 
-        # Build prompt
-        prompt = self._build_prompt(
-            ticker=ticker,
-            position_summary=position_summary,
-            trade_state=trade_state,
-            current_price=current_price,
-            current_position_value=current_position_value,
-            unrealized_return_pct=unrealized_return_pct,
-            reports=reports,
-            pipeline_decision=pipeline_decision,
-            pipeline_state=pipeline_state,
-            cash_available=cash_available,
-            rag_context=rag_context,
-            pipeline_strategy=pipeline_strategy,
-            has_experience=has_experience,
-        )
-
-        # Invoke LLM with timeout handling
+        # Retrieval selects the experiment. The blind invocation receives no lessons,
+        # and its output is never shown to the second invocation or sent for execution.
         try:
-            response = self.llm.invoke(prompt, config={"timeout": 600})
-            decision_text = response.content
+            blind = request_decision()
+        except (DecisionParseError, AgentExecutionError):
+            blind = None
+        decision = request_decision(rag_context)
+        supplied = [doc["reflection_id"] for doc in rag_docs["memories"]]
+        claimed = decision.pop("applied_reflection_ids", None)
+        # IDs must explicitly identify supplied evidence. Rationale mentions can include rejections.
+        valid = (isinstance(claimed, list)
+                 and all(type(value) is int and value > 0 and value in supplied for value in claimed)
+                 and len(set(claimed)) == len(claimed))
+        rag_docs["applied_reflection_ids"] = claimed if valid else []
+        if blind is None:
+            logger.warning("%s: blind portfolio decision unavailable; skipping paired measurement", ticker)
+        elif valid and len(supplied) == 1 and claimed == supplied:
+            holdings = float((position or {}).get("shares", 0))
+            before = self._feasible_action(blind, current_price, cash_available, holdings)
+            after = self._feasible_action(decision, current_price, cash_available, holdings)
+            if before is not None and after is not None:
+                rag_docs["decision_pair_v1"] = {
+                    "reflection_id": supplied[0], "before": before, "after": after,
+                    "cash": cash_available, "holdings": holdings,
+                }
+        decision.update(rag_used=True, rag_docs=json.dumps(rag_docs, ensure_ascii=False))
+        return decision
 
-            # Parse decision
-            decision = self._parse_decision(
-                decision_text,
-                trade_state,
-                current_price,
-                cash_available,
-            )
-
-            decision["rag_used"] = has_experience
-            decision["rag_docs"] = rag_docs
-
-            logger.info(
-                f"Portfolio decision for {ticker}: {decision['action']} "
-                f"(pipeline: {pipeline_decision})"
-            )
-
-            return decision
-
-        except DecisionParseError:
-            raise
-        except Exception as e:
-            logger.error(f"Portfolio agent LLM timeout or error: {e}")
-            raise AgentExecutionError("Portfolio agent failed") from e
+    @staticmethod
+    def _feasible_action(decision, price, cash, holdings):
+        action, shares = decision["action"], decision["shares"]
+        if not all(math.isfinite(number) for number in (shares, price, cash, holdings)):
+            return None
+        if price <= 0 or cash < 0 or holdings < 0:
+            return None
+        if action == "HOLD":
+            return {"action": action, "shares": 0.0}
+        if shares <= 0 or (action == "BUY" and shares * price > cash + 1e-8):
+            return None
+        if action == "SELL" and shares > holdings + 1e-8:
+            return None
+        return {"action": action, "shares": shares}
 
     def _build_rag_query(
         self,
@@ -272,12 +301,13 @@ class PortfolioAgent:
         cash_available: float,
         rag_context: str = "",
         pipeline_strategy: Optional[Dict[str, Any]] = None,
-        has_experience: bool = False,
+        currency: str = "USD",
+        paired: bool = False,
     ) -> str:
         """Build prompt for portfolio agent LLM.
         
         FR-020: 매도 수량 가이드 추가
-        FR-022: RAG context + 분석(60):경험(40) 가중치 + 디바이어싱
+        FR-022: RAG context and checks for applicability.
         """
 
         # Extract position info
@@ -300,7 +330,7 @@ class PortfolioAgent:
                 history_text += f"\n- Cycle (created: {created_str})"
                 if r.get('final_trade_decision'):
                     history_text += f"\n  Decision: {r['final_trade_decision'][:800]}..."
-                if r.get('pa_opinion'):
+                if not paired and r.get("pa_opinion"):
                     history_text += f"\n  PA: {r['pa_opinion'][:800]}..."
         else:
             history_text = "\n(No prior analysis)"
@@ -314,41 +344,21 @@ class PortfolioAgent:
             strategy_block = f"""
 **파이프라인 전략 (구조화):**
 ```json
-{json.dumps(pipeline_strategy, ensure_ascii=False, indent=2)}
+{json.dumps({k: v for k, v in pipeline_strategy.items() if k != "forecast_5s"}, ensure_ascii=False, indent=2)}
 ```
 """
         else:
             strategy_block = "(전략 JSON 없음 — 최종결정 텍스트만 참고)"
 
-        # Experience-based guidance
-        if has_experience:
-            experience_guidance = """
-**의사결정 가중치:**
-- 파이프라인 분석: 60% — 최신 시장 데이터 기반 객관적 평가
-- 과거 경험 (RAG): 40% — 유사 상황의 성공/실패 교훈
-
-**경험이 있으므로**, 파이프라인 전략과 과거 교훈을 비교하여 독립적으로 판단 가능합니다.
-단, action을 변경하려면 반드시 명확한 과거 교훈에 근거해야 합니다.
-
-**디바이어싱 가이드:**
-- 최근 편향 방지: 직전 사이클 결과에 과도한 가중치 부여 금지
-- 확증 편향 방지: 반대 근거도 반드시 고려
-- 앵커링 방지: 현재 가격 ≠ 적정 가격
+        experience_guidance = """
+현재 시장 근거와 반례를 먼저 판단하세요. 파이프라인과 다른 결정을 내리면 현재 시장 근거를 설명하세요.
+제공된 교훈을 실제 판단 또는 비중 결정에 적용한 경우에만 applied_reflection_ids 배열에 그 회고 번호를 정수로 적고 rationale에 이유를 설명하세요.
+검토만 했거나 배제한 교훈은 배열에서 제외하세요. 적용한 교훈이 없으면 빈 배열을 반환하세요.
+단일 사례로 일반화하지 마세요.
 """
-        else:
-            experience_guidance = """
-**⚠️ 과거 경험이 없습니다.**
-경험 데이터 없이 파이프라인 결정을 임의로 변경하는 것은 금지됩니다.
 
-**필수 규칙:**
-1. 파이프라인의 action(BUY/SELL/HOLD)을 **반드시 그대로 따라야** 합니다
-2. allocation_pct(비중)만 조절할 수 있습니다
-3. 파이프라인이 HOLD이면 반드시 HOLD를 출력하세요
-4. 파이프라인이 BUY이면 반드시 BUY를 출력하세요
-5. 파이프라인이 SELL이면 반드시 SELL를 출력하세요
-
-전략 JSON의 allocation_pct가 있으면 그 값을 참고하되, 본인의 판단으로 조절 가능합니다.
-"""
+        if not paired:
+            experience_guidance += "\n과거 교훈이 없으므로 파이프라인 action을 그대로 따르고 비중만 조절하세요."
 
         macro_context = pipeline_state.get("macro_context", "")
         macro_section = f"\n**매크로 & 섹터 컨텍스트:**\n{macro_context}\n" if macro_context else ""
@@ -359,11 +369,11 @@ class PortfolioAgent:
 - 티커: {ticker}
 - 포지션: {position_summary}
 - 보유 주식 수: {total_shares}
-- 현재가: ${current_price:.2f}
-- 포지션 평가금액: ${current_position_value:.2f}
+- 현재가: {currency} {current_price:.2f}
+- 포지션 평가금액: {currency} {current_position_value:.2f}
 - 미실현 수익률: {unrealized_return_pct:.2f}%
 - 포트폴리오 상태: {trade_state['status']}
-- 가용 현금: ${cash_available:.2f}
+- 가용 현금: {currency} {cash_available:.2f}
 
 **최근 분석 히스토리:**{history_text}
 
@@ -388,17 +398,18 @@ class PortfolioAgent:
 
 **응답은 반드시 아래 JSON 형식만 출력하세요. JSON 외에 다른 텍스트를 포함하지 마세요:**
 ```json
-{{{{
+{{
   "action": "BUY 또는 SELL 또는 HOLD",
   "allocation_pct": 0~100 정수,
   "shares": 0,
+  "applied_reflection_ids": [],
   "rationale": "2~3문장 (한국어)",
-  "strategy_update": {{{{
+  "strategy_update": {{
     "stop_loss": 가격_또는_null,
     "target": 가격_또는_null,
     "next_action": "BUY 또는 SELL 또는 HOLD"
-  }}}}
-}}}}
+  }}
+}}
 ```
 
 반드시 한국어로 작성하세요."""
@@ -484,6 +495,9 @@ class PortfolioAgent:
         except (ValueError, TypeError):
             shares = 0.0
 
+        if not math.isfinite(shares) or shares < 0:
+            raise DecisionParseError("Invalid share quantity", raw_text=decision_text)
+
         if allocation_pct is not None:
             shares = self._shares_from_allocation(
                 action,
@@ -517,7 +531,7 @@ class PortfolioAgent:
                 )
 
         # BUY/SELL must have shares > 0
-        if action in ["BUY", "SELL"] and shares <= 0:
+        if allocation_pct is None and action in ["BUY", "SELL"] and shares <= 0:
             # Auto-calculate as fallback
             position = trade_state.get("position")
             if action == "BUY" and current_price > 0:
@@ -526,6 +540,10 @@ class PortfolioAgent:
                 shares = position["shares"]
             else:
                 shares = 0.0
+
+        shares = self._round_shares(shares)
+        if action == "BUY" and current_price > 0 and shares * current_price > cash_available:
+            shares = math.floor(max(cash_available, 0.0) / current_price * 1_000_000) / 1_000_000
 
         rationale = str(parsed.get("rationale", decision_text[:200]))
 
@@ -541,7 +559,7 @@ class PortfolioAgent:
                 return None
             try:
                 v = float(str(val).replace("$", "").replace(",", "").strip())
-                return v if v > 0 else None
+                return v if math.isfinite(v) and v > 0 else None
             except (ValueError, TypeError):
                 return None
 
@@ -555,6 +573,7 @@ class PortfolioAgent:
             "action": action,
             "shares": self._round_shares(shares),
             "rationale": rationale,
+            "applied_reflection_ids": parsed.get("applied_reflection_ids"),
             "strategy_update": strategy_update,
         }
 
@@ -569,8 +588,8 @@ class PortfolioAgent:
             pct = float(text)
         except (ValueError, TypeError):
             return None
-        if pct < 0:
-            return None
+        if not math.isfinite(pct) or pct < 0 or pct > 100:
+            raise DecisionParseError("Invalid allocation percentage", raw_text=text)
         return pct
 
     def _shares_from_allocation(
@@ -611,11 +630,11 @@ class PortfolioAgent:
             return max(float(cash), 0.0)
         except Exception as e:
             logger.warning(f"{ticker}: Failed to compute cash balance: {e}")
-            return capital
+            raise AgentExecutionError("Cannot size virtual trade without a cash balance") from e
 
     @staticmethod
     def _round_shares(value: float) -> float:
-        return round(float(value), 2)
+        return round(float(value), 6)
 
     def _fallback_decision(
         self,

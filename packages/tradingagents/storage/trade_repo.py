@@ -1,12 +1,34 @@
 """Trade repository for CRUD operations on trades table."""
 
 import logging
+from math import isfinite
 from typing import Dict, Any, List
 from datetime import datetime
 
 from .database import Database
 
 logger = logging.getLogger(__name__)
+
+
+def closed_position_return(trades, currency):
+    """Gross lifecycle return on all purchase cost, when every share has a known exit."""
+    inventory = invested = proceeds = 0.0
+    for trade in trades:
+        qty, price = trade["shares"], trade["price"]
+        if (not qty or not price or not isfinite(qty) or not isfinite(price)
+                or min(qty, price) <= 0 or trade.get("currency") != currency):
+            return None
+        if trade["action"] == "BUY":
+            inventory += qty
+            invested += qty * price
+        elif trade["action"] == "SELL" and qty <= inventory + 1e-8:
+            inventory -= qty
+            proceeds += qty * price
+        else:
+            return None
+    if not invested or not proceeds or abs(inventory) > 1e-8:
+        return None
+    return 100 * (proceeds - invested) / invested
 
 
 class TradeRepository:
@@ -82,10 +104,10 @@ class TradeRepository:
         """
         cursor = self.db.get_connection().execute(
             """
-            SELECT id, position_id, report_id, action, shares, price, executed_at
+            SELECT id, position_id, report_id, action, shares, price, currency, executed_at
             FROM trades
             WHERE position_id = %s
-            ORDER BY executed_at ASC
+            ORDER BY executed_at ASC, id ASC
             """,
             (position_id,)
         )

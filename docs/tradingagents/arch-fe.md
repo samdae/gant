@@ -613,7 +613,7 @@ api_integration:
 | 23 | FR-040 | 통화 셀렉터 | src/components/AppHeader.svelte | AppHeader (인라인) | ALL/KRW/USD 버튼 그룹, `currencyFilter.set(c)`. 별도 CurrencySelector.svelte 없음 | [x] |
 | 24 | FR-040 | 통화 스토어 | src/stores/currency.ts | `currencyFilter`, `currencySymbol`, `showAmount`, `tickerCurrency`, `matchesCurrency` | localStorage(`gant_currency`) 동기화, derived stores로 심볼/표시여부 계산 | [x] |
 | 25 | FR-040 | 통화 기반 포맷 | src/lib/utils/format.ts | `formatAmount(value, ticker)`, `formatSignedAmount(value, ticker)` | ticker 접미사로 KRW(₩, 소수점 0)/USD($, 소수점 2) 자동 판단. Dashboard/Positions/TradeDetail 전체 적용. 로컬 `formatAmount` 중복 제거 | [x] |
-| 26 | FR-045 | 대시보드 총손익 | src/routes/Dashboard.svelte | fetchMetrics | `total_realized_pnl` + `total_unrealized_pnl` 표시, `showAmount` 기반 금액/퍼센트 전환 | [x] |
+| 26 | FR-045 | 대시보드 총손익 | src/routes/Dashboard.svelte | fetchMetrics | 분석 모드에서 `by_currency` 기준으로 통화별 총·실현·미실현 수익률, 불완전 체결 건수와 시세 미확인 상태 표시 | [x] |
 | 27 | FR-046 | Closed 포지션 탭 | src/routes/Positions.svelte | `tab: "active" \| "closed"` | active/closed 탭 분리, `ClosedPosition` 타입(outcome, currency, opened_at, closed_at) | [x] |
 | 28 | FR-046 | Closed 포지션 API | src/lib/api/endpoints.ts | `fetchPositionsClosed` | `GET /positions/closed` 호출 (별도 엔드포인트) | [x] |
 | 29 | FR-048 | History 뱃지 동적 색상 | src/routes/TradeDetail.svelte | `getDecisionClass(value)` | BUY/매수→`badge-gain`, SELL/매도→`badge-loss`, HOLD/관망→`badge-muted` | [x] |
@@ -650,7 +650,7 @@ api_integration:
 6. **Schedules CRUD**: 자동완성 + 모달 + 스와이프 삭제
 7. **TradeDetail**: Canvas OHLC 차트 + 마크다운 리포트
 8. **Live**: WS 연결 + DB 이벤트 병합
-9. **PWA**: manifest + SW (CacheFirst/StaleWhileRevalidate)
+9. **PWA**: manifest + SW (정적 파일 사전 캐싱, 과거 API 캐시 정리)
 
 ---
 
@@ -779,7 +779,7 @@ styling_convention:
 |------|--------|--------------|
 | Bundle size | < 200KB | Svelte 컴파일 (no virtual DOM) |
 | API 캐싱 | 5분 TTL | localStorage + 오프라인 폴백 |
-| SW 캐싱 | reports: CacheFirst 10min, API: StaleWhileRevalidate 5min | Workbox 설정 |
+| SW 캐싱 | 정적 파일 사전 캐싱, 이전 버전의 API 캐시 정리 | Workbox 설정 |
 | OHLC 차트 | SVG 직접 렌더링 (캔들/라인 모드, 핀치 줌) | 외부 차트 라이브러리 없음 |
 | 자동 새로고침 | TradeDetail 30초 | setInterval |
 

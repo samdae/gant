@@ -3,7 +3,7 @@
 import json
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .database import Database
 
@@ -25,7 +25,7 @@ class ReportRepository:
         commit: bool = True,
         conn=None,
     ) -> int:
-        created_at = datetime.now().isoformat()
+        created_at = datetime.now(timezone.utc).isoformat()
 
         pipeline_strategy = summaries.get("pipeline_strategy")
         if isinstance(pipeline_strategy, dict):

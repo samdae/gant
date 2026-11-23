@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { params } from "svelte-spa-router";
   import { marked } from "marked";
   import DOMPurify from "dompurify";
@@ -35,17 +34,17 @@
     error = "";
     reflection = null;
     try {
-      reflection = (await fetchReflectionDetail(id)) as Reflection;
+      const result = (await fetchReflectionDetail(id)) as Reflection;
+      if (reflectionId !== id) return;
+      reflection = result;
     } catch (err) {
+      if (reflectionId !== id) return;
       error = formatErrorMessage(err, "회고 상세를 불러오지 못했습니다.");
     } finally {
-      loading = false;
+      if (reflectionId === id) loading = false;
     }
   };
 
-  onMount(() => {
-    if (reflectionId) loadData(reflectionId);
-  });
 
   $: if (reflectionId) loadData(reflectionId);
 

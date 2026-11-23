@@ -1,5 +1,7 @@
 from langchain_core.tools import tool
 from typing import Annotated
+from tradingagents.dataflows.fundamental_dates import unavailable_snapshot
+from tradingagents.runtime_context import bounded_analysis_date
 from tradingagents.dataflows.interface import route_to_vendor
 
 @tool
@@ -18,6 +20,9 @@ def get_news(
     Returns:
         str: A formatted string containing news data
     """
+    end_date = bounded_analysis_date(end_date)
+    if start_date > end_date:
+        return "No data within requested range before the analysis cutoff."
     return route_to_vendor("get_news", ticker, start_date, end_date)
 
 @tool
@@ -36,7 +41,7 @@ def get_global_news(
     Returns:
         str: A formatted string containing global news data
     """
-    return route_to_vendor("get_global_news", curr_date, look_back_days, limit)
+    return route_to_vendor("get_global_news", bounded_analysis_date(curr_date), look_back_days, limit)
 
 @tool
 def get_insider_transactions(
@@ -50,4 +55,7 @@ def get_insider_transactions(
     Returns:
         str: A report of insider transaction data
     """
+    unavailable = unavailable_snapshot(ticker, bounded_analysis_date(), "insider transactions")
+    if unavailable:
+        return unavailable
     return route_to_vendor("get_insider_transactions", ticker)

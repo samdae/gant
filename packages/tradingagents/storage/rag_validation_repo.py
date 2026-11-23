@@ -18,14 +18,14 @@ class RAGValidationRepository:
         reflection_id: int,
         verdict: str,
         justification: str,
-        score_delta: int,
     ) -> int:
+        """Record evidence of application once per retrospective and document."""
         connection = self.db.get_connection()
         cursor = connection.execute(
             """
             INSERT INTO rag_validation_results (
                 retrospective_id, reflection_id, verdict, justification, score_delta, created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, 0, %s)
             ON CONFLICT (retrospective_id, reflection_id) DO NOTHING
             RETURNING id
             """,
@@ -34,7 +34,6 @@ class RAGValidationRepository:
                 reflection_id,
                 verdict,
                 justification,
-                int(score_delta),
                 datetime.now().isoformat(),
             ),
         )

@@ -7,7 +7,10 @@ Storage: SQLite positions + trades tables (via repositories).
 """
 
 import logging
+import math
 from typing import Dict, Any, Optional
+
+from tradingagents.storage.trade_repo import closed_position_return
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +201,8 @@ class TradeManager:
         current_price = self._round_price(current_price)
 
         shares = self._round_shares(shares)
+        if shares <= 0 or current_price <= 0:
+            raise ValueError("Sale quantity and price must be positive")
         if shares > total_shares + 1e-8:
             raise ValueError(
                 f"Insufficient shares: trying to sell {shares}, "
@@ -226,10 +231,14 @@ class TradeManager:
                 conn=conn,
             )
         else:
-            # Full close - mark position as closed
+            # The scheduler records this sale after updating the position, in the same transaction.
+            currency = position["currency"]
+            fills = self.trade_repo.get_by_position(position_id)
+            fills.append(dict(action="SELL", shares=shares, price=current_price, currency=currency))
+            lifecycle_return = closed_position_return(fills, currency)
             self.position_repo.close_position(
                 position_id,
-                realized_return_pct,
+                lifecycle_return,
                 commit=commit,
                 conn=conn,
             )
@@ -376,15 +385,19 @@ class TradeManager:
 
         return (
             f"Holding {self._format_shares(float(shares))} shares {ticker} "
-            f"avg ${avg_cost:.2f}"
+            f"avg {position.get('currency', 'USD')} {avg_cost:.2f}"
         )
 
     @staticmethod
     def _round_shares(value: float) -> float:
-        return round(float(value), 2)
+        if not math.isfinite(float(value)):
+            raise ValueError('Quantity must be finite')
+        return round(float(value), 6)
 
     @staticmethod
     def _round_price(value: float) -> float:
+        if not math.isfinite(float(value)):
+            raise ValueError('Price must be finite')
         return round(float(value), 2)
 
     @staticmethod

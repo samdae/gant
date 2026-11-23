@@ -18,11 +18,15 @@ def build_validation_prompt(
         "reflection_id": reflection_id,
         "verdict": "reflected | not_reflected | ambiguous",
         "justification": "short reason",
+        "evidence_quote": "당시 PA 의견 또는 판단 근거에서 그대로 인용한 문장 (ambiguous이면 빈 문자열)",
     }
 
     return f"""당신은 RAG 품질 검증기입니다.
 
 회고분석 문서와 RAG 문서를 비교해, 포트폴리오 에이전트가 해당 경험을 실제 의사결정에 반영했는지 판정하세요.
+
+[해당 경험을 제공한 사이클의 실제 PA 기록]
+{json.dumps(rag_doc.get("decisions", []), ensure_ascii=False)}
 
 [회고분석]
 {retrospective_content}
@@ -39,7 +43,7 @@ def build_validation_prompt(
 ```
 
 판정 규칙:
-- reflected: 회고분석에 해당 경험의 핵심 교훈/근거가 명확히 사용됨
-- not_reflected: 해당 경험과 무관하거나 반대로 행동함
-- ambiguous: 판단 근거가 부족함
+- reflected: 당시 PA 기록에서 해당 경험의 교훈을 판단 근거로 사용한 증거가 있음
+- not_reflected: PA가 해당 교훈을 명시적으로 배제한 증거가 있음
+- ambiguous: 근거가 부족하거나 단순히 매매 방향만 일치함. 회고자의 해석 또는 수익만으로 반영 여부를 추론하지 마세요.
 """

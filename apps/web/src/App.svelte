@@ -55,10 +55,31 @@
 
 </script>
 
-<AppHeader />
+<div class="app-shell">
+  <AppHeader />
 
-<main class="main-content">
-  <Router {routes} />
-</main>
+  <main class="main-content">
+    <Router {routes} />
+  </main>
 
-<BottomNav />
+  <BottomNav />
+</div>
+
+<style>
+  .app-shell {
+    width: min(100vw, 480px);
+    margin: 0 auto;
+    min-height: 100dvh;
+    position: relative;
+    border-left: 1px solid rgba(255, 255, 255, 0.04);
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  :global(.app-header),
+  :global(.bottom-nav) {
+    width: min(100vw, 480px);
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+</style>

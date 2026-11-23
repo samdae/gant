@@ -10,10 +10,14 @@ import math
 import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from psycopg.errors import ForeignKeyViolation, UniqueViolation
 
+from tradingagents.storage.trade_repo import closed_position_return
+from tradingagents.api.performance import Performance, calculate_performance
 from tradingagents.api.auth import check_admin_token
 from tradingagents.api import app as app_module
 
@@ -44,7 +48,7 @@ def _graph_cache_set(key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
 # Request/Response models
 class ScheduleRequest(BaseModel):
     ticker: str
-    interval_days: int = 1
+    interval_days: int = Field(default=1, ge=1)
     display_name: str = None
 
 
@@ -84,7 +88,7 @@ class ClosedPositionResponse(BaseModel):
     ticker: str
     shares: float
     avg_cost: Optional[float]
-    return_pct: float
+    return_pct: Optional[float]
     currency: str
     outcome: str
     opened_at: Optional[str]
@@ -92,17 +96,18 @@ class ClosedPositionResponse(BaseModel):
 
 
 class MetricsResponse(BaseModel):
+    by_currency: dict[str, Performance]
     as_of: str
     active_positions: int
     closed_positions: int
     wins: int
     losses: int
-    total_unrealized_pnl: float
-    total_unrealized_return_pct: float
-    total_realized_pnl: float
-    total_realized_return_pct: float
-    total_pnl: float
-    total_return_pct: float
+    total_unrealized_pnl: Optional[float]
+    total_unrealized_return_pct: Optional[float]
+    total_realized_pnl: Optional[float]
+    total_realized_return_pct: Optional[float]
+    total_pnl: Optional[float]
+    total_return_pct: Optional[float]
     analysis_accuracy_avg: Optional[float] = None
     analysis_accuracy_count: int = 0
     rag_contribution_avg: Optional[float] = None
@@ -154,9 +159,9 @@ def _fetch_latest_prices(tickers: List[str]) -> Dict[str, Optional[float]]:
             return [f"{base}.KS", f"{base}.KQ"]
         return []
 
-    def extract_close_info(data: Any, symbol: str, multi: bool) -> tuple[Optional[float], Optional[Any], bool]:
+    def extract_close_info(data: Any, symbol: str) -> tuple[Optional[float], Optional[Any], bool]:
         try:
-            close_series = data[symbol]["Close"] if multi else data["Close"]
+            close_series = data[symbol]["Close"] if symbol in data.columns else data["Close"]
         except Exception:
             return None, None, False
         try:
@@ -170,7 +175,7 @@ def _fetch_latest_prices(tickers: List[str]) -> Dict[str, Optional[float]]:
                 val = float(value)
             except (TypeError, ValueError):
                 continue
-            if math.isfinite(val):
+            if math.isfinite(val) and val > 0:
                 return val, values[-1], True
         return None, values[-1], True
 
@@ -198,11 +203,10 @@ def _fetch_latest_prices(tickers: List[str]) -> Dict[str, Optional[float]]:
     if primary_data is None or primary_data.empty:
         return prices
 
-    primary_multi = len(primary_symbols) > 1
     missing: List[str] = []
     diagnostics: Dict[str, List[str]] = {ticker: [] for ticker in tickers}
     for ticker in tickers:
-        price, last_value, has_values = extract_close_info(primary_data, ticker, primary_multi)
+        price, last_value, has_values = extract_close_info(primary_data, ticker)
         if price is not None:
             prices[ticker] = price
             continue
@@ -217,10 +221,9 @@ def _fetch_latest_prices(tickers: List[str]) -> Dict[str, Optional[float]]:
         alt_symbols_all = sorted({symbol for symbols in alt_map.values() for symbol in symbols})
         alt_data = fetch_data(alt_symbols_all)
         if alt_data is not None and not alt_data.empty:
-            alt_multi = len(alt_symbols_all) > 1
             for ticker in missing:
                 for symbol in alt_map.get(ticker, []):
-                    price, last_value, has_values = extract_close_info(alt_data, symbol, alt_multi)
+                    price, last_value, has_values = extract_close_info(alt_data, symbol)
                     if price is not None:
                         logger.warning(f"Price fallback: {ticker} -> {symbol}")
                         prices[ticker] = price
@@ -336,7 +339,11 @@ async def create_schedule(req: ScheduleRequest, _: bool = Depends(check_admin_to
     if existing:
         raise HTTPException(status_code=409, detail=f"Schedule already exists for {req.ticker}")
 
-    schedule_config_repo.create(req.ticker, req.interval_days, display_name=req.display_name)
+    try:
+        schedule_config_repo.create(req.ticker, req.interval_days, display_name=req.display_name)
+    except UniqueViolation as exc:
+        schedule_config_repo.conn.rollback()
+        raise HTTPException(status_code=409, detail="Schedule already exists") from exc
     cfg = schedule_config_repo.get_by_ticker(req.ticker) or {}
     scheduler.add_ticker(req.ticker, req.interval_days, market=cfg.get("market", "us"))
     scheduler.enqueue_schedule(req.ticker)
@@ -362,9 +369,14 @@ async def delete_schedule(ticker: str, _: bool = Depends(check_admin_token)):
     if not existing:
         raise HTTPException(status_code=404, detail=f"Schedule not found for {ticker}")
 
-    # Remove from scheduler
+    if app_module.current_running_ticker == ticker:
+        raise HTTPException(status_code=409, detail="Schedule is currently running")
+    try:
+        schedule_config_repo.delete(ticker)
+    except ForeignKeyViolation as exc:
+        schedule_config_repo.conn.rollback()
+        raise HTTPException(status_code=409, detail="Schedule has analysis history") from exc
     scheduler.remove_ticker(ticker)
-    schedule_config_repo.delete(ticker)
 
     # FR-025: Remove from queue if present
     from tradingagents.scheduler.ticker_scheduler import analysis_queue
@@ -397,7 +409,7 @@ async def delete_schedule(ticker: str, _: bool = Depends(check_admin_token)):
 # FR-025: Positions endpoints (DB-based)
 @router.get("/positions", response_model=List[dict], tags=["Positions"])
 async def get_positions(
-    status: Optional[str] = Query(None, description="Filter by status: active|closed"),
+    status: Optional[str] = Query(None, description="Filter by status: active|closed|reset"),
     cursor: Optional[int] = Query(None, ge=1, description="Last position id"),
     limit: int = Query(10, ge=1, le=100),
 ):
@@ -422,7 +434,7 @@ async def get_positions(
     where_clauses: List[str] = []
 
     if status:
-        if status not in ["active", "closed"]:
+        if status not in ["active", "closed", "reset"]:
             raise HTTPException(status_code=400, detail="Invalid status filter")
         where_clauses.append("status = %s")
         params.append(status)
@@ -461,7 +473,7 @@ async def get_positions_market():
     rows = [dict(row) for row in cursor_obj.fetchall()]
 
     tickers = [row["ticker"] for row in rows]
-    prices = _fetch_latest_prices(tickers)
+    prices = await asyncio.to_thread(_fetch_latest_prices, tickers)
     as_of = datetime.now().isoformat()
 
     results: List[MarketPositionResponse] = []
@@ -502,18 +514,21 @@ async def get_positions_closed():
     conn = scheduler.db.get_connection()
     cursor_obj = conn.execute(
         """
-        SELECT id, ticker, shares, avg_cost, return_pct, currency,
-               opened_at, closed_at
-        FROM positions
-        WHERE status = 'closed'
-        ORDER BY closed_at DESC
+        SELECT p.id, p.ticker, p.shares, p.avg_cost, p.currency, p.opened_at, p.closed_at,
+               jsonb_agg(jsonb_build_object('action', t.action, 'shares', t.shares,
+                         'price', t.price, 'currency', t.currency) ORDER BY t.executed_at, t.id)
+                    FILTER (WHERE t.id IS NOT NULL) AS fills
+        FROM positions p LEFT JOIN trades t ON t.position_id = p.id
+        WHERE p.status = 'closed'
+        GROUP BY p.id
+        ORDER BY p.closed_at DESC
         """
     )
     rows = [dict(row) for row in cursor_obj.fetchall()]
 
     results: List[ClosedPositionResponse] = []
     for row in rows:
-        rp = float(row.get("return_pct") or 0)
+        rp = closed_position_return(row["fills"] or [], row["currency"])
 
         opened_at = row.get("opened_at")
         closed_at = row.get("closed_at")
@@ -529,7 +544,7 @@ async def get_positions_closed():
             avg_cost=row.get("avg_cost"),
             return_pct=rp,
             currency=row.get("currency") or "USD",
-            outcome="win" if rp >= 0 else "loss",
+            outcome="unknown" if rp is None else ("win" if rp >= 0 else "loss"),
             opened_at=opened_at,
             closed_at=closed_at,
         ))
@@ -547,84 +562,22 @@ async def get_metrics():
     as_of = datetime.now().isoformat()
 
     conn = scheduler.db.get_connection()
-    active_positions = conn.execute(
-        "SELECT COUNT(*) AS count FROM positions WHERE status = 'active'"
-    ).fetchone()["count"]
-    closed_positions = conn.execute(
-        "SELECT COUNT(*) AS count FROM positions WHERE status = 'closed'"
-    ).fetchone()["count"]
-    wins = conn.execute(
-        "SELECT COUNT(*) AS count FROM positions WHERE status = 'closed' AND return_pct >= 0"
-    ).fetchone()["count"]
-    losses = conn.execute(
-        "SELECT COUNT(*) AS count FROM positions WHERE status = 'closed' AND return_pct < 0"
-    ).fetchone()["count"]
-
-    # Realized PnL from closed positions
-    # NOTE:
-    # - Exclude anomalous "closed" rows without any SELL execution.
-    #   (can happen from legacy/manual state corrections and distorts metrics heavily)
-    realized_rows = conn.execute(
+    # A single SELECT captures inventory and fills from the same DB snapshot.
+    ledger = conn.execute(
         """
-        SELECT p.id, p.avg_cost, p.shares AS orig_shares, p.return_pct, p.currency,
-               COALESCE(SUM(CASE WHEN t.action='SELL' THEN t.shares * t.price ELSE 0 END), 0) AS sell_total,
-               COALESCE(SUM(CASE WHEN t.action='BUY' THEN t.shares * t.price ELSE 0 END), 0) AS buy_total,
-               COALESCE(SUM(CASE WHEN t.action='SELL' THEN t.shares ELSE 0 END), 0) AS sell_shares
+        SELECT p.id, p.ticker, p.status, p.shares, p.avg_cost, p.return_pct, p.currency,
+               t.action, t.shares AS fill_shares, t.price, t.currency AS fill_currency
         FROM positions p
         LEFT JOIN trades t ON t.position_id = p.id
-        WHERE p.status = 'closed'
-        GROUP BY p.id, p.avg_cost, p.shares, p.return_pct, p.currency
+        ORDER BY p.id, t.executed_at, t.id
         """
     ).fetchall()
-
-    total_realized_pnl = 0.0
-    total_realized_cost = 0.0
-    for r in realized_rows:
-        sell_total = float(r["sell_total"] or 0)
-        buy_total = float(r["buy_total"] or 0)
-        sell_shares = float(r["sell_shares"] or 0)
-
-        # Ignore invalid closed positions without realized sell execution.
-        if sell_shares <= 0 or sell_total <= 0:
-            continue
-
-        pnl = sell_total - buy_total
-        total_realized_pnl += pnl
-        total_realized_cost += buy_total
-
-    total_realized_return_pct = 0.0
-    if total_realized_cost > 0:
-        total_realized_return_pct = (total_realized_pnl / total_realized_cost) * 100
-
-    # Unrealized PnL from active positions
-    cursor_obj = scheduler.db.get_connection().execute(
-        "SELECT ticker, shares, avg_cost FROM positions WHERE status = 'active'"
-    )
-    rows = [dict(row) for row in cursor_obj.fetchall()]
-
-    tickers = [row["ticker"] for row in rows]
-    prices = _fetch_latest_prices(tickers)
-
-    total_unrealized_pnl = 0.0
-    total_cost_basis = 0.0
-    for row in rows:
-        shares = float(row.get("shares", 0) or 0.0)
-        avg_cost = row.get("avg_cost")
-        current_price = prices.get(row["ticker"])
-
-        if shares <= 0 or avg_cost is None or current_price is None:
-            continue
-
-        total_unrealized_pnl += (current_price - avg_cost) * shares
-        total_cost_basis += avg_cost * shares
-
-    total_unrealized_return_pct = 0.0
-    if total_cost_basis > 0:
-        total_unrealized_return_pct = (total_unrealized_pnl / total_cost_basis) * 100
-
-    total_pnl = total_realized_pnl + total_unrealized_pnl
-    total_invested = total_realized_cost + total_cost_basis
-    total_return_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0.0
+    tickers = sorted({r["ticker"] for r in ledger if r["status"] == "active" and r["shares"] > 0})
+    prices = await asyncio.to_thread(_fetch_latest_prices, tickers)
+    by_currency = calculate_performance(ledger, prices)
+    # Old clients can still read scalar totals for single-currency accounts.
+    # A scalar for unrelated monetary units has no meaning without an FX policy.
+    scalar = next(iter(by_currency.values()), Performance()) if len(by_currency) <= 1 else None
 
     score_row = conn.execute(
         """
@@ -659,16 +612,17 @@ async def get_metrics():
 
     return MetricsResponse(
         as_of=as_of,
-        active_positions=active_positions,
-        closed_positions=closed_positions,
-        wins=wins,
-        losses=losses,
-        total_unrealized_pnl=total_unrealized_pnl,
-        total_unrealized_return_pct=total_unrealized_return_pct,
-        total_realized_pnl=total_realized_pnl,
-        total_realized_return_pct=total_realized_return_pct,
-        total_pnl=total_pnl,
-        total_return_pct=total_return_pct,
+        by_currency=by_currency,
+        active_positions=sum(v.active_positions for v in by_currency.values()),
+        closed_positions=sum(v.closed_positions for v in by_currency.values()),
+        wins=sum(v.wins for v in by_currency.values()),
+        losses=sum(v.losses for v in by_currency.values()),
+        total_unrealized_pnl=scalar.total_unrealized_pnl if scalar else None,
+        total_unrealized_return_pct=scalar.total_unrealized_return_pct if scalar else None,
+        total_realized_pnl=scalar.total_realized_pnl if scalar else None,
+        total_realized_return_pct=scalar.total_realized_return_pct if scalar else None,
+        total_pnl=scalar.total_pnl if scalar else None,
+        total_return_pct=scalar.total_return_pct if scalar else None,
         analysis_accuracy_avg=analysis_accuracy_avg,
         analysis_accuracy_count=analysis_accuracy_count,
         rag_contribution_avg=rag_contribution_avg,
@@ -803,7 +757,7 @@ async def get_position_detail(position_id: int):
 
 
 @router.get("/position/{position_id}/graph", response_model=dict, tags=["Positions"])
-async def get_position_graph(
+def get_position_graph(
     position_id: int,
     days: int = Query(7, ge=1, le=60),
 ):
@@ -846,6 +800,7 @@ async def get_position_graph(
 
         data: Any = yf.download(
             tickers=ticker,
+            multi_level_index=False,
             start=start_date,
             end=end_date,
             interval="1d",
@@ -868,7 +823,8 @@ async def get_position_graph(
             except Exception:
                 pass
         try:
-            return float(value)
+            n = float(value)
+            return n if math.isfinite(n) else None
         except (TypeError, ValueError):
             return None
 
@@ -1029,7 +985,7 @@ async def get_ticker_names():
 
 
 @router.get("/search/tickers", response_model=List[dict], tags=["Search"])
-async def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
+def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
     """Search Yahoo Finance for ticker symbols (PUBLIC)."""
     import urllib.request
     import urllib.parse
@@ -1239,7 +1195,7 @@ async def get_reflection_retry_candidates(
 
 
 @router.post("/reflections/retry/{position_id}", response_model=dict, tags=["Reflections"])
-async def retry_reflection(position_id: int):
+def retry_reflection(position_id: int, _: bool = Depends(check_admin_token)):
     """Manually retry reflection generation for a closed position."""
     scheduler = app_module.scheduler
     graph = app_module.graph
@@ -1296,6 +1252,16 @@ async def retry_reflection(position_id: int):
             outcome=refl["outcome"],
             return_pct=float(refl["return_pct"]),
         )
+
+    try:
+        graph.memory.add_situations(
+            [(refl["key_lessons"], refl["reflection"])],
+            metadata={"ticker": position["ticker"], "position_id": position_id,
+                      "outcome": refl["outcome"], "return_pct": refl["return_pct"]},
+            reflection_id=reflection_id, store_sqlite=False,
+        )
+    except Exception:
+        logger.exception("Could not refresh vector index for reflection %s", reflection_id)
 
     return {
         "ok": True,
@@ -1486,7 +1452,7 @@ async def get_schedule_summary():
 
     conn = scheduler.db.get_connection()
     now = datetime.now(timezone.utc)
-    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_day = now.astimezone(ZoneInfo("Asia/Seoul")).replace(hour=0, minute=0, second=0, microsecond=0)
 
     rows = conn.execute(
         """
@@ -1570,7 +1536,7 @@ async def get_retrospective_positions(ticker: str):
 
     from tradingagents.storage import RetrospectiveRepository
     retro_repo = RetrospectiveRepository(scheduler.db)
-    return retro_repo.get_positions_with_status(ticker)
+    return [row for row in retro_repo.get_positions_with_status(ticker) if row['pos_status'] in ('active', 'closed')]
 
 
 @router.post("/retrospective/analyze", tags=["Retrospective"])
@@ -1621,6 +1587,7 @@ async def request_retrospective_analysis(
     else:
         raise HTTPException(status_code=400, detail=f"Invalid mode: {req.mode}")
 
+    positions_to_analyze = [p for p in positions_to_analyze if p['status'] in ('active', 'closed')]
     if not positions_to_analyze:
         return {"enqueued": [], "message": "No eligible positions found"}
 
