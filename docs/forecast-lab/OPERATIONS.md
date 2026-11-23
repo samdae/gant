@@ -17,6 +17,17 @@
 
 ## 평상시 시작과 점검
 
+외부에서는 [연구실](https://lab.daehun.app/) 또는 [포트폴리오](https://lab.daehun.app/#/portfolio)를 연다. Cloudflare Access에 등록된 개인 이메일로 일회용 코드를 받아 로그인한다. Access 세션은 12시간이며 가상매매 변경에는 콘솔 자체의 관리자 인증도 적용된다.
+
+### 외부 경로와 복구
+
+- Windows의 기존 named tunnel이 두 호스트를 전달한다. `daehun.app`은 Nginx의 `127.0.0.1:18080`, `lab.daehun.app`은 통합 앱의 `127.0.0.1:8014`에 연결한다. 연구 호스트의 DNS는 해당 터널을 가리키는 프록시된 CNAME이다. 기본 미일치 응답은 404다.
+- 연구 호스트 전체에 **Forecast Lab** self-hosted Access 앱을 적용한다. Allow 정책에는 승인된 개별 주소 하나를 지정하고 로그인 수단은 One-time PIN으로 제한한다. 실제 이메일은 Cloudflare 정책에서 확인한다. 개별 페이지, REST, 실시간 연결 경로가 모두 같은 호스트의 인증을 거친다.
+- `%LOCALAPPDATA%\TradingAgentsDeploy\tunnel.yml`의 연구 호스트 규칙에는 `originRequest.access.required: true`, 팀 이름 `daehun-forecast-lab`, Access 앱에서 발급한 현재 `audTag`가 필요하다. 팀이나 앱을 다시 만들 경우 실제 Audience 값을 조회해 갱신한다. 비인가 요청은 Cloudflare 로그인으로 이동하고, 원본 커넥터도 해당 앱의 서명을 검증한다.
+- 복구 순서는 이메일 Access 정책 확인 → 로컬 `/ready` 확인 → `cloudflared tunnel --config <설정 파일> ingress validate` 및 두 호스트의 `ingress rule` 확인 → 같은 터널의 새 커넥터 등록 확인 → 이전 커넥터 종료 → DNS와 외부 응답 확인이다. 외부 로그인 요청이 실제 팀의 `cloudflareaccess.com`으로 향하는지, 기존 사이트의 `/api/health`도 정상인지 확인한다. Windows 기동 작업은 **TradingAgents Windows Deployment**가 터널을, **TradingAgents Forecast Lab**이 8014 앱을 맡는다.
+
+### Windows에서 실행
+
 Windows PowerShell에서 해당 프로젝트를 열고 다음을 실행한다.
 
 ```powershell
