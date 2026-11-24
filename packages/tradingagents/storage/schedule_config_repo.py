@@ -146,6 +146,39 @@ class ScheduleConfigRepository:
         )
         return [dict(row) for row in cursor.fetchall()]
 
+    def page_with_latest_cycle(self, offset: int, limit: int) -> List[Dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT cfg.ticker, cfg.interval_days, cycle.id, cycle.scheduled_cycle,
+                   cycle.status, cycle.error_type, cycle.error_message, cycle.created_at
+            FROM (
+                SELECT id, ticker, interval_days, created_at
+                FROM schedule_configs
+                ORDER BY created_at, id
+                LIMIT %s OFFSET %s
+            ) cfg
+            LEFT JOIN LATERAL (
+                SELECT id, scheduled_cycle, status, error_type, error_message, created_at
+                FROM schedule_jobs
+                WHERE schedule_config_id = cfg.id
+                ORDER BY id DESC
+                LIMIT 1
+            ) cycle ON TRUE
+            ORDER BY cfg.created_at, cfg.id
+            """,
+            (limit, offset),
+        ).fetchall()
+        schedules = []
+        for row in rows:
+            cycle = dict(row)
+            interval_days = cycle.pop("interval_days")
+            schedules.append({
+                "ticker": row["ticker"],
+                "interval_days": interval_days,
+                "latest_cycle": cycle if cycle["id"] is not None else None,
+            })
+        return schedules
+
     def get_by_ticker(self, ticker: str) -> Optional[Dict[str, Any]]:
         cursor = self.db.get_connection().execute(
             """

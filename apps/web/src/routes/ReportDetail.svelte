@@ -1,6 +1,6 @@
 <script lang="ts">
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
-  import DecisionBadge from "../components/DecisionBadge.svelte";
+  import ReportDecisionEvidence from "../components/ReportDecisionEvidence.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { params } from "svelte-spa-router";
   import { fetchReportsByTicker } from "../lib/api/endpoints";
@@ -245,7 +245,7 @@
       {/if}
       <div class="report-meta">
         {#if isForecastLab}
-          <span class="report-date">분석 판단 <DecisionBadge value={report.decision_position || ""} /></span>
+          <ReportDecisionEvidence {report} />
         {:else if decisionKey}
           <span class={`decision-badge decision-${decisionKey.toLowerCase()}`}>{decisionLabel}</span>
         {:else}
@@ -255,9 +255,9 @@
         {#if report.scheduled_cycle}
           <span class="report-date">{report.scheduled_cycle} 회차</span>
         {/if}
-        {#if report.portfolio_action}
+        {#if !isForecastLab && report.portfolio_action}
           <span class="report-date">
-            {#if isForecastLab}실행 에이전트 판단 <DecisionBadge value={report.portfolio_action} />{:else}실제 매매: {getDecisionLabel(normalizeDecision(report.portfolio_action))}{/if}
+            실행 제안: {getDecisionLabel(normalizeDecision(report.portfolio_action))}
             {#if report.portfolio_shares != null}
               · {isForecastLab ? "제안 수량 " : ""}{formatShares(report.portfolio_shares)}주
             {/if}

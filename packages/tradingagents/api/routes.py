@@ -52,10 +52,21 @@ class ScheduleRequest(BaseModel):
     display_name: str = None
 
 
+class ScheduleCycleResponse(BaseModel):
+    id: int
+    ticker: str
+    scheduled_cycle: int
+    status: str
+    error_type: Optional[str]
+    error_message: Optional[str]
+    created_at: datetime
+
+
 class ScheduleResponse(BaseModel):
     ticker: str
     interval_days: int
     next_run_time: Optional[str]
+    latest_cycle: Optional[ScheduleCycleResponse] = None
 
 
 class QueueStatusResponse(BaseModel):
@@ -292,15 +303,13 @@ async def get_schedules(
     from tradingagents.storage import ScheduleConfigRepository
     schedule_config_repo = ScheduleConfigRepository(scheduler.db)
 
-    configs = schedule_config_repo.get_all()
-    start = cursor or 0
-    end = start + limit
+    configs = schedule_config_repo.page_with_latest_cycle(cursor or 0, limit)
 
     import pytz
     kst = pytz.timezone("Asia/Seoul")
     jobs = {job.id: job for job in scheduler.scheduler.get_jobs()} if scheduler else {}
     results = []
-    for cfg in configs[start:end]:
+    for cfg in configs:
         ticker = cfg["ticker"]
         job = jobs.get(f"ticker_{ticker}")
         next_run_time = None
@@ -313,6 +322,7 @@ async def get_schedules(
             {
                 "ticker": ticker,
                 "interval_days": cfg["interval_days"],
+                "latest_cycle": cfg["latest_cycle"],
                 "next_run_time": next_run_time,
             }
         )
@@ -748,6 +758,7 @@ async def get_position_detail(position_id: int):
     
     # Get reports
     reports = report_repo.get_by_position(position_id)
+    _attach_report_evidence(reports, trades)
     
     return {
         "position": position,
@@ -863,6 +874,19 @@ def get_position_graph(
     return payload
 
 
+def _attach_report_evidence(reports, trades):
+    """Only report-linked analysis-account fills count as execution evidence."""
+    by_report = {}
+    for trade in trades:
+        by_report.setdefault(trade["report_id"], []).append({
+            field: trade[field]
+            for field in ("action", "shares", "price", "currency", "executed_at")
+        })
+    for report in reports:
+        report["stored_decision_position"] = report.get("decision_position")
+        report["execution_trades"] = by_report.get(report["id"], [])
+
+
 @router.get("/reports", response_model=List[dict], tags=["Reports"])
 async def get_reports(
     ticker: Optional[str] = Query(None, description="Filter by ticker"),
@@ -904,6 +928,13 @@ async def get_reports(
 
     cursor_obj = scheduler.db.get_connection().execute(query, tuple(params))
     reports = [dict(row) for row in cursor_obj.fetchall()]
+    if reports:
+        fills = scheduler.db.get_connection().execute(
+            """SELECT report_id, action, shares, price, currency, executed_at FROM trades
+               WHERE report_id = ANY(%s) ORDER BY executed_at, id""",
+            ([row["id"] for row in reports],),
+        ).fetchall()
+        _attach_report_evidence(reports, fills)
     for item in reports:
         if not item.get("decision_position"):
             item["decision_position"] = _extract_decision(item.get("final_trade_decision"))
@@ -919,50 +950,18 @@ async def get_report_tickers():
     if not scheduler:
         raise HTTPException(status_code=503, detail="Scheduler not initialized")
 
-    cursor_obj = scheduler.db.get_connection().execute(
-        """
-        SELECT sc.ticker,
-               COUNT(*) AS report_count,
-               MAX(r.created_at) AS latest_at,
-               MAX(sj.scheduled_cycle) AS latest_cycle
-        FROM reports r
-        JOIN schedule_jobs sj ON r.schedule_job_id = sj.id
-        JOIN schedule_configs sc ON sj.schedule_config_id = sc.id
-        GROUP BY sc.ticker
-        ORDER BY MAX(r.created_at) DESC
-        """
-    )
-    summaries = [dict(row) for row in cursor_obj.fetchall()]
+    from tradingagents.storage import ReportRepository
 
+    summaries = ReportRepository(scheduler.db).ticker_summary_rows()
     for item in summaries:
-        dec_cur = scheduler.db.get_connection().execute(
-            """
-            SELECT r.final_trade_decision, r.decision_position,
-                   r.portfolio_action, r.portfolio_shares,
-                   t.action AS trade_action, t.shares AS trade_shares
-            FROM reports r
-            JOIN schedule_jobs sj ON r.schedule_job_id = sj.id
-            JOIN schedule_configs sc ON sj.schedule_config_id = sc.id
-            LEFT JOIN trades t ON t.report_id = r.id
-            WHERE sc.ticker = %s
-            ORDER BY r.id DESC LIMIT 1
-            """,
-            (item["ticker"],),
-        )
-        dec_row = dec_cur.fetchone()
-        raw = (dec_row["final_trade_decision"] or "") if dec_row else ""
-        item["last_decision"] = raw[:120].strip() if raw else ""
-        if dec_row and dec_row.get("trade_action"):
-            item["trade_action"] = dec_row["trade_action"]
-            item["trade_shares"] = dec_row.get("trade_shares")
-        if dec_row and dec_row.get("portfolio_action"):
-            item["portfolio_action"] = dec_row["portfolio_action"]
-            item["portfolio_shares"] = dec_row.get("portfolio_shares")
-        if dec_row and dec_row.get("decision_position"):
-            item["decision_position"] = dec_row["decision_position"]
-        else:
+        raw = item.pop("final_trade_decision") or ""
+        item["last_decision"] = raw[:120].strip()
+        item["stored_decision_position"] = item["decision_position"]
+        if not item["decision_position"]:
             item["decision_position"] = _extract_decision(raw)
-
+        for action, shares in (("trade_action", "trade_shares"), ("portfolio_action", "portfolio_shares")):
+            if not item[action]:
+                del item[action], item[shares]
     return summaries
 
 
@@ -1506,6 +1505,7 @@ async def health_check():
 class RetrospectiveAnalyzeRequest(BaseModel):
     mode: str  # "ticker" | "date" | "all"
     position_ids: Optional[List[int]] = None
+    ticker: Optional[str] = None  # New clients bind all IDs to the displayed selection.
     tickers: Optional[List[str]] = None
     date_from: Optional[str] = None
     date_to: Optional[str] = None
@@ -1562,8 +1562,12 @@ async def request_retrospective_analysis(
         if not req.position_ids:
             raise HTTPException(status_code=400, detail="position_ids required for ticker mode")
         positions_to_analyze = []
-        for pid in req.position_ids:
+        for pid in dict.fromkeys(req.position_ids):
             pos = position_repo.get_by_id(pid)
+            if req.ticker is not None and (
+                not pos or pos["ticker"].upper() != req.ticker.strip().upper()
+            ):
+                raise HTTPException(status_code=400, detail="Selected positions do not match ticker")
             if pos:
                 positions_to_analyze.append(pos)
     elif req.mode == "date":

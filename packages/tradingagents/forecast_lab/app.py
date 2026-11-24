@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg import Error as DatabaseError
@@ -163,10 +163,18 @@ def application(
         )
 
     @app.get("/api/cases/{case_id}")
-    def case(case_id: int):
-        detail = store.detail(case_id)
-        if not detail:
+    def case(case_id: int, request: Request, response: Response):
+        validators = {
+            value.strip().removeprefix("W/")
+            for value in request.headers.get("if-none-match", "").split(",")
+        }
+        tag, detail = store.detail_if_changed(case_id, validators)
+        if tag is None:
             raise HTTPException(404, "Unknown case")
+        headers = {"ETag": "W/" + tag, "Cache-Control": "private, no-cache"}
+        if detail is None:
+            return Response(status_code=304, headers=headers)
+        response.headers.update(headers)
         return detail
 
     app.mount("/research", StaticFiles(directory=STATIC, html=True), name="research")

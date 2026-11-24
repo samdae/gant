@@ -8,7 +8,6 @@
     createSchedule,
     deleteSchedule,
     fetchQueue,
-    fetchScheduleCycles,
     fetchSchedules,
     searchTickers,
   } from "../lib/api/endpoints";
@@ -20,6 +19,7 @@
     ticker: string;
     interval_days: number;
     next_run_time: string | null;
+    latest_cycle?: Cycle | null;
   };
 
   type Cycle = {
@@ -42,7 +42,6 @@
   };
 
   let schedules: Schedule[] = [];
-  let cycles: Record<string, Cycle | null> = {};
   let queue: QueueStatus = { running: null, pending: [] };
   let loading = true;
   let error = "";
@@ -74,21 +73,6 @@
       schedules = (scheduleRes as Schedule[]) || [];
       queue = (queueRes as QueueStatus) || { running: null, pending: [] };
 
-      const cyclePairs = await Promise.all(
-        schedules.map(async (item) => {
-          try {
-            const res = (await fetchScheduleCycles(item.ticker, 1)) as Cycle[];
-            return [item.ticker, res && res.length > 0 ? res[0] : null] as const;
-          } catch {
-            return [item.ticker, null] as const;
-          }
-        })
-      );
-      const cycleMap: Record<string, Cycle | null> = {};
-      for (const [ticker, cycle] of cyclePairs) {
-        cycleMap[ticker] = cycle;
-      }
-      cycles = cycleMap;
     } catch (err) {
       error = formatErrorMessage(err, "예약을 불러오지 못했습니다.");
     } finally {
@@ -287,7 +271,7 @@
           </div>
           {#each filteredSchedules as schedule}
             {@const badge = statusBadge(schedule.ticker)}
-            {@const cycle = cycles[schedule.ticker]}
+            {@const cycle = schedule.latest_cycle}
             <div class="op-grid-row" role="listitem">
               <a href={`#/schedules/${encodeURIComponent(schedule.ticker.toLowerCase())}`}>
                 <InstrumentLabel ticker={schedule.ticker} />

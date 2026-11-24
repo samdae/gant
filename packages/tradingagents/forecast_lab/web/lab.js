@@ -24,7 +24,9 @@ let filters = new URLSearchParams();
 let cursors = [null];
 let lastId = null;
 let listKey = "";
-let detailKey = "";
+let detailTag = "";
+let latestStatus = null;
+let latestStats = null;
 const pageSize = 20;
 const el = (tag, value, cls) => {
   const node = document.createElement(tag);
@@ -952,24 +954,40 @@ function renderCase(target, c) {
     target.append(memoryDetails(c.memory, "이 사례에서 생성한 연구용 기억"));
 }
 async function get(path) {
-  const response = await fetch(path, { cache: "no-store" });
+  const response = await fetch(path, { cache: "no-store", signal: AbortSignal.timeout(12000) });
   if (!response.ok) throw new Error("조회 실패 (" + response.status + ")");
   return response.json();
 }
+function resourceError(name, message = "") {
+  const node = $(name + "-error");
+  node.hidden = !message;
+  node.textContent = message;
+}
 async function showCase(id) {
   const serial = ++activeRequest;
+  const target = $("detail");
+  if (selected !== id || target.dataset.caseId !== String(id)) {
+    detailTag = "";
+    delete target.dataset.caseId;
+    target.replaceChildren(el("p", "사례를 불러오는 중입니다."));
+  }
   selected = id;
+  for (const b of $("cases").querySelectorAll("button"))
+    b.setAttribute("aria-pressed", String(Number(b.dataset.id) === Number(id)));
   try {
-    const c = await get("/api/cases/" + id);
+    const response = await fetch("/api/cases/" + id, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(12000),
+      headers: detailTag ? { "If-None-Match": detailTag } : {},
+    });
     if (serial !== activeRequest) return;
-    for (const b of $("cases").querySelectorAll("button"))
-      b.setAttribute(
-        "aria-pressed",
-        String(Number(b.dataset.id) === Number(id)),
-      );
-    const target = $("detail");
-    const key = JSON.stringify(c);
-    if (key === detailKey) return;
+    if (response.status === 304 && detailTag) {
+      resourceError("detail");
+      return;
+    }
+    if (!response.ok) throw new Error();
+    const c = await response.json();
+    if (serial !== activeRequest) return;
     const sameCase = target.dataset.caseId === String(id);
     const existing = sameCase ? [...target.querySelectorAll("details")] : [];
     const open = new Set(existing.filter((d) => d.open).map(disclosureKey));
@@ -989,9 +1007,262 @@ async function showCase(id) {
       if (summary.textContent === focus) summary.focus({ preventScroll: true });
     }
     target.dataset.caseId = id;
-    detailKey = key;
-  } catch (e) {
-    if (serial === activeRequest) $("error").textContent = e.message;
+    detailTag = response.headers.get("ETag") || "";
+    resourceError("detail");
+  } catch {
+    if (serial !== activeRequest) return;
+    if (!target.dataset.caseId) target.replaceChildren();
+    resourceError("detail", "사례 상세를 갱신하지 못했습니다. 잠시 후 다시 조회합니다.");
+  }
+}
+function renderStatus(s) {
+  latestStatus = s;
+  const p = s.progress ?? {};
+  $("runtime").classList.toggle("offline", !s.scheduler_enabled);
+  $("runtime").textContent = s.scheduler_enabled
+    ? "자동 관측 켜짐"
+    : "자동 관측 꺼짐";
+  const instruments = el("ul", null, "watch-instruments");
+  for (const item of s.tickers) {
+    const li = el("li");
+    li.append(instrument(item.ticker));
+    instruments.append(li);
+  }
+  const phase =
+    {
+      idle: "대기 중",
+      maturing: "만기 확인",
+      issuing: "예측 발행",
+      busy: "다른 관측 진행 중",
+      failed: "작업 실패",
+    }[p.phase] || "시작 대기";
+  const progress = el("p", null, "instrument-note");
+  progress.append(el("span", "최근 작업 · " + phase));
+  if (p.ticker) progress.append(instrument(p.ticker));
+  if (p.method) progress.append(el("span", names[p.method] || "연구 예측"));
+  $("tickers").replaceChildren(instruments, progress);
+  if (p.finished_at || p.started_at)
+    $("tickers").append(
+      el(
+        "div",
+        (p.finished_at ? "최근 작업 종료 " : "작업 시작 ") +
+          kst(p.finished_at ?? p.started_at),
+      ),
+    );
+  if (Object.keys(p.failures ?? {}).length) {
+    const holds = el("ul", null, "watch-holds");
+    for (const [symbol, reason] of Object.entries(p.failures)) {
+      const row = el("li");
+      row.append(instrument(symbol), el("span", why(reason)));
+      holds.append(row);
+    }
+    $("tickers").append(
+      disclosure("최근 수집 보류 · " + holds.children.length + "종목", holds),
+    );
+  }
+  renderCounts();
+  renderReferenceEmpty();
+}
+function renderCounts() {
+  $("counts").replaceChildren();
+  for (const [label, value] of [
+    ["관찰 종목", latestStatus?.tickers.length ?? "—"],
+    ...["pending", "awaiting", "matured", "excluded", "unpublished"].map(
+      (k) => [labels[k], latestStats ? latestStats.counts?.[k] ?? 0 : "—"],
+    ),
+  ]) {
+    const node = el("div", null, "tile");
+    node.append(el("small", label), el("strong", value));
+    $("counts").append(node);
+  }
+}
+function renderStats(stats) {
+  latestStats = stats;
+  renderCounts();
+  $("comparisons").replaceChildren();
+  for (const r of stats.comparisons ?? []) {
+    const box = el("div", null, "comparison");
+    box.append(
+      el(
+        "strong",
+        names[r.control] + " → " + names[r.treated] + " · 공통 " + r.n + "건",
+      ),
+      el(
+        "div",
+        "Brier " +
+          num(r.control_brier) +
+          " → " +
+          num(r.treated_brier) +
+          " · 개선량 " +
+          num(r.improvement),
+      ),
+      el(
+        "small",
+        [
+          modelLabel(r.control_model),
+          versionLabel(r.control_version),
+          modelLabel(r.treated_model),
+          versionLabel(r.treated_version),
+          versionLabel(r.experiment_version),
+        ]
+          .filter(Boolean)
+          .join(" / "),
+      ),
+    );
+    if (r.distinct_entry_dates != null)
+      box.append(
+        el(
+          "div",
+          "서로 다른 진입일 " +
+            r.distinct_entry_dates +
+            "일 · 종목 " +
+            r.distinct_tickers +
+            "개",
+        ),
+      );
+    if (r.control_paper_return != null)
+      box.append(
+        el(
+          "div",
+          "모의 총수익률 평균 " +
+            pct(r.control_paper_return) +
+            " → " +
+            pct(r.treated_paper_return) +
+            " (확률 50% 초과 시 보유, 그 외 현금)",
+        ),
+      );
+    $("comparisons").append(box);
+  }
+  if (!$("comparisons").children.length)
+    $("comparisons").append(el("p", "공통으로 채점된 사례가 아직 없습니다."));
+  $("reference").replaceChildren();
+  for (const r of stats.reference_comparisons ?? []) {
+    const box = el("div", null, "comparison");
+    box.append(
+      el(
+        "strong",
+        "운영 모델 → " +
+          names[r.method] +
+          " · 공통 " +
+          r.n +
+          "건 · 진입일 " +
+          r.distinct_entry_dates +
+          "일",
+      ),
+      el(
+        "p",
+        "Brier " +
+          num(r.source_brier) +
+          " → " +
+          num(r.method_brier) +
+          " · 개선량 " +
+          num(r.improvement),
+      ),
+      el(
+        "small",
+        [
+          r.source_model,
+          r.model,
+          versionLabel(r.version),
+          versionLabel(r.experiment_version),
+        ]
+          .filter(Boolean)
+          .join(" / "),
+      ),
+    );
+    $("reference").append(box);
+  }
+  renderReferenceEmpty();
+  $("calibration").replaceChildren();
+  for (const r of stats.calibration ?? []) {
+    const line = el(
+      "p",
+      names[r.method] +
+        " · " +
+        pct(r.lower) +
+        "~" +
+        pct(r.upper) +
+        " · 평균 예측 " +
+        pct(r.mean_probability) +
+        " / 실제 상승 " +
+        pct(r.observed_rate) +
+        " · " +
+        r.n +
+        "건",
+    );
+    line.append(
+      el(
+        "small",
+        " · " +
+          [
+            r.model,
+            versionLabel(r.version),
+            versionLabel(r.experiment_version),
+          ]
+            .filter(Boolean)
+            .join(" / "),
+      ),
+    );
+    $("calibration").append(line);
+  }
+  if (!$("calibration").children.length)
+    $("calibration").append(
+      el("p", "확률 구간을 평가할 관측 표본이 아직 없습니다."),
+    );
+}
+function renderReferenceEmpty() {
+  if (latestStats && !latestStats.reference_comparisons?.length)
+    $("reference").replaceChildren(el("p", latestStatus?.reference_enabled === false
+      ? "기존 운영 리포트 수집이 꺼져 있습니다."
+      : "같은 기간에 발행하고 채점한 공통 표본이 아직 없습니다."));
+}
+async function renderList(raw) {
+  const list = raw.slice(0, pageSize);
+  $("list-count").textContent = list.length + "건";
+  lastId = list.at(-1)?.id;
+  $("prev").disabled = cursors.length <= 1;
+  $("next").disabled = raw.length <= pageSize;
+  $("page").textContent = cursors.length + "페이지 · " + list.length + "건";
+  const key = JSON.stringify(list);
+  if (key !== listKey) {
+    const focused = document.activeElement?.dataset.id;
+    $("cases").replaceChildren();
+    for (const c of list) {
+      const b = el("button", null, "case-item");
+      const line = el("span", null, "case-line");
+      line.append(
+        instrument(c.ticker),
+        el("span", labels[c.status] || "미확인", "status-pill " + c.status),
+      );
+      b.append(
+        line,
+        el(
+          "small",
+          c.data_session + " · " + versionLabel(c.experiment_version),
+        ),
+      );
+      b.type = "button";
+      b.dataset.id = c.id;
+      b.setAttribute("aria-pressed", String(selected === c.id));
+      b.onclick = () => {
+        persistView(c.id);
+        showCase(c.id).then(() => {
+          if (matchMedia("(max-width: 760px)").matches) {
+            $("detail").focus({ preventScroll: true });
+            $("detail").scrollIntoView({ block: "start" });
+          }
+        });
+      };
+      $("cases").append(b);
+      if (focused === String(c.id)) b.focus({ preventScroll: true });
+    }
+    if (!list.length)
+      $("cases").append(el("p", "아직 발행 사례가 없습니다."));
+    listKey = key;
+  }
+  if (selected === null) {
+    if (list.length) await showCase(list[0].id);
+    else $("detail").replaceChildren(el("p", "선택한 조건에 맞는 사례가 없습니다."));
   }
 }
 async function refresh() {
@@ -999,269 +1270,36 @@ async function refresh() {
   const archive = new URLSearchParams(filters);
   archive.set("limit", pageSize + 1);
   if (cursors.at(-1)) archive.set("before_id", cursors.at(-1));
-  try {
-    const [s, stats, raw] = await Promise.all(
-      ["/api/status", "/api/stats?" + filters, "/api/cases?" + archive].map(
-        get,
-      ),
-    );
-    if (serial !== refreshSerial) return;
-    const list = raw.slice(0, pageSize);
-    $("list-count").textContent = list.length + "건";
-    $("error").textContent = "";
-    const p = s.progress ?? {};
-    $("runtime").classList.toggle("offline", !s.scheduler_enabled);
-    $("runtime").textContent = s.scheduler_enabled
-      ? "자동 관측 켜짐"
-      : "자동 관측 꺼짐";
-    const instruments = el("ul", null, "watch-instruments");
-    for (const item of s.tickers) {
-      const li = el("li");
-      li.append(instrument(item.ticker));
-      instruments.append(li);
-    }
-    const phase =
-      {
-        idle: "대기 중",
-        maturing: "만기 확인",
-        issuing: "예측 발행",
-        busy: "다른 관측 진행 중",
-        failed: "작업 실패",
-      }[p.phase] || "시작 대기";
-    const progress = el("p", null, "instrument-note");
-    progress.append(el("span", "최근 작업 · " + phase));
-    if (p.ticker) progress.append(instrument(p.ticker));
-    if (p.method) progress.append(el("span", names[p.method] || "연구 예측"));
-    $("tickers").replaceChildren(instruments, progress);
-    if (p.finished_at || p.started_at)
-      $("tickers").append(
-        el(
-          "div",
-          (p.finished_at ? "최근 작업 종료 " : "작업 시작 ") +
-            kst(p.finished_at ?? p.started_at),
-        ),
-      );
-    if (Object.keys(p.failures ?? {}).length) {
-      const holds = el("ul", null, "watch-holds");
-      for (const [symbol, reason] of Object.entries(p.failures)) {
-        const row = el("li");
-        row.append(instrument(symbol), el("span", why(reason)));
-        holds.append(row);
-      }
-      $("tickers").append(
-        disclosure("최근 수집 보류 · " + holds.children.length + "종목", holds),
-      );
-    }
-    $("counts").replaceChildren();
-    for (const [label, value] of [
-      ["관찰 종목", s.tickers.length],
-      ...["pending", "awaiting", "matured", "excluded", "unpublished"].map(
-        (k) => [labels[k], stats.counts?.[k] ?? 0],
-      ),
-    ]) {
-      const node = el("div", null, "tile");
-      node.append(el("small", label), el("strong", value));
-      $("counts").append(node);
-    }
-    $("comparisons").replaceChildren();
-    for (const r of stats.comparisons ?? []) {
-      const box = el("div", null, "comparison");
-      box.append(
-        el(
-          "strong",
-          names[r.control] + " → " + names[r.treated] + " · 공통 " + r.n + "건",
-        ),
-        el(
-          "div",
-          "Brier " +
-            num(r.control_brier) +
-            " → " +
-            num(r.treated_brier) +
-            " · 개선량 " +
-            num(r.improvement),
-        ),
-        el(
-          "small",
-          [
-            modelLabel(r.control_model),
-            versionLabel(r.control_version),
-            modelLabel(r.treated_model),
-            versionLabel(r.treated_version),
-            versionLabel(r.experiment_version),
-          ]
-            .filter(Boolean)
-            .join(" / "),
-        ),
-      );
-      if (r.distinct_entry_dates != null)
-        box.append(
-          el(
-            "div",
-            "서로 다른 진입일 " +
-              r.distinct_entry_dates +
-              "일 · 종목 " +
-              r.distinct_tickers +
-              "개",
-          ),
-        );
-      if (r.control_paper_return != null)
-        box.append(
-          el(
-            "div",
-            "모의 총수익률 평균 " +
-              pct(r.control_paper_return) +
-              " → " +
-              pct(r.treated_paper_return) +
-              " (확률 50% 초과 시 보유, 그 외 현금)",
-          ),
-        );
-      $("comparisons").append(box);
-    }
-    if (!$("comparisons").children.length)
-      $("comparisons").append(el("p", "공통으로 채점된 사례가 아직 없습니다."));
-    $("reference").replaceChildren();
-    for (const r of stats.reference_comparisons ?? []) {
-      const box = el("div", null, "comparison");
-      box.append(
-        el(
-          "strong",
-          "운영 모델 → " +
-            names[r.method] +
-            " · 공통 " +
-            r.n +
-            "건 · 진입일 " +
-            r.distinct_entry_dates +
-            "일",
-        ),
-        el(
-          "p",
-          "Brier " +
-            num(r.source_brier) +
-            " → " +
-            num(r.method_brier) +
-            " · 개선량 " +
-            num(r.improvement),
-        ),
-        el(
-          "small",
-          [
-            r.source_model,
-            r.model,
-            versionLabel(r.version),
-            versionLabel(r.experiment_version),
-          ]
-            .filter(Boolean)
-            .join(" / "),
-        ),
-      );
-      $("reference").append(box);
-    }
-    if (!$("reference").children.length)
-      $("reference").append(
-        el(
-          "p",
-          s.reference_enabled
-            ? "같은 기간에 발행하고 채점한 공통 표본이 아직 없습니다."
-            : "기존 운영 리포트 수집이 꺼져 있습니다.",
-        ),
-      );
-    $("calibration").replaceChildren();
-    for (const r of stats.calibration ?? []) {
-      const line = el(
-        "p",
-        names[r.method] +
-          " · " +
-          pct(r.lower) +
-          "~" +
-          pct(r.upper) +
-          " · 평균 예측 " +
-          pct(r.mean_probability) +
-          " / 실제 상승 " +
-          pct(r.observed_rate) +
-          " · " +
-          r.n +
-          "건",
-      );
-      line.append(
-        el(
-          "small",
-          " · " +
-            [
-              r.model,
-              versionLabel(r.version),
-              versionLabel(r.experiment_version),
-            ]
-              .filter(Boolean)
-              .join(" / "),
-        ),
-      );
-      $("calibration").append(line);
-    }
-    if (!$("calibration").children.length)
-      $("calibration").append(
-        el("p", "확률 구간을 평가할 관측 표본이 아직 없습니다."),
-      );
-    lastId = list.at(-1)?.id;
-    $("prev").disabled = cursors.length <= 1;
-    $("next").disabled = raw.length <= pageSize;
-    $("page").textContent = cursors.length + "페이지 · " + list.length + "건";
-    const key = JSON.stringify(list);
-    if (key !== listKey) {
-      const focused = document.activeElement?.dataset.id;
-      $("cases").replaceChildren();
-      for (const c of list) {
-        const b = el("button", null, "case-item");
-        const line = el("span", null, "case-line");
-        line.append(
-          instrument(c.ticker),
-          el("span", labels[c.status] || "미확인", "status-pill " + c.status),
-        );
-        b.append(
-          line,
-          el(
-            "small",
-            c.data_session + " · " + versionLabel(c.experiment_version),
-          ),
-        );
-        b.type = "button";
-        b.dataset.id = c.id;
-        b.setAttribute("aria-pressed", String(selected === c.id));
-        b.onclick = () => {
-          persistView(c.id);
-          showCase(c.id).then(() => {
-            if (matchMedia("(max-width: 760px)").matches) {
-              $("detail").focus({ preventScroll: true });
-              $("detail").scrollIntoView({ block: "start" });
-            }
-          });
-        };
-        $("cases").append(b);
-        if (focused === String(c.id)) b.focus({ preventScroll: true });
-      }
-      if (!list.length)
-        $("cases").append(el("p", "아직 발행 사례가 없습니다."));
-      listKey = key;
-    }
-    if (list.length) await showCase(selected ?? list[0].id);
-    else {
-      detailKey = "";
-      $("detail").replaceChildren(
-        el("p", "선택한 조건에 맞는 사례가 없습니다."),
-      );
-    }
-  } catch (e) {
-    if (serial === refreshSerial) {
-      $("error").textContent = e.message;
-      $("page").textContent = "조회 실패";
+  async function update(name, label, path, render) {
+    try {
+      const data = await get(path);
+      if (serial !== refreshSerial) return;
+      resourceError(name);
+      await render(data);
+    } catch {
+      if (serial !== refreshSerial) return;
+      resourceError(name, label + "을 갱신하지 못했습니다. 잠시 후 다시 조회합니다.");
+      if (name === "list" && !listKey) $("page").textContent = "조회 대기";
     }
   }
+  await Promise.all([
+    selected === null ? undefined : showCase(selected),
+    update("status", "관측 현황", "/api/status", renderStatus),
+    update("stats", "연구 성적", "/api/stats?" + filters, renderStats),
+    update("list", "사례 목록", "/api/cases?" + archive, renderList),
+  ]);
 }
 function changePage() {
   selected = null;
   persistView(null);
   ++activeRequest;
   listKey = "";
-  detailKey = "";
+  detailTag = "";
+  delete $("detail").dataset.caseId;
+  $("detail").replaceChildren();
+  $("cases").replaceChildren();
+  $("list-count").textContent = "";
+  for (const name of ["list", "detail"]) resourceError(name);
   $("page").textContent = "불러오는 중";
   $("next").disabled = true;
   $("prev").disabled = true;
@@ -1275,6 +1313,12 @@ $("filters").onsubmit = (event) => {
     $("error").textContent = "시작일이 종료일보다 늦습니다.";
     return;
   }
+  $("error").textContent = "";
+  latestStats = null;
+  renderCounts();
+  for (const area of ["calibration", "reference", "comparisons"])
+    $(area).replaceChildren();
+  resourceError("stats");
   filters = new URLSearchParams();
   for (const [key, value] of [
     ["market", $("market").value],

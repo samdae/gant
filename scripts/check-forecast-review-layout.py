@@ -144,6 +144,79 @@ GEOMETRY = """(() => {
 })()"""
 
 
+def check_selection_and_evidence(browser, base):
+    # This fixture answers requests in the browser. No local service or database is contacted.
+    browser.call("Page.addScriptToEvaluateOnNewDocument", source="""(() => {
+      const original = window.fetch;
+      const json = x => new Response(JSON.stringify(x), { headers: { "Content-Type":"application/json" }});
+      window.pendingPositions = {};
+      window.posts = [];
+      const report = { id: 61, ticker:"QA", created_at:"2026-11-15T12:00:00Z",
+        stored_decision_position:null, decision_position:"BUY", portfolio_action:"SELL",
+        portfolio_shares:0, final_trade_decision:"분석 기록", execution_trades:[] };
+      const filled = {...report, id:60, created_at:"2026-11-14T12:00:00Z", stored_decision_position:"BUY",
+        portfolio_shares:0.000102, execution_trades:[{action:"SELL",shares:0.0001,price:345.67,currency:"USD",
+        executed_at:"2026-11-15T12:30:00Z"}] };
+      window.fetch = async (url, options) => {
+        const path = new URL(url, location.origin).pathname.replace("/workspace-api", "");
+        if (path === "/retrospective/analyze") {
+          window.posts.push(JSON.parse(options.body));
+          return new Promise(resolve => { window.finishPost = () => resolve(json({enqueued:[11]})); });
+        }
+        if (path === "/retrospective/tickers") return json(["AAA","BBB"].map(ticker=>({ticker,has_trades:true})));
+        if (path.startsWith("/retrospective/positions/")) {
+          const ticker = path.split("/").pop();
+          return new Promise(resolve => {
+            (window.pendingPositions[ticker] ||= []).push(id => resolve(json([{position_id:id,
+              ticker,position_sequence:id,pos_status:"active", opened_at:"2026-11-14",retro_status:null}])));
+          });
+        }
+        if (path === "/reports") return json([report,filled]);
+        return original(url,options);
+      };
+    })()""")
+    browser.call("Page.navigate", url=base + "/#/retrospective")
+    button = ".analysis-tab-row button"
+    chip = ".modal-tickers button"
+    submit = ".modal-footer button"
+    def click(selector, index=0):
+        expr = f"document.querySelectorAll({json.dumps(selector)})[{index}]"
+        browser.wait(expr)
+        browser.evaluate(f"{expr}.click()")
+
+    click(button)
+    click(chip)
+    browser.wait("pendingPositions.AAA?.length === 1")
+    click(chip, 1)
+    browser.wait("pendingPositions.BBB?.length === 1")
+    browser.evaluate("pendingPositions.BBB.shift()(22)")
+    browser.wait("document.querySelector('.modal-pos-row')?.innerText.includes('22회차')")
+    browser.evaluate("pendingPositions.AAA.shift()(11)")
+    click(submit)
+    browser.wait("posts.length === 1")
+    assert browser.evaluate("posts[0]") == {"mode":"ticker","ticker":"BBB","position_ids":[22]}
+    click(".modal-close")
+    click(button)
+    click(chip)
+    browser.wait("pendingPositions.AAA.length === 1")
+    browser.evaluate("finishPost()")
+    click(".modal-close")
+    click(button)
+    browser.evaluate("pendingPositions.AAA.shift()(11)")
+    assert not browser.evaluate("document.querySelector('.modal-pos-row, .modal-message')")
+    assert browser.evaluate("document.querySelector('.modal-footer button').disabled")
+
+    for route in ("/reports/qa", "/trade/qa"):
+        browser.call("Page.navigate", url=base + "/#" + route)
+        browser.wait("document.querySelector('.evidence .fills')?.innerText.includes('연결된 체결 기록 없음')")
+        facts = browser.evaluate("[...document.querySelector('.evidence').children].map(x=>x.innerText)")
+        assert "미기록" in facts[0] and "매도" in facts[1] and "0주" in facts[1], facts
+    click("#page-trade .review-switch button", 1)
+    browser.wait("document.querySelector('.history-list')?.innerText.includes('345.67 USD')")
+    history = browser.evaluate("document.querySelector('.history-list').innerText")
+    assert "0.000102주" in history and "0.0001주" in history, history
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dist", type=Path)
@@ -234,6 +307,9 @@ def main():
                         && document.documentElement.scrollWidth <= innerWidth;
                     })()""")
                     assert single_line, "Retrospective navigation wraps text at 125% font size"
+                    browser.call("Page.navigate", url="about:blank")
+                    browser.wait("location.href === 'about:blank'")
+                    check_selection_and_evidence(browser, f"http://127.0.0.1:{server.server_port}")
                 finally:
                     browser.close()
         finally:

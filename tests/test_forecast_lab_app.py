@@ -222,9 +222,7 @@ class LabAcceptanceTest(unittest.TestCase):
                 ]
 
             collector = IncumbentCollector(store, public_reports, store.clock)
-            worker = Worker(
-                store, engine, progress, clock=store.clock, reference=collector
-            )
+            worker = Worker(store, engine, progress, clock=store.clock)
             with TestClient(
                 application(store, worker, progress, enabled=False)
             ) as http:
@@ -233,7 +231,26 @@ class LabAcceptanceTest(unittest.TestCase):
                 worker.scan()
                 first = http.get("/api/cases").json()[0]
                 first_id = first["id"]
-                arms = http.get(f"/api/cases/{first_id}").json()["arms"]
+                path = f"/api/cases/{first_id}"
+                first_detail = http.get(path)
+                tag = first_detail.headers["etag"]
+                unchanged = http.get(path, headers={"If-None-Match": tag})
+                self.assertEqual((unchanged.status_code, unchanged.content), (304, b""))
+                self.assertIsNone(first_detail.json()["reference"])
+                worker.reference = collector
+                self.assertEqual(worker.capture(), 1)
+                referenced = http.get(path, headers={"If-None-Match": tag})
+                self.assertEqual(referenced.status_code, 200)
+                self.assertIsNotNone(referenced.json()["reference"])
+                tag = referenced.headers["etag"]
+                # The entry deadline changes a pending case without any row rewrite.
+                original_now = clock[0]
+                clock[0] = datetime.fromisoformat(first["entry_open_at"])
+                at_open = http.get(path, headers={"If-None-Match": tag})
+                self.assertEqual(at_open.status_code, 200)
+                self.assertEqual(at_open.json()["status"], "awaiting")
+                clock[0] = original_now
+                arms = first_detail.json()["arms"]
                 self.assertEqual(
                     {r["method"]: r["status"] for r in arms},
                     {
@@ -251,14 +268,16 @@ class LabAcceptanceTest(unittest.TestCase):
                 )
                 restarted.scan()
                 self.assertEqual(engine.snapshots, 1)
-                self.assertEqual(
-                    http.get(f"/api/cases/{first_id}").json()["status"], "awaiting"
-                )
+                updated = http.get(path, headers={"If-None-Match": tag})
+                self.assertEqual(updated.status_code, 200)
+                self.assertNotEqual(updated.headers["etag"], tag)
+                self.assertEqual(updated.json()["status"], "awaiting")
                 clock[0] = datetime(2026, 3, 9, 22, tzinfo=UTC)
                 restarted.scan(limit=0)
-                self.assertEqual(
-                    http.get(f"/api/cases/{first_id}").json()["status"], "matured"
-                )
+                matured = http.get(path, headers={"If-None-Match": updated.headers["etag"]})
+                self.assertEqual(matured.status_code, 200)
+                self.assertEqual(matured.json()["status"], "matured")
+                self.assertTrue(matured.json()["memory"])
                 clock[0] += timedelta(minutes=1)
                 restarted.scan()
                 second = http.get("/api/cases").json()[0]

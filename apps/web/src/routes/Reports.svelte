@@ -16,7 +16,7 @@
     latest_at: string;
     latest_cycle?: number;
     last_decision: string;
-    decision_position?: string;
+    stored_decision_position?: string | null; decision_position?: string;
     portfolio_action?: string;
     portfolio_shares?: number;
     trade_action?: string;
@@ -117,7 +117,7 @@
         {:else}
           <div class="desk-report-row desk-report-head" aria-hidden="true"><span>종목</span><span>최근 판단</span><span>리포트 수</span><span>최근 발행</span><span></span></div>
           {#each visibleTickers as item}
-            {@const action = item.decision_position || ""}
+            {@const action = (item.stored_decision_position === undefined ? item.decision_position : item.stored_decision_position) || ""}
             <a href={`#/reports/${encodeURIComponent(item.ticker.toLowerCase())}`} class="desk-report-row">
               <span class="desk-instrument"><InstrumentLabel ticker={item.ticker} name={item.display_name} /></span>
               <span class="desk-report-decision"><span class="mobile-report-label">최근 판단</span><DecisionBadge value={action} /></span>

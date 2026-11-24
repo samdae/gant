@@ -1,5 +1,6 @@
 <script lang="ts">
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
+  import ReportDecisionEvidence from "../components/ReportDecisionEvidence.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { onMount, onDestroy } from "svelte";
@@ -658,21 +659,9 @@
   };
 
   /* ── report helpers ── */
-  const latestReport = () => {
-    if (!reports || reports.length === 0) return null;
-    return [...reports].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
-  };
-
-  const sortedReports = () => {
-    const list = [...reports];
-    list.sort((a, b) => {
-      const aCycle = a.scheduled_cycle ?? -1;
-      const bCycle = b.scheduled_cycle ?? -1;
-      if (aCycle !== bCycle) return bCycle - aCycle;
-      return b.created_at.localeCompare(a.created_at);
-    });
-    return list;
-  };
+  $: latest = [...reports].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  $: sortedReports = [...reports].sort((a, b) =>
+    (b.scheduled_cycle ?? -1) - (a.scheduled_cycle ?? -1) || b.created_at.localeCompare(a.created_at));
 
   const getReportTitle = (report?: PositionDetail["reports"][number] | null) => {
     if (!report) return "";
@@ -1065,19 +1054,19 @@
         {/if}
       </div>
     {:else if tab === "report"}
-        {#if latestReport()}
+        {#if latest}
           <div class="card" style="margin-bottom:12px">
             <div class="card-body">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                {#if isForecastLab}<DecisionBadge value={getReportDecision(latestReport()) || ""} />{:else}<span class={getDecisionClass(getReportDecision(latestReport()))}>{mapDecision(getReportDecision(latestReport()))}</span>{/if}
-                <span style="font-size:0.8125rem;color:var(--text-dim)">{formatDateTime(latestReport()?.created_at)}</span>
+                {#if isForecastLab && latest}<ReportDecisionEvidence report={latest} />{:else}<span class={getDecisionClass(getReportDecision(latest))}>{mapDecision(getReportDecision(latest))}</span>{/if}
+                <span style="font-size:0.8125rem;color:var(--text-dim)">{formatDateTime(latest?.created_at)}</span>
               </div>
-              {#if getExecutionNote(latestReport())}
+              {#if !isForecastLab && getExecutionNote(latest)}
                 <div style="font-size:0.78rem;color:var(--text-dim);margin-bottom:8px">
-                  {getExecutionNote(latestReport())}
+                  {getExecutionNote(latest)}
                 </div>
               {/if}
-              <div class="report-content markdown-body">{@html renderMd(getReportBody(latestReport()))}</div>
+              <div class="report-content markdown-body">{@html renderMd(getReportBody(latest))}</div>
             </div>
           </div>
         {:else}
@@ -1088,13 +1077,13 @@
           {#if reports.length === 0}
             <div class="card history-entry"><div class="history-action">기록이 없습니다.</div></div>
           {:else}
-            {#each sortedReports() as report}
+            {#each sortedReports as report}
               <div class="card history-entry">
                 <button class="history-toggle" type="button" on:click={() => selectHistory(String(report.id))}>
                   <div class="history-top">
                     <span class="history-no">{getReportTitle(report)}</span>
                     <span class="history-date">{formatDateTime(report.created_at)}</span>
-                    {#if isForecastLab}<DecisionBadge value={getReportDecision(report) || ""} />{:else}<span class={getDecisionClass(getReportDecision(report))}>{mapDecision(getReportDecision(report))}</span>{/if}
+                    {#if isForecastLab}<ReportDecisionEvidence {report} />{:else}<span class={getDecisionClass(getReportDecision(report))}>{mapDecision(getReportDecision(report))}</span>{/if}
                   </div>
                 </button>
                 {#if selectedHistoryId === String(report.id)}

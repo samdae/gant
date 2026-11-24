@@ -533,11 +533,28 @@ class Store:
             ).fetchall()
 
     def detail(self, case_id):
+        return self.detail_if_changed(case_id)[1]
+
+    def detail_if_changed(self, case_id, validators=()):
+        """Read validation metadata and any requested body in the same database snapshot."""
         with self._connect() as conn:
             conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-            c = conn.execute(SUMMARY + " WHERE c.id=%s", (case_id,)).fetchone()
+            c = conn.execute(
+                f"""WITH summary AS ({SUMMARY} WHERE c.id=%s)
+                SELECT s.*, md5(jsonb_build_array(s.id, s.status,
+                    (SELECT jsonb_agg(jsonb_build_array(a.method,a.status,a.recorded_at,a.xmin::text)
+                        ORDER BY a.method) FROM lab_arms a WHERE a.case_id=s.id),
+                    (SELECT captured_at FROM lab_references WHERE case_id=s.id),
+                    (SELECT observed_at FROM lab_outcomes WHERE case_id=s.id),
+                    (SELECT id FROM lab_memories WHERE case_id=s.id)
+                )::text) AS revision FROM summary s""",
+                (case_id,),
+            ).fetchone()
             if not c:
-                return None
+                return None, None
+            tag = '"' + c.pop("revision") + '"'
+            if tag in validators or "*" in validators:
+                return tag, None
             c["snapshot"] = conn.execute(
                 "SELECT snapshot FROM lab_cases WHERE id=%s", (case_id,)
             ).fetchone()["snapshot"]
@@ -566,7 +583,7 @@ class Store:
             c["reference"] = conn.execute(
                 "SELECT * FROM lab_references WHERE case_id=%s", (case_id,)
             ).fetchone()
-            return c
+            return tag, c
 
     def open_reference_cases(self):
         with self._connect() as conn:

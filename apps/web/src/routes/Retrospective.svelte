@@ -1,7 +1,7 @@
 <script lang="ts">
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import { isForecastLab } from "../lib/workspace";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import {
     fetchRetroSummary,
     fetchRetroTickers,
@@ -92,7 +92,15 @@
     }
   };
 
+  let modalSession = 0;
+  let selectionRequest = 0;
+  onDestroy(() => { modalSession++; selectionRequest++; });
+
   const openModal = async () => {
+    const session = ++modalSession;
+    selectionRequest++;
+    analyzing = false;
+    modalPositionsLoading = false;
     showModal = true;
     analyzeMessage = "";
     modalActiveTicker = "";
@@ -101,28 +109,37 @@
     if (modalTickers.length === 0) {
       modalTickersLoading = true;
       try {
-        modalTickers = (await fetchRetroTickers()) as TickerInfo[];
+        const rows = (await fetchRetroTickers()) as TickerInfo[];
+        if (session === modalSession) modalTickers = rows;
       } catch (err) {
-        analyzeMessage = formatErrorMessage(err, "종목 목록 로드 실패");
+        if (session === modalSession) analyzeMessage = formatErrorMessage(err, "종목 목록 로드 실패");
       } finally {
-        modalTickersLoading = false;
+        if (session === modalSession) modalTickersLoading = false;
       }
     }
   };
 
   const closeModal = () => {
+    modalSession++;
+    selectionRequest++;
     showModal = false;
     analyzeMessage = "";
   };
 
-  const modalToggleTicker = async (ticker: string) => {
-    modalActiveTicker = modalActiveTicker === ticker ? "" : ticker;
+  const loadSelection = async (ticker: string) => {
+    const request = ++selectionRequest;
+    modalActiveTicker = ticker;
+    modalPositionsLoading = Boolean(ticker);
     modalPositions = [];
     modalSelectedPositions = new Set();
     if (modalActiveTicker) {
-      modalPositionsLoading = true;
       try {
-        modalPositions = (await fetchRetroPositions(modalActiveTicker)) as PositionRow[];
+        const rows = (await fetchRetroPositions(ticker)) as PositionRow[];
+        if (request !== selectionRequest) return;
+        if (rows.some(row => row.ticker.toUpperCase() !== ticker.toUpperCase())) {
+          throw new Error("선택한 종목과 조회된 포지션이 일치하지 않습니다.");
+        }
+        modalPositions = rows;
         for (const row of modalPositions) {
           const status = getAnalysisStatus(row);
           if (status.canAnalyze) {
@@ -131,9 +148,9 @@
         }
         modalSelectedPositions = modalSelectedPositions;
       } catch (err) {
-        analyzeMessage = formatErrorMessage(err, "포지션 목록 로드 실패");
+        if (request === selectionRequest) analyzeMessage = formatErrorMessage(err, "포지션 목록 로드 실패");
       } finally {
-        modalPositionsLoading = false;
+        if (request === selectionRequest) modalPositionsLoading = false;
       }
     }
   };
@@ -162,14 +179,21 @@
   };
 
   const runAnalysis = async (mode: "selected" | "all") => {
+    if (analyzing || !showModal || (mode === "selected" && !canRunSelected)) return;
+    const session = modalSession;
+    const ticker = modalActiveTicker;
+    const ids = [...modalSelectedPositions];
+    if (mode === "selected" && !ids.every(id => modalPositions.some(row =>
+      row.position_id === id && row.ticker.toUpperCase() === ticker.toUpperCase() && getAnalysisStatus(row).canAnalyze))) return;
     analyzing = true;
     analyzeMessage = "";
     try {
       const payload = mode === "selected"
-        ? { mode: "ticker", position_ids: [...modalSelectedPositions] }
+        ? { mode: "ticker", ticker, position_ids: ids }
         : { mode: "all" };
       const res = (await requestRetroAnalysis(payload)) as { enqueued: number[]; message: string };
 
+      if (session !== modalSession) return;
       const enqueuedCount = Array.isArray(res?.enqueued) ? res.enqueued.length : 0;
       if (mode === "selected") {
         const sourceName = modalTickers.find((t) => t.ticker === modalActiveTicker)?.display_name;
@@ -184,12 +208,12 @@
       }
 
       if (modalActiveTicker) {
-        await modalToggleTicker(modalActiveTicker);
+        await loadSelection(modalActiveTicker);
       }
     } catch (err) {
-      analyzeMessage = formatErrorMessage(err, "분석 요청 실패");
+      if (session === modalSession) analyzeMessage = formatErrorMessage(err, "분석 요청 실패");
     } finally {
-      analyzing = false;
+      if (session === modalSession) analyzing = false;
     }
   };
 
@@ -209,7 +233,7 @@
 
   $: filteredTickers = tickers.filter((t) => matchesCurrency(t.ticker, $currencyFilter));
 
-  $: canRunSelected = modalSelectedPositions.size > 0;
+  $: canRunSelected = !!modalActiveTicker && !modalPositionsLoading && modalSelectedPositions.size > 0;
 </script>
 
 <section class="page" id="page-retrospective">
@@ -295,9 +319,9 @@
               <button
                 class="tag-chip"
                 class:active={modalActiveTicker === t.ticker}
-                class:disabled={!t.has_trades}
-                disabled={!t.has_trades}
-                on:click={() => modalToggleTicker(t.ticker)}
+                class:disabled={analyzing || !t.has_trades}
+                disabled={analyzing || !t.has_trades}
+                on:click={() => { analyzeMessage = ""; loadSelection(modalActiveTicker === t.ticker ? "" : t.ticker); }}
               >
                 {#if isForecastLab}<InstrumentLabel ticker={t.ticker} name={t.display_name} />{:else}{modalDisplayName(t)}{/if}
               </button>
@@ -313,12 +337,12 @@
               <div class="modal-positions">
                 {#each modalPositions as row}
                   {@const status = getAnalysisStatus(row)}
-                  <label class="modal-pos-row" class:disabled={!status.canAnalyze}>
-                    <span class="custom-checkbox" class:checked={modalSelectedPositions.has(row.position_id)} class:cb-disabled={!status.canAnalyze}>
+                  <label class="modal-pos-row" class:disabled={analyzing || !status.canAnalyze}>
+                    <span class="custom-checkbox" class:checked={modalSelectedPositions.has(row.position_id)} class:cb-disabled={analyzing || !status.canAnalyze}>
                       <input
                         type="checkbox"
                         checked={modalSelectedPositions.has(row.position_id)}
-                        disabled={!status.canAnalyze}
+                        disabled={analyzing || !status.canAnalyze}
                         on:change={() => modalTogglePosition(row.position_id)}
                       />
                       <svg viewBox="0 0 14 14" class="check-icon">
@@ -344,10 +368,10 @@
 
       <div class="modal-footer">
         <button class="btn btn-primary" on:click={() => runAnalysis("selected")} disabled={analyzing || !canRunSelected}>
-          {analyzing ? "요청 중..." : "선택티커"}
+          {analyzing ? "요청 중..." : "선택 종목 요청"}
         </button>
         <button class="btn btn-primary" on:click={() => runAnalysis("all")} disabled={analyzing}>
-          {analyzing ? "요청 중..." : "전체티커"}
+          {analyzing ? "요청 중..." : "전체 종목 요청"}
         </button>
       </div>
     </div>

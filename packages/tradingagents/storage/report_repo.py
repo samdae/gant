@@ -17,6 +17,34 @@ class ReportRepository:
         self.db = db
         self.conn = db.get_connection()
 
+    def ticker_summary_rows(self) -> List[Dict[str, Any]]:
+        """Count reports before joining one representative trade per latest report."""
+        rows = self.conn.execute(
+            """
+            WITH summaries AS (
+                SELECT sc.ticker, COUNT(*) AS report_count,
+                       MAX(r.created_at) AS latest_at, MAX(sj.scheduled_cycle) AS latest_cycle,
+                       MAX(r.id) AS latest_report_id
+                FROM reports r
+                JOIN schedule_jobs sj ON sj.id = r.schedule_job_id
+                JOIN schedule_configs sc ON sc.id = sj.schedule_config_id
+                GROUP BY sc.ticker
+            )
+            SELECT s.ticker, s.report_count, s.latest_at, s.latest_cycle,
+                   r.final_trade_decision, r.decision_position,
+                   r.portfolio_action, r.portfolio_shares,
+                   t.action AS trade_action, t.shares AS trade_shares
+            FROM summaries s
+            JOIN reports r ON r.id = s.latest_report_id
+            LEFT JOIN LATERAL (
+                SELECT action, shares FROM trades WHERE report_id = r.id
+                ORDER BY id ASC LIMIT 1
+            ) t ON TRUE
+            ORDER BY s.latest_at DESC, s.ticker
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def create(
         self,
         schedule_job_id: int,

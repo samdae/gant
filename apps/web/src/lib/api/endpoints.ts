@@ -89,6 +89,7 @@ export const fetchRetroPositions = (ticker: string) =>
 export const requestRetroAnalysis = (payload: {
   mode: string;
   position_ids?: number[];
+  ticker?: string;
   tickers?: string[];
   date_from?: string;
   date_to?: string;

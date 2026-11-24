@@ -97,7 +97,7 @@
       ? pos.current_price * pos.shares
       : null;
 
-  type RecentReport = { decision_position?: string; ticker: string; display_name?: string; report_count: number; latest_at: string };
+  type RecentReport = { stored_decision_position?: string | null; decision_position?: string; ticker: string; display_name?: string; report_count: number; latest_at: string };
   let reports: RecentReport[] = [];
   let reportStatus: "loading" | "ready" | "error" = "loading";
   onMount(async () => {
@@ -245,7 +245,7 @@
             <a class="desk-recent-row" href={`#/reports/${encodeURIComponent(report.ticker.toLowerCase())}`}>
               <span class="desk-document" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h5"/></svg></span>
               <span class="desk-instrument"><InstrumentLabel ticker={report.ticker} name={report.display_name} /></span>
-              <DecisionBadge value={report.decision_position || ""} />
+              <DecisionBadge value={(report.stored_decision_position === undefined ? report.decision_position : report.stored_decision_position) || ""} />
               <time datetime={report.latest_at}>{formatDateTime(report.latest_at)}</time>
             </a>
           {/each}

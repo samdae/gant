@@ -23,7 +23,7 @@ def browser():
     return next((path for path in candidates if path and Path(path).is_file()), None)
 
 
-def browser_check(cases):
+def browser_check(cases, refresh_checks=None):
     """Run with supplied API-shaped cases without contacting a scheduler, DB, or model."""
     with tempfile.TemporaryDirectory() as temp:
         folder = Path(temp)
@@ -82,6 +82,8 @@ def browser_check(cases):
         resultNode.textContent = result.length ? result.join(" / ") : "passed";
         document.body.replaceChildren(resultNode);
         """.replace("CASE_DATA", fixture_data)
+        if refresh_checks:
+            checks = refresh_checks
         # Mock HTTP before running the normal script. A never-resolving fetch keeps the
         # periodic refresh out of this synchronous DOM renderer check.
         for name in ("workspace-tokens.css", "lab.css"):
@@ -118,6 +120,7 @@ def browser_check(cases):
                 browser(),
                 "--headless=new",
                 "--disable-gpu",
+                "--virtual-time-budget=1500",
                 "--no-first-run",
                 "--window-size=420,800",
                 "--user-data-dir=" + str(folder / "profile"),
@@ -140,6 +143,52 @@ def browser_check(cases):
 
 @unittest.skipUnless(browser(), "A Chromium browser is required")
 class LabWebTest(unittest.TestCase):
+    def test_independent_refresh_revalidation_and_selection_race(self):
+        checks = r"""
+        (async () => {
+          const issues = [];
+          const check = (ok, why) => { if (!ok) issues.push(why); };
+          const result = document.createElement("output");
+          result.id = "dom-result";
+          try {
+            let bad = "stats", rev = 1, pending, slow = false, downloaded = 0;
+            const row = id => ({id, ticker:"SYM" + id, status:"pending", arms:[], snapshot:{}});
+            window.fetch = async (url, opts) => {
+              const kind = url.includes("stats?") ? "stats" : url.includes("cases?") ? "list" :
+                  url.includes("cases/") ? "detail" : "status";
+              if (bad === kind) return new Response(null, {status:503});
+              if (kind === "detail") {
+                const id = Number(url.split("/").at(-1));
+                const tag = 'W/"' + id + '-' + rev + '"';
+                if (opts.headers["If-None-Match"] === tag)
+                  return new Response(null, {status:304, headers:{ETag:tag}});
+                if (slow && id === 1) await new Promise(resolve => pending = resolve);
+                downloaded++;
+                return Response.json(row(id), {headers:{ETag:tag}});
+              }
+              return Response.json(kind === "status" ? {tickers:[]} : kind === "stats" ?
+                {counts:{}} : [row(1),row(2)]);
+            };
+            await refresh();
+            check($("detail").dataset.caseId === "1" && !$("stats-error").hidden && $("list-error").hidden, "stats blocked cases");
+            bad = "detail"; await refresh();
+            check(!$("detail-error").hidden && $("stats-error").hidden, "detail error leaked");
+            bad = "list"; await refresh();
+            check($("detail-error").hidden && !$("list-error").hidden && downloaded === 1, "304 recovery/redownload");
+            rev++; bad = "status"; await refresh();
+            check(downloaded === 2 && !$("status-error").hidden && $("list-error").hidden, "new revision not fetched");
+            slow = true; rev++;
+            const obsolete = showCase(1);
+            await showCase(2);
+            pending(); await obsolete;
+            check($("detail").dataset.caseId === "2", "late response replaced selected case");
+          } catch (e) { issues.push(String(e)); }
+          result.textContent = issues.length ? issues.join(" / ") : "passed";
+          document.body.replaceChildren(result);
+        })();
+        """
+        self.assertEqual(browser_check([], checks), "passed")
+
     def test_nested_reports_and_no_executable_markup(self):
         narrative = (
             "### 투자 근거\n\n**강조된 문장**\n\n- 이유 하나\n- 이유 둘\n\n1. 첫 항목\n2. 다음 항목\n\n"
