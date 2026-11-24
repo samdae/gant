@@ -747,6 +747,10 @@ class ForecastStoreTests(unittest.TestCase):
             [r["id"] for r in self.store.recent_cases(1, before_id=other[0])],
             [first[0]],
         )
+        unpublished = self.store.create_case(self.snapshot("UNPUBLISHED"))
+        self.assertEqual(self.store.recent_cases(1)[0]["id"], unpublished)
+        self.assertEqual(self.store.recent_cases(1, published_only=True)[0]["id"], other[0])
+        self.assertEqual(self.store.recent_cases(1, before_id=other[0], published_only=True)[0]["id"], first[0])
         day = first[1]["data_session"]
         filters = {"market": first[1]["market"], "from_date": day, "to_date": day}
         self.assertEqual(

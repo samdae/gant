@@ -1,7 +1,7 @@
 <script lang="ts">
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import LabTimeline from "../components/LabTimeline.svelte";
-  import { isForecastLab } from "../lib/workspace";
+  import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import { onMount } from "svelte";
   import { fetchQueue, fetchLiveEvents, type LiveMessage as WsMessage } from "../lib/api/endpoints";
   import { connectLiveStream } from "../lib/ws/liveStream";
@@ -118,7 +118,7 @@
           ws?.close();
           ws = null;
           connectedTicker = null;
-        } else if (queue.running !== connectedTicker || !ws || ws.readyState >= WebSocket.CLOSING) {
+        } else if (!isPublicViewer && (queue.running !== connectedTicker || !ws || ws.readyState >= WebSocket.CLOSING)) {
           connect(queue.running);
         }
       } catch {
@@ -144,7 +144,7 @@
     <header class="op-title">
       <div>
         <h1>실시간 실행</h1>
-        <p>가상매매 분석의 실행 종목과 단계별 진행 상황입니다.</p>
+        <p>{isPublicViewer ? "가상매매 분석의 현재 실행 종목과 대기열입니다." : "가상매매 분석의 실행 종목과 단계별 진행 상황입니다."}</p>
       </div>
       <a class="op-link" href="#/schedules">분석 예약 보기 →</a>
     </header>
@@ -172,7 +172,8 @@
           {#each queue.pending as symbol}<li><InstrumentLabel ticker={symbol} /></li>{/each}
         </ol>
       </section>{/if}
-    {#if queue.running || messages.length}
+    {#if isPublicViewer}<p class="op-hint">공개 화면에서는 실행 종목과 대기열을 확인할 수 있습니다.</p>
+    {:else if queue.running || messages.length}
       {#if !queue.running}<p class="op-hint">가장 최근에 수신한 실행 기록입니다.</p>{/if}
       <LabTimeline groups={phaseGroups} states={stepStates} events={messages} />
     {:else if queueSeen}<section class="op-panel">

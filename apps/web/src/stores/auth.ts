@@ -1,16 +1,17 @@
+import { isPublicViewer } from "../lib/workspace";
 import { writable } from "svelte/store";
 
 const STORAGE_KEY = "gant_admin_token";
 
 const getInitialToken = () => {
-  if (typeof localStorage === "undefined") return null;
+  if (isPublicViewer || typeof localStorage === "undefined") return null;
   return localStorage.getItem(STORAGE_KEY);
 };
 
 const tokenStore = writable<string | null>(getInitialToken());
 
 tokenStore.subscribe((value) => {
-  if (typeof localStorage === "undefined") return;
+  if (isPublicViewer || typeof localStorage === "undefined") return;
   if (value) {
     localStorage.setItem(STORAGE_KEY, value);
   } else {

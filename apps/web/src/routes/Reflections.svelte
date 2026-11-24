@@ -1,6 +1,6 @@
 <script lang="ts">
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
-  import { isForecastLab } from "../lib/workspace";
+  import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import { onMount } from "svelte";
   import {
     fetchReflections,
@@ -112,7 +112,7 @@
 
   onMount(() => {
     loadData();
-    loadCandidates();
+    if (!isPublicViewer) loadCandidates();
   });
 
   const formatDate = (iso: string | null) => {

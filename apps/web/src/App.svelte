@@ -23,10 +23,11 @@
   import Research from "./routes/Research.svelte";
   import Portfolio from "./routes/Portfolio.svelte";
   import WorkspaceNav from "./components/WorkspaceNav.svelte";
-  import { isForecastLab } from "./lib/workspace";
+  import { isForecastLab, isPublicViewer } from "./lib/workspace";
 
   const routes = {
     ...(isForecastLab ? { "/research": Research, "/portfolio": Portfolio } : {}),
+    ...(isPublicViewer ? { "/research/:id": Research, "/results": Research, "/performance": Research } : {}),
     "/": isForecastLab ? Portfolio : Dashboard,
     "/positions": Positions,
     "/schedules": Schedules,
@@ -40,7 +41,7 @@
     "/retrospective": Retrospective,
     "/retrospective/:ticker": RetroDetail,
     "/about": About,
-    "/auth": Auth,
+    ...(!isPublicViewer ? { "/auth": Auth } : {}),
     "*": NotFoundRedirect,
   };
 

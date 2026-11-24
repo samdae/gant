@@ -1,7 +1,7 @@
 <script lang="ts">
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import ReportDecisionEvidence from "../components/ReportDecisionEvidence.svelte";
-  import { isForecastLab } from "../lib/workspace";
+  import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import { params } from "svelte-spa-router";
   import { fetchReportsByTicker } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
@@ -180,11 +180,20 @@
     loading = true;
     error = "";
     try {
-      const result = (await fetchReportsByTicker(t, 20)) as Report[];
+      let symbol = t;
+      const publicId = isPublicViewer && /^[1-9]\d*$/.test(t) ? t : "";
+      if (publicId) {
+        const response = await fetch("/public-api/reports/" + publicId, { credentials: "omit" });
+        if (!response.ok) throw new Error("공개된 리포트를 찾을 수 없습니다.");
+        const item = await response.json();
+        if (typeof item.ticker !== "string") throw new Error("리포트의 종목을 확인할 수 없습니다.");
+        symbol = item.ticker;
+      }
+      const result = (await fetchReportsByTicker(symbol, 20)) as Report[];
       if (ticker !== t) return;
       reports = result;
       if (reports && reports.length > 0) {
-        selectReport(String(reports[0].id));
+        selectReport(publicId || String(reports[0].id));
       } else {
         report = null;
         selectedReportId = "";
@@ -223,7 +232,7 @@
   <div class="page-container">
     <div class="page-header">
       <button class="back-btn" aria-label="이전 화면" on:click={() => history.back()}>&larr;</button>
-      <h2><InstrumentLabel {ticker} name={report?.display_name} inline /> {isForecastLab ? "분석 리포트" : "AI분석"}</h2>
+      <h2><InstrumentLabel ticker={report?.ticker || ticker} name={report?.display_name} inline /> {isForecastLab ? "분석 리포트" : "AI분석"}</h2>
     </div>
 
     {#if loading}

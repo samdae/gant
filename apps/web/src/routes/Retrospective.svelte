@@ -1,6 +1,6 @@
 <script lang="ts">
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
-  import { isForecastLab } from "../lib/workspace";
+  import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import { onMount, onDestroy } from "svelte";
   import {
     fetchRetroSummary,
@@ -242,7 +242,7 @@
       <h2>{isForecastLab ? "회고 분석" : "AI분석"}</h2>
     </div>
     <AnalysisTabs>
-      <button slot="action" class="btn btn-primary" on:click={openModal}>{isForecastLab ? "회고 요청" : "요청"}</button>
+      <svelte:fragment slot="action">{#if !isPublicViewer}<button class="btn btn-primary" on:click={openModal}>{isForecastLab ? "회고 요청" : "요청"}</button>{/if}</svelte:fragment>
     </AnalysisTabs>
 
     {#if loading}
@@ -254,8 +254,8 @@
         <header>완료된 회고</header>
         <div>
           <h3>완료된 분석이 없습니다</h3>
-          <p>종목과 포지션 회차를 선택해 당시 판단 근거의 평가를 요청하세요.</p>
-          <button on:click={openModal}>회고 요청</button>
+          <p>{isPublicViewer ? "완료된 회고가 공개되면 이곳에서 확인할 수 있습니다." : "종목과 포지션 회차를 선택해 당시 판단 근거의 평가를 요청하세요."}</p>
+          {#if !isPublicViewer}<button on:click={openModal}>회고 요청</button>{/if}
         </div>
       </section>
       {:else}<div class="card" style="padding:16px;color:var(--text-dim)">완료된 회고분석이 없습니다.</div>{/if}

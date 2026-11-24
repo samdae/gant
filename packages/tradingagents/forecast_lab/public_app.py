@@ -1,21 +1,32 @@
 """Public-only HTTP reader. Run separately from the authenticated Forecast Lab console."""
 
+import hashlib
 import json
 import re
 import time
 from collections import OrderedDict
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeout
+from datetime import date
 from pathlib import Path
 from threading import BoundedSemaphore, Lock
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qsl, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from .public_projection import public_case, public_detail, public_report, public_stats
+from .public_research import (
+    case_summary,
+    research_detail,
+    research_stats,
+    research_status,
+)
 
+RESEARCH = Path(__file__).with_name("web")
+SHELL = Path(__file__).resolve().parents[3] / "apps/web/dist"
 ASSETS = Path(__file__).with_name("public_web")
 ORIGIN = "http://127.0.0.1:8014"
 CASE_LIST = "/api/cases?limit=60"
@@ -29,8 +40,45 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def research_filters(path, query, *, internal=False):
+    allowed = {"market", "from_date", "to_date"}
+    if path == "/api/cases":
+        allowed.update(("limit", "before_id", "ticker"))
+        if internal:
+            allowed.add("published_only")
+    pairs = parse_qsl(query, keep_blank_values=True, max_num_fields=10)
+    params = dict(pairs)
+    if len(params) != len(pairs) or not params.keys() <= allowed:
+        raise ValueError("Unsupported query")
+    for key, value in pairs:
+        if key == "market" and value not in ("kr", "us"):
+            raise ValueError("Invalid market")
+        if (
+            key in ("from_date", "to_date")
+            and date.fromisoformat(value).isoformat() != value
+        ):
+            raise ValueError("Invalid date")
+        if key in ("limit", "before_id") and (
+            not re.fullmatch(r"[1-9][0-9]{0,15}", value)
+            or (key == "limit" and int(value) > 200)
+        ):
+            raise ValueError("Invalid count")
+        if key == "ticker" and not re.fullmatch(r"[A-Z0-9][A-Z0-9.-]{0,15}", value):
+            raise ValueError("Invalid ticker")
+        if key == "published_only" and value != "true":
+            raise ValueError("Invalid publication filter")
+    if params.get("from_date", "") > params.get("to_date", "9999-12-31"):
+        raise ValueError("Invalid date range")
+    return params
+
+
 def read_upstream(path):
-    if path not in (CASE_LIST, STATS, REPORTS) and not re.fullmatch(
+    parts = urlsplit(path)
+    if parts.path in ("/api/cases", "/api/stats") and not (
+        parts.scheme or parts.netloc or parts.fragment
+    ):
+        research_filters(parts.path, parts.query, internal=True)
+    elif path not in ("/api/status", REPORTS) and not re.fullmatch(
         r"/api/cases/[1-9][0-9]{0,15}", path
     ):
         raise ValueError("Invalid internal route")
@@ -41,18 +89,21 @@ def read_upstream(path):
             if len(body) > MAX_BYTES:
                 raise ValueError("Invalid response")
             return json.loads(body)
-    except (URLError, ValueError, OSError, HTTPError):
+    except HTTPError as exc:
+        code = 404 if exc.code == 404 else 503
+        raise HTTPException(code, "Public research temporarily unavailable") from None
+    except (URLError, ValueError, OSError):
         raise HTTPException(503, "Public research temporarily unavailable") from None
 
 
 class ProjectionCache:
     """Bound retained public DTOs, concurrent private requests, and duplicate in-flight reads."""
 
-    def __init__(self):
+    def __init__(self, max_inflight=4):
         self.lock = Lock()
         self.values = OrderedDict()
         self.running = {}
-        self.slots = BoundedSemaphore(4)
+        self.slots = BoundedSemaphore(max_inflight)
 
     def get(self, key, project):
         with self.lock:
@@ -101,7 +152,10 @@ class ProjectionCache:
             self.slots.release()
 
 
-def create_app(reader=read_upstream):
+def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None):
+    from .console_public_reads import install_console_reads
+
+    dist = Path(dist).resolve()
     app = FastAPI(
         docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False
     )
@@ -143,9 +197,32 @@ def create_app(reader=read_upstream):
             )
         elif len(request.scope.get("raw_path", b"")) > 128:
             response = JSONResponse({"detail": "Unknown route"}, 404)
-        elif request.url.query and not (
-            request.url.path in ("/", "/research/")
-            and re.fullmatch(r"case=[1-9][0-9]{0,15}", request.url.query)
+        elif (
+            len(request.scope.get("query_string", b"")) > 1024
+            or request.url.query
+            and not (
+                request.url.path.startswith("/workspace-api/")
+                or request.url.path in ("/api/cases", "/api/stats")
+                or (
+                    request.url.path == "/"
+                    and re.fullmatch(r"case=[1-9][0-9]{0,15}", request.url.query)
+                )
+                or (
+                    request.url.path == "/research/"
+                    and set(request.query_params)
+                    <= {"case", "embedded", "market", "from_date", "to_date", "pages"}
+                )
+                or (
+                    request.url.path
+                    in (
+                        "/lab.css",
+                        "/lab.js",
+                        "/research/workspace-tokens.css",
+                        "/research/instrument-names.json",
+                    )
+                    and re.fullmatch(r"v=[A-Za-z0-9.-]{1,40}", request.url.query)
+                )
+            )
         ):
             response = JSONResponse({"detail": "Unsupported query"}, 400)
         else:
@@ -154,10 +231,11 @@ def create_app(reader=read_upstream):
             {
                 "X-Content-Type-Options": "nosniff",
                 "Referrer-Policy": "no-referrer",
-                "X-Frame-Options": "DENY",
-                "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'",
+                "X-Frame-Options": "SAMEORIGIN",
+                "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'none'; base-uri 'none'",
                 "Cache-Control": "public, max-age=30"
-                if response.status_code == 200 and request.url.path != "/healthz"
+                if response.status_code == 200
+                and request.url.path not in ("/", "/research/", "/healthz", "/ready")
                 else "no-store",
             }
         )
@@ -167,10 +245,99 @@ def create_app(reader=read_upstream):
     def health():
         return {"service": "forecast-lab-public", "ok": True}
 
-    @app.get("/research/")
+    def shell_html():
+        try:
+            return (dist / "index.html").read_text(encoding="utf-8")
+        except OSError:
+            raise HTTPException(503, "Workspace build unavailable") from None
+
     @app.get("/")
     def home():
-        return FileResponse(ASSETS / "index.html", media_type="text/html")
+        marker = '<meta name="forecast-console-access" content="public-readonly">'
+        return HTMLResponse(shell_html().replace("</head>", marker + "</head>", 1))
+
+    @app.get("/assets/{asset}")
+    def shell_asset(asset: str):
+        if not re.fullmatch(r"[a-zA-Z0-9_-]+\.(?:css|js)", asset) or not re.search(
+            r'(?:src|href)="/assets/' + re.escape(asset) + r'"', shell_html()
+        ):
+            raise HTTPException(404)
+        candidate = dist / "assets" / asset
+        if not candidate.is_file():
+            raise HTTPException(404)
+        return FileResponse(candidate)
+
+    @app.get("/favicon.svg")
+    def icon():
+        return FileResponse(dist / "favicon.svg", media_type="image/svg+xml")
+
+    @app.get("/ready")
+    def ready():
+        return {"ready": True, "console": True}
+
+    @app.get("/research/")
+    def research_home():
+        return FileResponse(RESEARCH / "index.html", media_type="text/html")
+
+    @app.get("/research/{asset}")
+    def research_asset(asset: str):
+        if asset not in ("workspace-tokens.css", "instrument-names.json"):
+            raise HTTPException(404)
+        return FileResponse(RESEARCH / asset)
+
+    @app.get("/lab.js")
+    def research_js():
+        return FileResponse(RESEARCH / "lab.js", media_type="application/javascript")
+
+    @app.get("/lab.css")
+    def research_css():
+        return FileResponse(RESEARCH / "lab.css", media_type="text/css")
+
+    @app.get("/api/status")
+    def status():
+        return cached("research-status", lambda: research_status(reader("/api/status")))
+
+    @app.get("/api/stats")
+    @app.get("/api/cases")
+    def research_list(request: Request):
+        path = request.url.path
+        try:
+            params = research_filters(path, request.url.query)
+        except ValueError:
+            raise HTTPException(400, "Unsupported research filter") from None
+        if path == "/api/cases":
+            params["published_only"] = "true"
+        query = urlencode(sorted(params.items()))
+        source = path + ("?" + query if query else "")
+        if path == "/api/stats":
+            return cached(
+                ("research-stats", source), lambda: research_stats(reader(source))
+            )
+        return cached(
+            ("research-list", source),
+            lambda: [item for row in rows(source) if (item := case_summary(row))],
+        )
+
+    @app.get("/api/cases/{case_id:int}")
+    def research_case(case_id: int, request: Request):
+        if not 0 < case_id < 10**16:
+            raise HTTPException(404)
+
+        def project():
+            raw = reader("/api/cases/" + str(case_id))
+            data = research_detail(raw)
+            if not data or data["id"] != case_id:
+                raise HTTPException(404)
+            body = JSONResponse(data).body
+            return body, '"' + hashlib.sha256(body).hexdigest() + '"'
+
+        body, tag = cached(("research-detail", case_id), project)
+        headers = {"ETag": tag}
+        if request.headers.get("if-none-match") == tag:
+            return Response(status_code=304, headers=headers)
+        return Response(body, media_type="application/json", headers=headers)
+
+    install_console_reads(app, reader=workspace_reader)
 
     @app.get("/public.css")
     def styles():

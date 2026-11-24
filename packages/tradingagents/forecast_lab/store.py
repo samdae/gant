@@ -676,8 +676,13 @@ class Store:
         ticker=None,
         from_date=None,
         to_date=None,
+        published_only=False,
     ):
         conditions, params = cohort_filters(market, from_date, to_date)
+        if published_only:
+            conditions.append("""EXISTS (SELECT FROM lab_arms a WHERE a.case_id=c.id
+                AND a.status='published' AND a.published_at<=statement_timestamp()
+                AND a.published_at<c.entry_at)""")
         if before_id is not None:
             conditions.append("c.id < %s")
             params.append(int(before_id))

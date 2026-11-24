@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { isForecastLab } from "../lib/workspace";
+  import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import { onDestroy } from "svelte";
   import { location } from "svelte-spa-router";
   import Dashboard from "./Dashboard.svelte";
@@ -23,7 +23,7 @@
       if (id !== request) return;
       if (response?.config === null) {
         state = "empty";
-        setup = !isForecastLab || new URLSearchParams(window.location.hash.split("?")[1]).get("setup") === "1";
+        setup = !isPublicViewer && (!isForecastLab || new URLSearchParams(window.location.hash.split("?")[1]).get("setup") === "1");
       } else if (response?.config && typeof response.config === "object") {
         state = "ready";
       } else {
@@ -54,6 +54,8 @@
           <p role="alert">{error}</p>
           <button class="btn btn-secondary" on:click={() => load($viewMode)}>다시 조회</button>
         </div>
+      {:else if isPublicViewer}
+        <p class="card card-body">공개할 포트폴리오 계좌가 아직 없습니다.</p>
       {:else}
         <div class="card card-body portfolio-welcome">
           {#if isForecastLab}

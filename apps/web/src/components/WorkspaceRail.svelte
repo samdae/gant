@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isPublicViewer } from "../lib/workspace";
   import { location } from "svelte-spa-router";
   import { currentPage, sections } from "../lib/workspaceNavigation";
   import { viewMode } from "../stores/mode";
@@ -53,7 +54,7 @@
     {#each sections as section}
       <div class="group" class:settings={section.name === "설정"}>
         <div class="group-label">{section.name}</div>
-        {#each section.pages as page}
+        {#each section.pages.filter((p) => !isPublicViewer || p.route !== "/auth") as page}
           <a
             class="item"
             href={"#" + page.route}

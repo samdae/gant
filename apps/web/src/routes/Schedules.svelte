@@ -2,7 +2,7 @@
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import "../components/labOperations.css";
   import { operationTime, operationState } from "../lib/utils/operations";
-  import { isForecastLab } from "../lib/workspace";
+  import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import { onMount } from "svelte";
   import {
     createSchedule,
@@ -226,9 +226,9 @@
     <header class="op-title">
       <div>
         <h1>분석 예약</h1>
-        <p>가상매매 콘솔에서 종목별 분석 주기와 실행 회차를 관리합니다.</p>
+        <p>종목별 분석 주기와 최근 실행 회차를 확인합니다.</p>
       </div>
-      <button class="op-primary" id="addScheduleBtn" on:click={openAdd}>예약 추가</button>
+      {#if !isPublicViewer}<button class="op-primary" id="addScheduleBtn" on:click={openAdd}>예약 추가</button>{/if}
     </header>
     {#if error}<p class="op-error" role="alert">
         {error} <button on:click={loadSchedules}>다시 조회</button>
@@ -265,9 +265,7 @@
       {:else if filteredSchedules.length}
         <div class="op-schedules" role="list">
           <div class="op-grid-row op-colhead" aria-hidden="true">
-            <span>종목 / 주기</span><span>상태</span><span>다음 실행</span><span>최근 회차</span><span
-              >관리</span
-            >
+            <span>종목 / 주기</span><span>상태</span><span>다음 실행</span><span>최근 회차</span>{#if !isPublicViewer}<span>관리</span>{/if}
           </div>
           {#each filteredSchedules as schedule}
             {@const badge = statusBadge(schedule.ticker)}
@@ -290,7 +288,7 @@
                     >{cycle.scheduled_cycle}회 · {operationState(cycle.status)}</b
                   ><small>{operationTime(cycle.created_at)}</small>{:else}<span>기록 없음</span>{/if}
               </div>
-              <button
+              {#if !isPublicViewer}<button
                 class="op-cancel"
                 aria-label={instrumentText(schedule.ticker, $tickerNames) + " 예약 삭제"}
                 title={instrumentText(schedule.ticker, $tickerNames) + " 예약 삭제"}
@@ -300,7 +298,7 @@
                   stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5m4-5v5" />
                 </svg>
-              </button>
+              </button>{/if}
             </div>
           {/each}
         </div>{/if}

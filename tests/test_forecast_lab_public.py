@@ -127,10 +127,7 @@ class PublicReaderTests(TestCase):
             "/docs",
             "/redoc",
             "/openapi.json",
-            "/workspace-api/reports",
-            "/api/status",
             "/research/lab.js",
-            "/lab.js",
             "/admin",
         ):
             self.assertEqual(self.client.get(path).status_code, 404, path)
@@ -143,6 +140,8 @@ class PublicReaderTests(TestCase):
             "/?case=10",
             "/research/",
             "/research/?case=10",
+            "/lab.js?v=20261124-5",
+            "/research/workspace-tokens.css?v=20261124-1",
             "/public.css",
             "/public.js",
         ):

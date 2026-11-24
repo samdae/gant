@@ -1,6 +1,6 @@
 <script lang="ts">
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
-  import { isForecastLab } from "../lib/workspace";
+  import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import LabTimeline from "../components/LabTimeline.svelte";
   import { operationTime, operationState } from "../lib/utils/operations";
   import { params } from "svelte-spa-router";
@@ -138,7 +138,7 @@
   };
 
   const loadEvents = async () => {
-    if (!selectedCycleId || !ticker) {
+    if (isPublicViewer || !selectedCycleId || !ticker) {
       events = [];
       stepStates = {};
       return;
@@ -212,9 +212,10 @@
           <div><span>실행 상태</span><strong>{operationState(cycle?.status)}</strong></div>
           <div><span>등록 시각 · 한국</span><strong>{operationTime(cycle?.created_at)}</strong></div>
         </div>
-        {#if cycle?.error_message}<p class="op-error">{cycle.error_message}</p>{/if}
+        {#if !isPublicViewer && cycle?.error_message}<p class="op-error">{cycle.error_message}</p>{/if}
       </section>
-      {#if loadingEvents}<p class="op-panel" role="status">이벤트를 불러오는 중입니다.</p>
+      {#if isPublicViewer}<p class="op-hint">세부 실행 로그는 관리자 화면에서 확인할 수 있습니다.</p>
+      {:else if loadingEvents}<p class="op-panel" role="status">이벤트를 불러오는 중입니다.</p>
       {:else if eventsError}<p class="op-error" role="alert">{eventsError}</p>
       {:else}<LabTimeline groups={phaseGroups} states={stepStates} {events} />{/if}
     {/if}

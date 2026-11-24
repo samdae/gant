@@ -150,6 +150,7 @@ def application(
     @app.get("/api/cases")
     def cases(
         limit: int = Query(50, ge=1, le=200),
+        published_only: bool = False,
         before_id: int | None = Query(None, ge=1),
         market: Literal["us", "kr"] | None = None,
         ticker: str | None = Query(None, max_length=24),
@@ -160,6 +161,7 @@ def application(
         return store.recent_cases(
             limit=limit,
             before_id=before_id,
+            published_only=published_only,
             market=market,
             ticker=ticker,
             from_date=from_date,
