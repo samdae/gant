@@ -12,6 +12,8 @@ Windows 통합 앱에서 예측 연구, 종목별 에이전트, 포트폴리오 
 
 처음이라면 [서비스 소개](https://lab.daehun.app/#/about)에서 한 사례가 발행·채점되는 과정과 기억을 제공한 예측을 비교하는 법을 볼 수 있다. 리포트의 최근 분석 판단은 매수(적색)·관망(황갈색)·매도(청색)로 표시한다. 상세에서는 실행 에이전트의 판단과 제안 수량을 함께 읽을 수 있으며, 모의 체결 내역은 거래 상세에서 확인한다. [보유 종목](https://lab.daehun.app/#/positions) · [매매 검증](https://lab.daehun.app/#/reflections)
 
+연구 사례, 관찰 목록, 리포트와 거래 화면에서는 회사명·ETF 이름을 먼저 표시하고 티커를 작은 글씨로 함께 표시한다. 등록된 이름을 우선 사용하며 표시 이름을 모르는 종목은 티커로 식별한다.
+
 - [기획과 인수 기준](docs/forecast-lab/PRODUCT.md)
 - [실험 규약·설계 결정·검증 기록](docs/forecast-lab/DESIGN.md)
 - [연구실 실행과 복구](docs/forecast-lab/OPERATIONS.md)

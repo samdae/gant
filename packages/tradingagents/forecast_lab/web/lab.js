@@ -161,11 +161,70 @@ function persistView(id) {
     url.searchParams.set("pages", cursors.slice(1).join(","));
   history.replaceState(null, "", url);
 }
+// Names are presentation metadata; the ticker remains the identity of the frozen case.
+let catalogNames = new Map();
+let registeredNames = new Map();
+function paintInstrument(node) {
+  const symbol = node.dataset.instrument;
+  const name = registeredNames.get(symbol) || catalogNames.get(symbol);
+  const primary = name || symbol || "종목 미확인";
+  const secondary = name && name.toUpperCase() !== symbol ? symbol : "";
+  if (
+    node.firstChild?.textContent === primary &&
+    (node.children[1]?.textContent || "") === secondary
+  )
+    return;
+  node.replaceChildren(el("strong", primary, "instrument-name"));
+  if (secondary) node.append(el("small", secondary, "instrument-symbol"));
+}
+function instrument(ticker) {
+  const node = el("span", null, "instrument");
+  node.dataset.instrument = String(ticker || "")
+    .trim()
+    .toUpperCase();
+  paintInstrument(node);
+  return node;
+}
+function applyNameMap(raw, registered) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+  const map = new Map();
+  for (const [key, value] of Object.entries(raw)) {
+    const symbol = key.trim().toUpperCase();
+    if (
+      typeof value === "string" &&
+      value.trim() &&
+      value.trim().toUpperCase() !== symbol
+    )
+      map.set(symbol, value.trim());
+  }
+  if (registered) registeredNames = map;
+  else catalogNames = map;
+  document.querySelectorAll("[data-instrument]").forEach(paintInstrument);
+}
+async function nameJson(url) {
+  const response = await fetch(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(4500),
+  });
+  if (!response.ok) return null;
+  return response.json();
+}
+async function syncRegisteredNames() {
+  try {
+    if (route.get("embedded") !== "1" && !(await nameJson("/ready"))?.console)
+      return;
+    applyNameMap(await nameJson("/workspace-api/tickers/names"), true);
+  } catch {
+    /* An unavailable auxiliary service must not delay or hide predictions. */
+  }
+}
 function facts(entries) {
   const list = el("dl", null, "facts");
   for (const [label, value] of entries) {
     const cell = el("div");
-    cell.append(el("dt", label), el("dd", value ?? "—"));
+    const dd = el("dd");
+    dd.append(value instanceof Node ? value : String(value ?? "—"));
+    cell.append(el("dt", label), dd);
     list.append(cell);
   }
   return list;
@@ -416,7 +475,7 @@ function marketFacts(s) {
   if (b.status === "available") {
     children.push(
       facts([
-        ["시장 기준 종목", b.ticker],
+        ["시장 기준 종목", instrument(b.ticker)],
         ["기준 종목 20거래일 변화", pct(f.benchmark_trend_20d)],
         ["기준 종목 일간 변동성", pct(f.benchmark_volatility_20d)],
         [
@@ -431,15 +490,14 @@ function marketFacts(s) {
       children.push(
         disclosure("시장 기준 종목의 일별 시세", priceRows(b.bars, s.currency)),
       );
-  } else
-    children.push(
-      el(
-        "p",
-        (b.ticker ? b.ticker + " · " : "") +
-          "시장 비교 자료 없음. " +
-          (b.reason ? why(b.reason) : ""),
-      ),
+  } else {
+    const note = el("p", null, "instrument-note");
+    if (b.ticker) note.append(instrument(b.ticker));
+    note.append(
+      el("span", "시장 비교 자료 없음. " + (b.reason ? why(b.reason) : "")),
     );
+    children.push(note);
+  }
   if (bars.length)
     children.push(
       disclosure(
@@ -453,7 +511,7 @@ function memoryDetails(m, title = "예측에 사용한 과거 사례") {
   return disclosure(
     title,
     facts([
-      ["종목", m.ticker],
+      ["종목", instrument(m.ticker)],
       ["관측 기준일", m.data_session],
       ["당시 예측", pct(m.probability)],
       ["실제 결과", upLabel(m.actual)],
@@ -760,13 +818,15 @@ function renderCase(target, c) {
   const s = c.snapshot ?? {};
   const head = el("div", null, "detail-head"),
     identity = el("div");
+  const title = el("h2");
+  title.append(instrument(c.ticker));
   identity.append(
     el(
       "span",
       { us: "미국 시장", kr: "한국 시장" }[c.market] || "시장 미확인",
       "market-name",
     ),
-    el("h2", c.ticker),
+    title,
   );
   const state = el(
     "span",
@@ -954,18 +1014,25 @@ async function refresh() {
     $("runtime").textContent = s.scheduler_enabled
       ? "자동 관측 켜짐"
       : "자동 관측 꺼짐";
-    $("tickers").textContent =
-      s.tickers.map((t) => t.ticker).join(", ") +
-      "\n최근 작업 " +
-      ({
+    const instruments = el("ul", null, "watch-instruments");
+    for (const item of s.tickers) {
+      const li = el("li");
+      li.append(instrument(item.ticker));
+      instruments.append(li);
+    }
+    const phase =
+      {
         idle: "대기 중",
         maturing: "만기 확인",
         issuing: "예측 발행",
         busy: "다른 관측 진행 중",
         failed: "작업 실패",
-      }[p.phase] ?? "시작 대기") +
-      (p.ticker ? " · " + p.ticker : "") +
-      (p.method ? " · " + (names[p.method] ?? p.method) : "");
+      }[p.phase] || "시작 대기";
+    const progress = el("p", null, "instrument-note");
+    progress.append(el("span", "최근 작업 · " + phase));
+    if (p.ticker) progress.append(instrument(p.ticker));
+    if (p.method) progress.append(el("span", names[p.method] || "연구 예측"));
+    $("tickers").replaceChildren(instruments, progress);
     if (p.finished_at || p.started_at)
       $("tickers").append(
         el(
@@ -974,16 +1041,17 @@ async function refresh() {
             kst(p.finished_at ?? p.started_at),
         ),
       );
-    if (Object.keys(p.failures ?? {}).length)
+    if (Object.keys(p.failures ?? {}).length) {
+      const holds = el("ul", null, "watch-holds");
+      for (const [symbol, reason] of Object.entries(p.failures)) {
+        const row = el("li");
+        row.append(instrument(symbol), el("span", why(reason)));
+        holds.append(row);
+      }
       $("tickers").append(
-        el(
-          "p",
-          "최근 수집 보류 · " +
-            Object.entries(p.failures)
-              .map(([t, r]) => t + " (" + why(r) + ")")
-              .join(", "),
-        ),
+        disclosure("최근 수집 보류 · " + holds.children.length + "종목", holds),
       );
+    }
     $("counts").replaceChildren();
     for (const [label, value] of [
       ["관찰 종목", s.tickers.length],
@@ -1145,7 +1213,7 @@ async function refresh() {
         const b = el("button", null, "case-item");
         const line = el("span", null, "case-line");
         line.append(
-          el("strong", c.ticker),
+          instrument(c.ticker),
           el("span", labels[c.status] || "미확인", "status-pill " + c.status),
         );
         b.append(
@@ -1248,4 +1316,9 @@ const cursorParam = route.get("pages") || "";
 if (/^\d+(,\d+)*$/.test(cursorParam))
   cursors.push(...cursorParam.split(",").slice(0, 200));
 if (/^\d+$/.test(route.get("case") || "")) selected = Number(route.get("case"));
+nameJson("/research/instrument-names.json?v=20261124-2")
+  .then((data) => applyNameMap(data, false))
+  .catch(() => {});
+syncRegisteredNames();
+window.setInterval(syncRegisteredNames, 60000);
 poll();

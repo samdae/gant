@@ -121,7 +121,7 @@
 .op-summary > div + div {
   border-left: 1px solid var(--fl-line, #dbe2eb);
 }
-.op-summary span,
+.op-summary > div > span:not(.instrument),
 .op-toolbar small,
 .op-page time,
 .op-guide dd {
@@ -368,7 +368,7 @@
   .op-summary > div {
     padding: 9px 7px;
   }
-  .op-summary span,
+  .op-summary > div > span:not(.instrument),
   .op-summary strong {
     overflow-wrap: anywhere;
   }

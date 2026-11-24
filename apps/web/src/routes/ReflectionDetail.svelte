@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { params } from "svelte-spa-router";
   import { renderNarrative } from "../lib/utils/researchMarkdown";
@@ -89,10 +90,10 @@
           <div class="reflection-top-row">
             <div class="reflection-top-left">
               {#if reflection.ticker}
-                <span class="ticker-badge">{reflection.ticker}</span>
+                {#if isForecastLab}<InstrumentLabel ticker={reflection.ticker} />{:else}<span class="ticker-badge">{reflection.ticker}</span>
                 {#if displayName(reflection.ticker)}
                   <span class="ticker-tag">{displayName(reflection.ticker)}</span>
-                {/if}
+                {/if}{/if}
               {/if}
             </div>
             <span class={`badge ${reflection.outcome === "win" ? "badge-gain" : reflection.outcome === "loss" ? "badge-loss" : ""}`}>

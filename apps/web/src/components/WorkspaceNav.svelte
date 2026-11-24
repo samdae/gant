@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { location } from "svelte-spa-router";
+  import InstrumentLabel from "./InstrumentLabel.svelte";
   import WorkspaceRail from "./WorkspaceRail.svelte";
   import { currentPage } from "../lib/workspaceNavigation";
 
@@ -61,7 +62,7 @@
     {#if context.detail}
       <a href={"#" + context.page.route}>{context.page.label}</a>
       <span aria-hidden="true">/</span><strong aria-current="page"
-        >{context.detail.toUpperCase()}</strong
+        >{#if ["/schedules", "/reports", "/positions", "/retrospective"].includes(context.page.route)}<InstrumentLabel ticker={context.detail} inline />{:else}{context.detail}{/if}</strong
       >
     {:else}
       <strong aria-current="page">{context.page.label}</strong>

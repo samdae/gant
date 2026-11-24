@@ -793,3 +793,90 @@ details details {
     font-size: 19px;
   }
 }
+.instrument {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  vertical-align: middle;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.32;
+}
+.instrument-name {
+  font: inherit;
+  font-weight: 680;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.instrument-symbol,
+.case-item .instrument-symbol {
+  font-size: 0.74rem;
+  font-weight: 510;
+  letter-spacing: 0.012em;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.detail-head h2 .instrument-symbol {
+  font-size: 0.87rem;
+  letter-spacing: 0.025em;
+}
+.case-line > .instrument {
+  flex: 1;
+  min-width: 0;
+}
+.case-line {
+  align-items: flex-start;
+}
+.case-line > .status-pill {
+  flex: none;
+}
+.instrument-note,
+.watch-holds li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+}
+.watch-instruments,
+.watch-holds {
+  list-style: none;
+  margin: 0.4rem 0 1rem;
+  padding: 0;
+}
+.watch-instruments {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  gap: 0.4rem;
+}
+.watch-instruments li,
+.watch-holds li {
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid var(--line);
+}
+#tickers {
+  white-space: normal;
+}
+.watch-holds li > .instrument {
+  min-width: min(160px, 100%);
+}
+@media (max-width: 760px) {
+  .case-line {
+    flex-wrap: wrap;
+  }
+  .case-line > .instrument {
+    flex: 1 0 100%;
+  }
+  .case-item .instrument-symbol {
+    font-size: 0.72rem;
+  }
+  .case-item .instrument-name {
+    font-size: 0.9rem;
+  }
+  .detail-head > div {
+    min-width: 0;
+  }
+  .case-item > .case-line + small {
+    white-space: normal;
+  }
+}

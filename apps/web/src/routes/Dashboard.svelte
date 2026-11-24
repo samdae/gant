@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import PortfolioSummary from "../components/PortfolioSummary.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
   import { onMount } from "svelte";
@@ -14,7 +15,6 @@
     fetchPortfolioHoldings,
   } from "../lib/api/endpoints";
   import { formatDateTime, formatPercent, formatErrorMessage, formatAmount, formatSignedAmount } from "../lib/utils/format";
-  import { tickerNames } from "../stores/tickerNames";
   import { currencyFilter, showAmount, matchesCurrency, tickerCurrency } from "../stores/currency";
   import { viewMode, portfolioRefreshTrigger } from "../stores/mode";
 
@@ -48,6 +48,7 @@
   type PositionMarket = {
     position_id: number;
     ticker: string;
+    display_name?: string;
     shares: number;
     avg_cost: number | null;
     current_price: number | null;
@@ -81,7 +82,7 @@
   let scheduleSummary: ScheduleSummary | null = null;
   let todayRunsTotal: number | null = null;
   let portfolioConfig: { total_fund?: number; available_cash?: number; initial_capital?: number; base_currency?: string } | null = null;
-  let portfolioHoldings: Array<{ ticker: string; shares: number; current_value_base?: number; allocation_pct?: number }> = [];
+  let portfolioHoldings: Array<{ ticker: string; display_name?: string; shares: number; current_value_base?: number; allocation_pct?: number }> = [];
 
   const goTrade = (ticker: string) => {
     window.location.hash = `#/trade/${ticker.toLowerCase()}`;
@@ -96,7 +97,7 @@
       ? pos.current_price * pos.shares
       : null;
 
-  type RecentReport = { decision_position?: string; ticker: string; report_count: number; latest_at: string };
+  type RecentReport = { decision_position?: string; ticker: string; display_name?: string; report_count: number; latest_at: string };
   let reports: RecentReport[] = [];
   let reportStatus: "loading" | "ready" | "error" = "loading";
   onMount(async () => {
@@ -138,7 +139,7 @@
       if ($viewMode === "portfolio" && results[5]) {
         const pc = results[5] as { config?: { total_fund?: number; available_cash?: number; initial_capital?: number; base_currency?: string } };
         portfolioConfig = pc?.config ?? null;
-        const ph = results[6] as { holdings?: Array<{ ticker: string; shares: number; current_value_base?: number; allocation_pct?: number }> };
+        const ph = results[6] as { holdings?: Array<{ ticker: string; display_name?: string; shares: number; current_value_base?: number; allocation_pct?: number }> };
         portfolioHoldings = ph?.holdings ?? [];
       } else {
         portfolioConfig = null;
@@ -178,7 +179,7 @@
       {:else if queue.running}
         <span class="badge badge-info">
           <span class="status-dot status-info" style="width:6px;height:6px;margin-right:4px"></span>
-          실행중 · {queue.running}
+          실행중 · <InstrumentLabel ticker={queue.running} inline />
         </span>
       {:else}
         <span class="badge badge-info">
@@ -243,7 +244,7 @@
           {#each recentReports as report}
             <a class="desk-recent-row" href={`#/reports/${encodeURIComponent(report.ticker.toLowerCase())}`}>
               <span class="desk-document" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h5"/></svg></span>
-              <span class="desk-instrument"><b>{report.ticker}</b>{#if $tickerNames[report.ticker]}<small>{$tickerNames[report.ticker]}</small>{/if}</span>
+              <span class="desk-instrument"><InstrumentLabel ticker={report.ticker} name={report.display_name} /></span>
               <DecisionBadge value={report.decision_position || ""} />
               <time datetime={report.latest_at}>{formatDateTime(report.latest_at)}</time>
             </a>
@@ -404,7 +405,7 @@
                 {:else}
                   {#each filteredPortfolioHoldings as h}
                     <tr on:click={() => goTrade(h.ticker)}>
-                      <td><span class="ticker-badge">{h.ticker}</span>{#if $tickerNames[h.ticker]} <span class="ticker-tag">{$tickerNames[h.ticker]}</span>{/if}</td>
+                      <td><InstrumentLabel ticker={h.ticker} name={h.display_name} /></td>
                       <td>
                         {#if $showAmount && h.current_value_base != null}
                           {portfolioConfig?.base_currency === "USD"
@@ -426,7 +427,7 @@
                 {#each filteredPositions as pos}
                   {@const totalAmount = getTotalAmount(pos)}
                   <tr on:click={() => goTrade(pos.ticker)}>
-                    <td><span class="ticker-badge">{pos.ticker}</span>{#if $tickerNames[pos.ticker]} <span class="ticker-tag">{$tickerNames[pos.ticker]}</span>{/if}</td>
+                    <td><InstrumentLabel ticker={pos.ticker} name={pos.display_name} /></td>
                     <td>
                       {#if totalAmount === null || pos.avg_cost == null}
                         <span class="text-dim">평가 미확인</span>
@@ -458,7 +459,7 @@
           {#if queue.running}
             <div class="queue-item queue-running">
               <span class="queue-indicator"></span>
-              <span class="queue-ticker">{queue.running}</span>
+              <span class="queue-ticker"><InstrumentLabel ticker={queue.running} /></span>
               <span class="badge badge-info">실행중</span>
             </div>
           {/if}
@@ -472,7 +473,7 @@
             {#each queue.pending as item}
               <div class="queue-item queue-pending">
                 <span class="queue-indicator"></span>
-                <span class="queue-ticker">{item}</span>
+                <span class="queue-ticker"><InstrumentLabel ticker={item} /></span>
                 <span class="badge badge-muted">대기중</span>
               </div>
             {/each}

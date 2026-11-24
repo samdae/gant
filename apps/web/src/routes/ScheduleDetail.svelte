@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import { isForecastLab } from "../lib/workspace";
   import LabTimeline from "../components/LabTimeline.svelte";
   import { operationTime, operationState } from "../lib/utils/operations";
@@ -183,8 +184,8 @@
     <a class="op-link" href="#/schedules">← 분석 예약</a>
     <header class="op-title">
       <div>
-        <h1>{ticker} 실행 기록</h1>
-        <p>{$tickerNames[ticker] || ticker}의 최근 20개 회차를 확인할 수 있습니다.</p>
+        <h1><InstrumentLabel {ticker} /></h1>
+        <p>최근 20개 분석 회차의 실행 기록입니다.</p>
       </div>
       <a class="op-link" href="#/live">실시간 실행 →</a>
     </header>

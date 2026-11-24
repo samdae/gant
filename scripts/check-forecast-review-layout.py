@@ -27,8 +27,11 @@ def fixture_response(path, populated):
                     current_price=510, pnl=100, return_pct=2, closed_at="2026-11-17")
     reflection = dict(id=7, position_id=42, ticker="SPY", outcome="win",
                       return_pct=2, created_at="2026-11-18")
+    names = {"SPY": "SPDR S&P 500 ETF Trust Long Instrument Name Fixture"}
+    unknown = {**position, "ticker": "QAUNKNOWN", "position_id": 77}
     routes = {
-        "positions/market": [position],
+        "tickers/names": names,
+        "positions/market": [position, unknown],
         "positions/closed": [position],
         "reflections": [reflection],
         "reflections/retry-candidates": [],
@@ -183,6 +186,24 @@ def main():
                                     browser.wait("document.body.innerText.includes('없습니다')")
                                 if route == "positions":
                                     browser.wait("document.querySelectorAll('.review-switch small').length === 2")
+                                if populated:
+                                    browser.wait("document.querySelector('.review-register .instrument .symbol')")
+                                    assert browser.evaluate("""(() => {
+                                      const label = document.querySelector('.review-register .instrument');
+                                      const name = label.querySelector('.name');
+                                      const symbol = label.querySelector('.symbol');
+                                      return name.innerText.includes('Long Instrument Name Fixture')
+                                        && symbol.innerText === 'SPY'
+                                        && parseFloat(getComputedStyle(name).fontSize) >
+                                           parseFloat(getComputedStyle(symbol).fontSize)
+                                        && name.getBoundingClientRect().right <= innerWidth;
+                                    })()"""), (width, route, "name-first label")
+                                    if route == "positions":
+                                        assert browser.evaluate("""(() => {
+                                          const labels = [...document.querySelectorAll('.review-register .instrument')];
+                                          return labels.some(el => el.innerText.trim() === 'QAUNKNOWN'
+                                            && !el.querySelector('.symbol'));
+                                        })()"""), "Unknown ticker must appear exactly once"
                                 issues = browser.evaluate(GEOMETRY)
                                 assert issues == [], (width, route, populated, issues)
                                 if args.screenshots:

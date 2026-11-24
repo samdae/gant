@@ -80,6 +80,8 @@ Set-Clipboard -Value $entry.Substring('TRADINGAGENTS_ADMIN_TOKEN='.Length)
 
 ## 연구 대상과 수동 검증
 
+통합 앱의 종목 이름은 콘솔의 `/workspace-api/tickers/names`에서 조회한다. 기본 관찰 종목과 시장 기준 종목 이름은 `packages/tradingagents/forecast_lab/web/instrument-names.json`에도 있어 단독 연구 화면에서 사용할 수 있다. 기본 이름을 갱신할 때는 이 파일과 콘솔 번들을 함께 배포하고 연구 스크립트가 불러오는 카탈로그 URL의 버전을 갱신한다. 이름 표시는 예측 사례나 관찰 티커를 수정하지 않는다.
+
 초기 목록은 기존 24개 예약 중 주식·ETF 23개(한국 10개, 미국 13개)다. 비트코인은 주식 거래소 달력 실험에서 제외했다. 이후 연구 목록은 연구실에서 독립 관리한다. 티커 등록은 다음 형식으로 실행한다.
 
 ```powershell

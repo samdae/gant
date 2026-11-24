@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import "../styles/review-register.css";
   import { isForecastLab } from "../lib/workspace";
   import { fetchPositionsMarket, fetchPositionsClosed, fetchMetrics, fetchPortfolioHoldings, fetchPortfolioClosedTickers } from "../lib/api/endpoints";
@@ -179,9 +180,7 @@
               <tbody
                 >{#each filteredPortfolioHoldings as h}<tr
                     ><td
-                      ><a href={tradeLink(h.ticker)}>{h.ticker}</a><small
-                        >{$tickerNames[h.ticker] || ""}</small
-                      ></td
+                      ><a href={tradeLink(h.ticker)}><InstrumentLabel ticker={h.ticker} /></a></td
                     ><td>{h.shares}주</td><td
                       >{h.allocation_pct == null ? "—" : h.allocation_pct.toFixed(1) + "%"}</td
                     >{#if $showAmount}<td
@@ -204,9 +203,7 @@
               <tbody
                 >{#each filteredPositions as p}<tr
                     ><td
-                      ><a href={tradeLink(p.ticker, p.position_id)}>{p.ticker}</a><small
-                        >{$tickerNames[p.ticker] || ""}</small
-                      ></td
+                      ><a href={tradeLink(p.ticker, p.position_id)}><InstrumentLabel ticker={p.ticker} /></a></td
                     ><td>{p.shares}주</td>{#if $showAmount}<td class="review-extra"
                         >{formatAmount(p.avg_cost, p.ticker)}</td
                       ><td class="review-extra">{formatAmount(p.current_price, p.ticker)}</td><td
@@ -220,9 +217,7 @@
               <thead><tr><th>종목</th><th>마지막 거래일</th></tr></thead><tbody
                 >{#each filteredPortfolioClosed as p}<tr
                     ><td
-                      ><a href={tradeLink(p.ticker)}>{p.ticker}</a><small
-                        >{$tickerNames[p.ticker] || ""}</small
-                      ></td
+                      ><a href={tradeLink(p.ticker)}><InstrumentLabel ticker={p.ticker} /></a></td
                     ><td>{formatDate(p.last_trade_at ?? null)}</td></tr
                   >{/each}</tbody
               >
@@ -233,9 +228,7 @@
               ><tbody
                 >{#each filteredClosed as p}<tr
                     ><td
-                      ><a href={tradeLink(p.ticker, p.position_id)}>{p.ticker}</a><small
-                        >{$tickerNames[p.ticker] || ""}</small
-                      ><small>{p.shares}주 · 평균 {formatAmount(p.avg_cost, p.ticker)}</small></td
+                      ><a href={tradeLink(p.ticker, p.position_id)}><InstrumentLabel ticker={p.ticker} /></a><small>{p.shares}주 · 평균 {formatAmount(p.avg_cost, p.ticker)}</small></td
                     ><td class="review-extra">{formatDate(p.opened_at)} ~ {formatDate(p.closed_at)}</td><td
                       >{formatDate(p.closed_at)}</td
                     ><td

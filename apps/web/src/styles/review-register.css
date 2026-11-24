@@ -239,3 +239,31 @@
 .workspace #page-trade .crosshair-date {
   fill: white;
 }
+
+.workspace .review-register td:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.workspace .review-register td:first-child .instrument {
+  max-width: min(100%, 30ch);
+}
+
+.workspace #page-trade .page-header h2 {
+  min-width: 0;
+}
+
+.workspace .modal-tickers .tag-chip {
+  white-space: normal;
+  text-align: start;
+}
+
+.workspace .review-mobile-date { display: none; }
+@media (max-width: 620px) {
+  .workspace .review-mobile-date {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.72rem;
+    color: #52637a;
+  }
+}

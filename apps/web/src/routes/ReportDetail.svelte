@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { params } from "svelte-spa-router";
@@ -11,6 +12,7 @@
     id: number;
     created_at: string;
     ticker?: string;
+    display_name?: string;
     scheduled_cycle?: number;
     decision_position?: string;
     portfolio_action?: string;
@@ -221,7 +223,7 @@
   <div class="page-container">
     <div class="page-header">
       <button class="back-btn" aria-label="이전 화면" on:click={() => history.back()}>&larr;</button>
-      <h2>{ticker} {isForecastLab ? "분석 리포트" : "AI분석"}</h2>
+      <h2><InstrumentLabel {ticker} name={report?.display_name} inline /> {isForecastLab ? "분석 리포트" : "AI분석"}</h2>
     </div>
 
     {#if loading}
@@ -229,7 +231,7 @@
     {:else if error}
       <div class="card error-text" style="padding:16px">{error}</div>
     {:else if !report}
-      <div class="card" style="padding:16px">{ticker} AI분석이 없습니다.</div>
+      <div class="card" style="padding:16px"><InstrumentLabel {ticker} inline /> AI분석이 없습니다.</div>
     {:else}
       {#if reports.length > 0}
         <div class="form-label"><label for="cycle-select">회차</label>

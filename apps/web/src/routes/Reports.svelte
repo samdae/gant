@@ -1,15 +1,17 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import { fetchReportTickers } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
-  import { tickerNames } from "../stores/tickerNames";
+  import { instrumentName, tickerNames } from "../stores/tickerNames";
   import { currencyFilter, matchesCurrency } from "../stores/currency";
   import AnalysisTabs from "../components/AnalysisTabs.svelte";
 
   type TickerSummary = {
     ticker: string;
+    display_name?: string;
     report_count: number;
     latest_at: string;
     latest_cycle?: number;
@@ -91,7 +93,7 @@
   $: published = filteredTickers.filter((t) => t.report_count > 0).sort((a,b) => Date.parse(b.latest_at) - Date.parse(a.latest_at));
   $: visibleTickers = published.filter((t) =>
     !normalizedQuery || t.ticker.toLowerCase().includes(normalizedQuery)
-    || ($tickerNames[t.ticker] || "").toLowerCase().includes(normalizedQuery));
+    || instrumentName(t.ticker, $tickerNames, t.display_name).toLowerCase().includes(normalizedQuery));
 </script>
 
 <section class="page" id="page-reports">
@@ -117,7 +119,7 @@
           {#each visibleTickers as item}
             {@const action = item.decision_position || ""}
             <a href={`#/reports/${encodeURIComponent(item.ticker.toLowerCase())}`} class="desk-report-row">
-              <span class="desk-instrument"><b>{item.ticker}</b>{#if $tickerNames[item.ticker]}<small>{$tickerNames[item.ticker]}</small>{/if}</span>
+              <span class="desk-instrument"><InstrumentLabel ticker={item.ticker} name={item.display_name} /></span>
               <span class="desk-report-decision"><span class="mobile-report-label">최근 판단</span><DecisionBadge value={action} /></span>
               <span class="report-metadata">
                 <span class="desk-report-count"><span class="mobile-report-label">리포트 </span>{item.report_count}건</span>
@@ -147,10 +149,7 @@
           {@const action = actionRaw ? normalizeDecision(actionRaw) : ""}
           <a href={`#/reports/${item.ticker.toLowerCase()}`} class="report-ticker-card list-row {action ? 'action-bar-' + action.toLowerCase() : ''}">
             <div class="report-ticker-left">
-              <span class="ticker-badge">{item.ticker}</span>
-              {#if $tickerNames[item.ticker]}
-                <span class="ticker-tag">{$tickerNames[item.ticker]}</span>
-              {/if}
+              <InstrumentLabel ticker={item.ticker} name={item.display_name} />
             </div>
             <div class="report-ticker-meta">
               <span class="meta-date">{item.latest_cycle ? `${item.latest_cycle}회` : "-"}</span>

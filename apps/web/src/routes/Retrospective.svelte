@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import {
@@ -8,7 +9,7 @@
     requestRetroAnalysis,
   } from "../lib/api/endpoints";
   import { formatErrorMessage } from "../lib/utils/format";
-  import { tickerNames } from "../stores/tickerNames";
+  import { tickerNames, instrumentText } from "../stores/tickerNames";
   import { currencyFilter, matchesCurrency } from "../stores/currency";
   import AnalysisTabs from "../components/AnalysisTabs.svelte";
 
@@ -102,7 +103,7 @@
       try {
         modalTickers = (await fetchRetroTickers()) as TickerInfo[];
       } catch (err) {
-        analyzeMessage = formatErrorMessage(err, "티커 목록 로드 실패");
+        analyzeMessage = formatErrorMessage(err, "종목 목록 로드 실패");
       } finally {
         modalTickersLoading = false;
       }
@@ -171,18 +172,14 @@
 
       const enqueuedCount = Array.isArray(res?.enqueued) ? res.enqueued.length : 0;
       if (mode === "selected") {
-        const name = modalTickers.find((t) => t.ticker === modalActiveTicker)?.display_name
-          || $tickerNames[modalActiveTicker]
-          || modalActiveTicker
-          || "선택 티커";
-        if (enqueuedCount <= 1) {
-          analyzeMessage = `${name} 회고 분석 요청 완료`;
-        } else {
-          analyzeMessage = `${name} 외 ${enqueuedCount - 1}개 회고 분석 요청 완료`;
-        }
+        const sourceName = modalTickers.find((t) => t.ticker === modalActiveTicker)?.display_name;
+        const name = instrumentText(modalActiveTicker, $tickerNames, sourceName);
+        analyzeMessage = enqueuedCount
+          ? `${name} 회고 분석 ${enqueuedCount}건 요청 완료`
+          : `${name}에 새로 대기열에 등록된 회고가 없습니다.`;
       } else {
         analyzeMessage = enqueuedCount > 0
-          ? `전체 티커 회고 분석 요청 완료 (${enqueuedCount}개)`
+          ? `전체 종목 회고 분석 요청 완료 (${enqueuedCount}개)`
           : "회고 분석 요청 완료";
       }
 
@@ -245,9 +242,7 @@
           <thead><tr><th>종목</th><th>완료 회차</th><th>최근 분석일</th></tr></thead><tbody
             >{#each filteredTickers as item}<tr
                 ><td
-                  ><a href={`#/retrospective/${item.ticker.toLowerCase()}`}>{item.ticker}</a><small
-                    >{displayName(item)}</small
-                  ></td
+                  ><a href={`#/retrospective/${item.ticker.toLowerCase()}`}><InstrumentLabel ticker={item.ticker} name={item.display_name} /></a></td
                 ><td>{item.completed_count}건</td><td>{formatDate(item.latest_at)}</td></tr
               >{/each}</tbody
           >
@@ -288,7 +283,7 @@
       </div>
 
       <div class="modal-tab-bar">
-        <div class="modal-tab active">티커</div>
+        <div class="modal-tab active">{isForecastLab ? "종목 선택" : "티커"}</div>
       </div>
 
       <div class="modal-body">
@@ -304,7 +299,7 @@
                 disabled={!t.has_trades}
                 on:click={() => modalToggleTicker(t.ticker)}
               >
-                {modalDisplayName(t)}
+                {#if isForecastLab}<InstrumentLabel ticker={t.ticker} name={t.display_name} />{:else}{modalDisplayName(t)}{/if}
               </button>
             {/each}
           </div>

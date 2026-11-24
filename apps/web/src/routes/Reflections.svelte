@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import {
@@ -7,7 +8,7 @@
     requestReflectionRetry,
   } from "../lib/api/endpoints";
   import { formatPercent, formatErrorMessage } from "../lib/utils/format";
-  import { tickerNames } from "../stores/tickerNames";
+  import { tickerNames, instrumentText } from "../stores/tickerNames";
   import AnalysisTabs from "../components/AnalysisTabs.svelte";
 
   type Reflection = {
@@ -102,7 +103,7 @@
       await requestReflectionRetry(row.position_id);
       await Promise.all([loadCandidates(), loadData(false)]);
     } catch (err) {
-      error = formatErrorMessage(err, `${displayName(row.ticker) || row.ticker} 반성 재실행 실패`);
+      error = formatErrorMessage(err, `${instrumentText(row.ticker, $tickerNames)} 반성 재실행 실패`);
     } finally {
       retrying[row.position_id] = false;
       retrying = { ...retrying };
@@ -145,10 +146,10 @@
           {#each candidates as c}
             <div class="retry-row">
               <div class="retry-left">
-                <span class="ticker-badge">{c.ticker}</span>
+                {#if isForecastLab}<InstrumentLabel ticker={c.ticker} />{:else}<span class="ticker-badge">{c.ticker}</span>
                 {#if displayName(c.ticker)}
                   <span class="ticker-tag">{displayName(c.ticker)}</span>
-                {/if}
+                {/if}{/if}
                 <span class="badge badge-warn">{c.status === "missing" ? "미생성" : "실패"}</span>
               </div>
               <div class="retry-right">
@@ -219,15 +220,15 @@
       <div class="review-register">
         <table>
           <caption>종료 거래 검증 기록</caption>
-          <thead><tr><th>종목</th><th>결과</th><th>수익률</th><th>작성일</th></tr></thead>
+          <thead><tr><th>종목</th><th>결과</th><th>수익률</th><th class="review-extra">작성일</th></tr></thead>
           <tbody
             >{#each reflections as ref}<tr
                 ><td
-                  ><a href={`#/reflections/${ref.id}`}>{ref.ticker || `포지션 #${ref.position_id}`}</a
-                  ><small>{displayName(ref.ticker)}</small></td
+                  ><a href={`#/reflections/${ref.id}`}>{#if ref.ticker}<InstrumentLabel ticker={ref.ticker} />{:else}포지션 #{ref.position_id}{/if}</a>
+                  <span class="review-mobile-date">작성 {formatDate(ref.created_at)}</span></td
                 ><td>{ref.outcome === "win" ? "승" : ref.outcome === "loss" ? "패" : "미확정"}</td><td
                   >{formatPercent(ref.return_pct)}</td
-                ><td>{formatDate(ref.created_at)}</td></tr
+                ><td class="review-extra">{formatDate(ref.created_at)}</td></tr
               >{/each}</tbody
           >
         </table>

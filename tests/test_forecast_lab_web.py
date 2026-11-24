@@ -41,6 +41,22 @@ def browser_check(cases):
             if (leaks.length) result.push(c.id + " leaked " + leaks.join(","));
             if (d.querySelector("script,img,iframe,[onerror]") || window.pwned) result.push("executable markup");
             if (document.body.scrollWidth > window.innerWidth) result.push("mobile overflow");
+            if (c.id === 8890) {
+                const h = d.querySelector("h2 [data-instrument]");
+                if (h?.textContent !== "TEST") result.push("unknown symbol fallback missing or duplicated");
+                applyNameMap({TEST:"시장 기본 이름",MARKET:"기준 종목",OLD:"이전 종목"},false);
+                const open = d.querySelector("details");
+                open.open = true;
+                applyNameMap({TEST:"등록한 긴 이름 <img src=x onerror=window.pwned=1>"},true);
+                applyNameMap({TEST:"늦게 도착한 기본 이름",MARKET:"기준 종목",OLD:"이전 종목"},false);
+                if (!h.querySelector("strong")?.textContent.startsWith("등록한 긴 이름") ||
+                    h.querySelector("small")?.textContent !== "TEST" || h.querySelector("img") || !open.open)
+                    result.push("registered name precedence, safety, or preserved disclosure failed");
+                if (!d.querySelector('[data-instrument="MARKET"]')?.textContent.includes("기준 종목") ||
+                    !d.querySelector('[data-instrument="OLD"]')?.textContent.includes("이전 종목"))
+                    result.push("benchmark or memory missing label");
+                if (!d.textContent.includes("TEST 원문은 그대로")) result.push("frozen narrative rewritten");
+            }
             if (c.id === 8889) {
                 const svg = d.querySelector(".price-plot svg");
                 const axis = [...(svg?.querySelectorAll(".axis") || [])];
@@ -186,6 +202,28 @@ class LabWebTest(unittest.TestCase):
             "arms": [
                 {"method": "single", "status": "published", "probability": 0},
                 {"method": "memory", "status": "skipped"},
+            ],
+        }
+        self.assertEqual(browser_check([case]), "passed")
+
+    def test_names_arrive_without_blocking_frozen_case_and_preserve_disclosures(self):
+        case = {
+            "id": 8890,
+            "ticker": "TEST",
+            "status": "awaiting",
+            "market": "us",
+            "snapshot": {
+                "currency": "USD",
+                "benchmark": {"ticker": "MARKET", "status": "unavailable"},
+            },
+            "selected_memory": {"ticker": "OLD", "rationale": "이전 사례"},
+            "arms": [
+                {
+                    "method": "memory",
+                    "status": "published",
+                    "probability": 0.5,
+                    "rationale": "TEST 원문은 그대로",
+                }
             ],
         }
         self.assertEqual(browser_check([case]), "passed")

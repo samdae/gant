@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import LabTimeline from "../components/LabTimeline.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
@@ -154,20 +155,21 @@
       </p>{/if}
     <div class="op-summary">
       <div>
-        <span>현재 실행</span><strong>{queue.running || (queueSeen ? "실행 없음" : "확인 중")}</strong
-        >
+        <span>현재 실행</span>
+        {#if queue.running}<InstrumentLabel ticker={queue.running} />
+        {:else}<strong>{queueSeen ? "실행 없음" : "확인 중"}</strong>{/if}
       </div>
       <div>
-        <span>다음 대기 종목</span><strong
-          >{queue.pending[0] || (queueSeen ? "대기 없음" : "확인 중")}</strong
-        >
+        <span>다음 대기 종목</span>
+        {#if queue.pending[0]}<InstrumentLabel ticker={queue.pending[0]} />
+        {:else}<strong>{queueSeen ? "대기 없음" : "확인 중"}</strong>{/if}
       </div>
       <div><span>최근 확인 · 현지 시각</span><strong>{formatStepTime(checkedAt)}</strong></div>
     </div>
     {#if queue.pending.length}<section class="op-panel">
         <h2>실행 대기열</h2>
         <ol class="op-pending">
-          {#each queue.pending as symbol}<li>{symbol}</li>{/each}
+          {#each queue.pending as symbol}<li><InstrumentLabel ticker={symbol} /></li>{/each}
         </ol>
       </section>{/if}
     {#if queue.running || messages.length}

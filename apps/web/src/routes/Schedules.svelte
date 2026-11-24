@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import "../components/labOperations.css";
   import { operationTime, operationState } from "../lib/utils/operations";
   import { isForecastLab } from "../lib/workspace";
@@ -12,7 +13,7 @@
     searchTickers,
   } from "../lib/api/endpoints";
   import { formatDateTime, formatAgo, formatErrorMessage } from "../lib/utils/format";
-  import { tickerNames, setTickerName, loadTickerNames } from "../stores/tickerNames";
+  import { instrumentName, instrumentText, tickerNames, setTickerName, loadTickerNames } from "../stores/tickerNames";
   import { currencyFilter, matchesCurrency } from "../stores/currency";
 
   type Schedule = {
@@ -133,7 +134,7 @@
 
   const selectTicker = (item: TickerResult) => {
     formTicker = item.symbol;
-    if (!formDisplayName) formDisplayName = item.name;
+    if (!formDisplayName) formDisplayName = isForecastLab ? instrumentName(item.symbol, $tickerNames, item.name) : item.name;
     suggestions = [];
     showSuggestions = false;
     selectedIndex = -1;
@@ -251,9 +252,9 @@
     <div class="op-summary">
       <div><span>등록 종목</span><strong>{loading || error ? "—" : schedules.length}</strong></div>
       <div>
-        <span>현재 실행</span><strong
-          >{queue.running || (loading || error ? "—" : "실행 없음")}</strong
-        >
+        <span>현재 실행</span>
+        {#if queue.running}<InstrumentLabel ticker={queue.running} />
+        {:else}<strong>{loading || error ? "—" : "실행 없음"}</strong>{/if}
       </div>
       <div>
         <span>대기열</span><strong>{loading || error ? "—" : queue.pending.length + "종목"}</strong>
@@ -288,12 +289,10 @@
             {@const badge = statusBadge(schedule.ticker)}
             {@const cycle = cycles[schedule.ticker]}
             <div class="op-grid-row" role="listitem">
-              <a href={`#/schedules/${encodeURIComponent(schedule.ticker.toLowerCase())}`}
-                ><strong>{schedule.ticker}</strong><small
-                  >{$tickerNames[schedule.ticker] || ""}
-                  {formatInterval(schedule.interval_days)}</small
-                ></a
-              >
+              <a href={`#/schedules/${encodeURIComponent(schedule.ticker.toLowerCase())}`}>
+                <InstrumentLabel ticker={schedule.ticker} />
+                <small>{formatInterval(schedule.interval_days)}</small>
+              </a>
               <span class="op-state" data-state={queue.running === schedule.ticker ? "running" : ""}
                 >{badge.label}</span
               >
@@ -309,8 +308,8 @@
               </div>
               <button
                 class="op-cancel"
-                aria-label={schedule.ticker + " 예약 삭제"}
-                title={schedule.ticker + " 예약 삭제"}
+                aria-label={instrumentText(schedule.ticker, $tickerNames) + " 예약 삭제"}
+                title={instrumentText(schedule.ticker, $tickerNames) + " 예약 삭제"}
                 on:click={() => openDelete(schedule.ticker)}
               >
                 <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none"
@@ -438,8 +437,12 @@
                     class:selected={i === selectedIndex}
                     on:mousedown|preventDefault={() => selectTicker(item)}
                   >
-                    <span class="ac-symbol">{item.symbol}</span>
-                    <span class="ac-name">{item.name}</span>
+                    {#if isForecastLab}
+                      <InstrumentLabel ticker={item.symbol} name={item.name} />
+                    {:else}
+                      <span class="ac-symbol">{item.symbol}</span>
+                      <span class="ac-name">{item.name}</span>
+                    {/if}
                     <span class="ac-exchange">{item.exchange}</span>
                   </button>
                 {/each}
@@ -480,7 +483,8 @@
         <button class="modal-close" on:click={() => (showDelete = false)}>&times;</button>
       </div>
     <div class="modal-body">
-      <p><strong>{deleteTarget}</strong> 예약을 삭제할까요?</p>
+      <p>{#if isForecastLab && deleteTarget}<InstrumentLabel ticker={deleteTarget} inline />
+         {:else}<strong>{deleteTarget}</strong>{/if} 예약을 삭제할까요?</p>
       <p>대기중이면 함께 제거됩니다.</p>
       {#if isForecastLab && error}<p role="alert" class="op-error">{error}</p>{/if}
     </div>

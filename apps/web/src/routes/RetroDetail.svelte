@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { params } from "svelte-spa-router";
   import { fetchRetroByTicker } from "../lib/api/endpoints";
@@ -105,10 +106,10 @@
 
     <div class="retro-detail-shell">
       <div class="retro-detail-header">
-        <span class="ticker-badge">{ticker}</span>
+        {#if isForecastLab}<InstrumentLabel {ticker} />{:else}<span class="ticker-badge">{ticker}</span>
         {#if displayName()}
           <span class="ticker-tag">{displayName()}</span>
-        {/if}
+        {/if}{/if}
       </div>
 
       {#if loading}

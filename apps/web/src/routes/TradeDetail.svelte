@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { onMount, onDestroy } from "svelte";
@@ -725,7 +726,7 @@
   <div class="page-container">
     <div class="page-header">
       <button class="back-btn" on:click={() => history.back()}>&larr;</button>
-      <h2>{ticker}</h2>
+      <h2>{#if isForecastLab}<InstrumentLabel {ticker} />{:else}{ticker}{/if}</h2>
       {#if summary?.current_price != null && summary.avg_cost != null}
         <span class={`pnl-banner ${summary.return_pct >= 0 ? "pnl-pos" : "pnl-neg"}`}>
           {formatPercent(summary.return_pct)}
@@ -1043,7 +1044,7 @@
             >
           </table>
         </div>
-      {:else}<div class="review-state">이 계좌에 기록된 {ticker} 체결 내역이 없습니다.</div>{/if}
+      {:else}<div class="review-state">이 계좌에 기록된 체결 내역이 없습니다.</div>{/if}
     {:else if $viewMode === "portfolio" && tab === "trades"}
       <div class="history-list">
         {#if portfolioTrades.length === 0}
