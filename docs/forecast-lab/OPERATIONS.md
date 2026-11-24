@@ -17,14 +17,25 @@
 
 ## 평상시 시작과 점검
 
-외부에서는 [연구실](https://lab.daehun.app/) 또는 [포트폴리오](https://lab.daehun.app/#/portfolio)를 연다. Cloudflare Access에 등록된 개인 이메일로 일회용 코드를 받아 로그인한다. Access 세션은 12시간이며 가상매매 변경에는 콘솔 자체의 관리자 인증도 적용된다.
+로그인 없이 [공개 연구실](https://research.daehun.app/)에서 발행 예측과 방법별 확률, 최근 분석 리포트 요약, 기억 활용 성과를 읽을 수 있다. [운영 콘솔](https://lab.daehun.app/)은 승인된 이메일로 받은 Cloudflare Access 일회용 코드로 로그인한다. 관리 세션은 12시간이며 가상매매 변경에는 콘솔 자체 관리자 인증도 필요하다.
 
 ### 외부 경로와 복구
 
-- Windows의 기존 named tunnel이 두 호스트를 전달한다. `daehun.app`은 Nginx의 `127.0.0.1:18080`, `lab.daehun.app`은 통합 앱의 `127.0.0.1:8014`에 연결한다. 연구 호스트의 DNS는 해당 터널을 가리키는 프록시된 CNAME이다. 기본 미일치 응답은 404다.
-- 연구 호스트 전체에 **Forecast Lab** self-hosted Access 앱을 적용한다. Allow 정책에는 승인된 개별 주소 하나를 지정하고 로그인 수단은 One-time PIN으로 제한한다. 실제 이메일은 Cloudflare 정책에서 확인한다. 개별 페이지, REST, 실시간 연결 경로가 모두 같은 호스트의 인증을 거친다.
-- `%LOCALAPPDATA%\TradingAgentsDeploy\tunnel.yml`의 연구 호스트 규칙에는 `originRequest.access.required: true`, 팀 이름 `daehun-forecast-lab`, Access 앱에서 발급한 현재 `audTag`가 필요하다. 팀이나 앱을 다시 만들 경우 실제 Audience 값을 조회해 갱신한다. 비인가 요청은 Cloudflare 로그인으로 이동하고, 원본 커넥터도 해당 앱의 서명을 검증한다.
-- 복구 순서는 이메일 Access 정책 확인 → 로컬 `/ready` 확인 → `cloudflared tunnel --config <설정 파일> ingress validate` 및 두 호스트의 `ingress rule` 확인 → 같은 터널의 새 커넥터 등록 확인 → 이전 커넥터 종료 → DNS와 외부 응답 확인이다. 외부 로그인 요청이 실제 팀의 `cloudflareaccess.com`으로 향하는지, 기존 사이트의 `/api/health`도 정상인지 확인한다. Windows 기동 작업은 **TradingAgents Windows Deployment**가 터널을, **TradingAgents Forecast Lab**이 8014 앱을 맡는다.
+| 호스트 | 터널 원본 | 외부 방문자의 권한 |
+|---|---|---|
+| `research.daehun.app` | `http://127.0.0.1:8015` | 발행 예측·공개 리포트·RAG 비교 조회 |
+| `lab.daehun.app` | `http://127.0.0.1:8014` | **Forecast Lab** Access 앱의 개별 이메일 정책으로 전체 콘솔 보호 |
+| `daehun.app` | `http://127.0.0.1:18080` | 기존 사이트의 독립적인 Nginx 경로 |
+
+운영 도메인과 개인 이메일 정책을 보존하고 읽기 서버에 전용 공개 서브도메인을 추가했다. 공개 ASGI 앱은 8014의 고정된 조회 결과에서 공개할 값만 추출한다. 예측은 최대 최근 30건, 리포트는 최대 최근 20건이다. 공개 리포트에는 분석 판단과 확인된 시장 지표를 제공한다. 원문 토론, 실행 제안 수량, 보유·체결·잔고는 운영 콘솔에서 열람한다. 공개 프로세스의 환경에는 DB 접속 문자열이나 관리 토큰을 주입하지 않는다.
+
+1. Windows의 기존 named tunnel 설정은 `%LOCALAPPDATA%\TradingAgentsDeploy\tunnel.yml`에 있다. 변경 전에 현재 설정을 접근 제한된 런타임 폴더로 백업한다. 관리 호스트 규칙의 `originRequest.access.required: true`, 팀 `daehun-forecast-lab` 및 Access 앱의 실제 `audTag`를 유지한다. 기존 정책은 승인 이메일 하나 및 일회용 코드 로그인으로 보호한다.
+2. 위 표의 호스트를 각각 정확히 지정한다. 공개 규칙은 오직 8015를 향하고 마지막 미일치 규칙은 `http_status:404`다. 공개·운영 연구 호스트의 DNS는 모두 기존 터널을 가리키는 프록시된 CNAME이다. 최초 등록은 Cloudflare DNS 관리 화면 또는 도메인 관리 권한이 있는 환경의 `cloudflared tunnel route dns <터널> research.daehun.app`에서 한다. 일상적인 Windows 기동에는 DNS 관리용 인증서가 필요하지 않다.
+3. 로컬 준비 상태와 공개 상세를 확인한 뒤 `cloudflared tunnel --config <후보 파일> ingress validate`와 각 호스트의 `ingress rule`을 확인한다. 활성 파일에 후보를 원자적으로 반영하고 같은 구성 경로로 새 커넥터를 시작한다. 새 프로세스에서 등록 로그를 확인한 뒤 실행 경로와 PID를 확인한 이전 커넥터만 종료한다. **TradingAgents Windows Deployment** 작업은 기존 사이트와 터널, **TradingAgents Forecast Lab** 작업은 8014와 8015를 기동한다.
+4. 새 브라우저로 공개 홈과 실제 상세를 열고, 공개 호스트의 `/workspace-api/health`와 `/api/status`가 404인지 확인한다. 익명으로 운영 호스트에 접속하면 팀의 `cloudflareaccess.com`으로 이동하며 기존 `daehun.app/api/health`는 200이어야 한다.
+5. 공개를 중단해야 하면 공개 호스트 규칙을 제거하고 새 커넥터를 등록한 뒤 이전 커넥터를 종료한다. 그 도메인은 마지막 404 규칙을 사용한다. 공개 앱만 다시 시작할 때는 8015 소유 프로세스의 체크아웃과 모듈을 검증한 뒤 전용 기동 스크립트 `scripts/start-forecast-lab-public.ps1`를 실행한다. 프라이빗 운영 앱과 DB는 계속 동작한다.
+
+2026-11-24 배포 검증에서는 쿠키가 없는 외부 방문자로 예측 30건과 리포트 20건을 조회했다. Chrome 393px와 1440px에서 실제 예측 확률, 리포트 지표, 기억 활용 성과를 열었다. 공개 호스트에서 두 비공개 API는 404, 운영 호스트는 Access 로그인으로 302, 기존 서비스 상태는 200이었다. Windows 예약 작업으로 두 서비스의 기동도 확인했다.
 
 ### Windows에서 실행
 
@@ -46,13 +57,14 @@ try {
     Remove-Item Env:VITE_FORECAST_LAB,Env:VITE_API_BASE_URL -ErrorAction SilentlyContinue
     Pop-Location
 }
-.\scripts\start-forecast-lab.ps1
+.\scripts\start-forecast-lab-services.ps1
+Invoke-RestMethod http://127.0.0.1:8015/healthz
 Invoke-RestMethod http://127.0.0.1:8014/ready
 Invoke-RestMethod http://127.0.0.1:8014/api/status
 Invoke-RestMethod http://127.0.0.1:8014/workspace-api/health
 ```
 
-작업 스케줄러의 **TradingAgents Forecast Lab**은 같은 사용자 로그온 시, 그리고 로그인 중 15분마다 이 시작 스크립트를 호출한다. 수동 기동·준비 상태 점검 명령은 `Start-ScheduledTask -TaskName 'TradingAgents Forecast Lab'`이다. 스크립트는 전용 pgdata와 포트 소유를 확인한 후 필요한 프로세스를 시작한다. 이미 실행 중인 연구 앱은 계속 동작한다. 현재 사용자 로그인과 Codex 로그인 상태가 필요하다. 연구 HTTP API는 조회용이고, 가상매매 콘솔의 쓰기에는 전용 관리자 인증이 필요하다. 오류는 런타임의 `logs/app.err.log`, 진행 상태는 `scan-progress.json`과 `/api/status`에서 확인한다.
+작업 스케줄러의 **TradingAgents Forecast Lab**은 같은 사용자 로그온 시, 그리고 로그인 중 15분마다 이 시작 스크립트를 호출한다. 수동 기동·준비 상태 점검 명령은 `Start-ScheduledTask -TaskName 'TradingAgents Forecast Lab'`이다. 스크립트는 전용 pgdata와 포트 소유를 확인한 후 필요한 프로세스를 시작한다. 이미 실행 중인 연구 앱은 계속 동작한다. 현재 사용자 로그인과 Codex 로그인 상태가 필요하다. 연구 HTTP API는 조회용이고, 가상매매 콘솔의 쓰기에는 전용 관리자 인증이 필요하다. 공개 앱 로그는 `logs/public.err.log` 및 `logs/public.out.log`다. 운영 앱 오류는 런타임의 `logs/app.err.log`, 진행 상태는 `scan-progress.json`과 `/api/status`에서 확인한다.
 
 백그라운드 스캔은 시작 직후와 한 차례 스캔이 끝난 뒤 지정된 간격(현재 900초)에 다시 돈다. 시장별로 완료된 거래 세션과 다음 개장 시각을 확인한다. 장중에 이미 열린 진입 창은 건너뛴다. 독립 프로세스가 동시에 실행되면 PostgreSQL 잠금을 획득한 하나만 무거운 작업을 한다. 최초 며칠 동안 성과 공통 표본이 비어 있고 기억 방법이 보류되는 것이 정상이다.
 
@@ -113,7 +125,7 @@ finally { Remove-Item Env:FORECAST_LAB_ACCEPTANCE_DSN -ErrorAction SilentlyConti
 
 ### 자동 작업과 복원 확인
 
-두 Windows 작업은 현재 사용자, 대화형 로그온, 일반 권한으로 등록되어 있다. 기동 작업은 Windows PowerShell을 숨김 모드로 실행하며 인수는 `-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "C:\Users\samda\dev\TradingAgents-ForecastLab\scripts\start-forecast-lab.ps1"`이다. 트리거는 사용자 로그온과 15분 간격의 반복이다. 앱 내부 스캔과 별개로 프로세스 종료에서 복구한다. 시장 공급자 조회 한 번은 60초, 모델 응답 한 번은 최대 300초로 제한한다. 개장이 더 가까우면 남은 시간이 모델 호출의 상한이다.
+두 Windows 작업은 현재 사용자, 대화형 로그온, 일반 권한으로 등록되어 있다. 기동 작업은 Windows PowerShell을 숨김 모드로 실행하며 인수는 `-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "C:\Users\samda\dev\TradingAgents-ForecastLab\scripts\start-forecast-lab-services.ps1"`이다. 트리거는 사용자 로그온과 15분 간격의 반복이다. 앱 내부 스캔과 별개로 프로세스 종료에서 복구한다. 시장 공급자 조회 한 번은 60초, 모델 응답 한 번은 최대 300초로 제한한다. 개장이 더 가까우면 남은 시간이 모델 호출의 상한이다.
 
 **TradingAgents Forecast Lab Backup**은 매일 03:25 KST에 이 체크아웃의 `.venv\Scripts\python.exe`로 `scripts\backup-forecast-lab.py`를 실행한다. 수동 실행은 프로젝트 루트에서 `.\.venv\Scripts\python.exe scripts\backup-forecast-lab.py`다. 연구·콘솔 DB를 별도 덤프로 만들고 각각 전체 아카이브를 읽어 검증한 파일만 `%LOCALAPPDATA%\TradingAgentsForecastLab\backups\*.dump`에 저장한다. 이 백업은 연구 DB와 동일한 PC에 있다. 디스크 자체의 장애에 대비하려면 검증된 덤프를 다른 저장소에도 보관한다.
 
