@@ -7,6 +7,8 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .classification import POLICY
+
 logger = logging.getLogger(__name__)
 MAX_ATTEMPTS = 3
 METHODS = ("baseline", "single", "debate", "memory")
@@ -135,7 +137,14 @@ class Worker:
         case_id = case["id"]
         snapshot = case["snapshot"]
         recorded = {arm["method"]: arm for arm in case["arms"]}
-        for method in METHODS:
+        methods = METHODS
+        if snapshot.get("retrieval_policy") == POLICY:
+            methods += ("memory_sector",)
+        control = recorded.get("memory") or {}
+        control_id = (
+            control.get("memory_id") if control.get("status") == "published" else None
+        )
+        for method in methods:
             arm = recorded.get(method)
             attempts = (arm.get("audit") or {}).get("attempts", 1) if arm else 0
             if arm and (arm["status"] != "failed" or attempts >= MAX_ATTEMPTS):
@@ -145,16 +154,30 @@ class Worker:
             deadline = datetime.fromisoformat(str(snapshot["entry_open_at"]))
             if self.clock() >= deadline:
                 break
-            memory = self.store.select_memory(case_id) if method == "memory" else None
-            if method == "memory" and not memory:
-                self.store.record_arm(
-                    case_id,
-                    method,
-                    status="skipped",
-                    error="no eligible matured memory",
-                )
-                continue
             try:
+                memory = None
+                if method in {"memory", "memory_sector"}:
+                    memory = (
+                        self.store.select_memory(case_id) if method == "memory"
+                        else self.store.select_memory(case_id, method)
+                    )
+                    if not memory:
+                        error = (
+                            "no eligible matured memory" if method == "memory"
+                            else "no_eligible_sector_memory"
+                        )
+                        self.store.record_arm(case_id, method, status="skipped", error=error)
+                        continue
+                    if method == "memory_sector":
+                        # On restart or a failed control attempt, compare against a durable
+                        # published control. A missing forecast is never evidence of a pair.
+                        if control_id is None:
+                            continue
+                        if memory["id"] == control_id:
+                            self.store.record_arm(
+                                case_id, method, status="skipped", error="same_memory"
+                            )
+                            continue
                 arm = self.engine.forecast(snapshot, method, memory=memory)
             except Exception as exc:  # noqa: BLE001 - isolate provider/model failures per arm
                 logger.warning(
@@ -171,7 +194,8 @@ class Worker:
                     audit={"attempts": attempts + 1},
                 )
                 continue
-            self.store.record_arm(case_id, **arm)
+            if self.store.record_arm(case_id, **arm) and method == "memory":
+                control_id = arm["memory_id"]
 
     def scan(self, limit=None, stopping=lambda: False):
         with self.store.worker_lock() as acquired:

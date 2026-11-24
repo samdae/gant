@@ -18,6 +18,8 @@ import requests
 import yfinance as yf
 from yfinance.exceptions import YFPricesMissingError
 
+from .classification import POLICY, classify
+
 EXPERIMENT_VERSION = "direction-5s-v2"
 DELAY = timedelta(minutes=20)
 MARKETS = {
@@ -384,6 +386,8 @@ class ForecastEngine:
             bars=[bars[s] for s in history if s in bars],
             provider_exchange=meta["exchangeName"],
             instrument=meta["instrumentType"],
+            classification=classify(ticker, meta["instrumentType"]),
+            retrieval_policy=POLICY,
             history_sessions=history,
             baseline=baseline,
             features=features,
@@ -633,7 +637,10 @@ class ForecastEngine:
         # The deterministic arm may be independently reconstructed from raw prices.
         # Its computed probability is never included in an LLM control prompt.
         evidence = _json(
-            {key: value for key, value in snapshot.items() if key != "baseline"}
+            {
+                key: value for key, value in snapshot.items()
+                if key not in {"baseline", "classification", "retrieval_policy"}
+            }
         )
         audit = {
             "snapshot_sha256": hashlib.sha256(_json(snapshot).encode()).hexdigest(),
@@ -649,11 +656,13 @@ class ForecastEngine:
             model, version = self.model, "original-eight-nodes-1round-risk-forecast-v1"
             p, reason, audit["debate"] = self._debate(snapshot, evidence)
         else:
-            if method not in {"single", "memory"}:
+            if method not in {"single", "memory", "memory_sector"}:
                 raise ValueError(f"Unknown forecast method {method}")
             model, version = self.model, "frozen-probability-v1"
             prompt = PROMPT + "\n" + evidence
-            if method == "memory":
+            if method == "memory_sector" and snapshot.get("retrieval_policy") != POLICY:
+                raise ValueError("Sector retrieval requires an opted-in snapshot")
+            if method in {"memory", "memory_sector"}:
                 prior = self._memory_evidence(snapshot, memory)
                 memory_id = memory["id"]
                 prompt += "\n이전 성숙 사례 하나:\n" + _json(prior)

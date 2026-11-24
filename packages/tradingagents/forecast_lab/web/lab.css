@@ -473,6 +473,9 @@ input:focus-visible,
 .prob-track > .single {
   background: #4781e9;
 }
+.prob-track > .memory_sector {
+  background: #187764;
+}
 .prob-track > .memory {
   background: #805ac4;
 }
@@ -879,4 +882,15 @@ details details {
   .case-item > .case-line + small {
     white-space: normal;
   }
+}
+
+.watch-instruments li:has(.watch-classification) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+.watch-classification {
+  color: var(--fl-muted);
+  font-size: 0.78rem;
 }

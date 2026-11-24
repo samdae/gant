@@ -138,6 +138,7 @@ class EngineTests(unittest.TestCase):
                 "bad",
                 '{"probability":0.4,"rationale":"x"}',
                 '{"probability":0.7,"rationale":"y"}',
+                '{"probability":0.7,"rationale":"y"}',
             ]
         ]
         single = self.engine.forecast(case, "single")
@@ -151,9 +152,20 @@ class EngineTests(unittest.TestCase):
             "created_at": self.now - timedelta(days=1),
         }
         memory = self.engine.forecast(case, "memory", prior)
+        treatment = self.engine.forecast(case, "memory_sector", prior)
+        self.assertEqual(memory["audit"]["prompt_sha256"], treatment["audit"]["prompt_sha256"])
+        self.assertEqual(memory["audit"]["market_input_sha256"], single["audit"]["market_input_sha256"])
+        self.assertEqual(treatment["model"], memory["model"])
+        legacy = dict(case)
+        del legacy["retrieval_policy"]
+        with self.assertRaises(ValueError):
+            self.engine.forecast(legacy, "memory_sector", prior)
         with self.assertRaises(ForecastUnavailable):
             self.engine.forecast(case, "memory", dict(prior, created_at=self.now))
         prompts = [call.args[0] for call in self.llm.invoke.call_args_list]
+        self.assertEqual(prompts[-2], prompts[-1])
+        self.assertNotIn("classification", prompts[-1])
+        self.assertNotIn("retrieval_policy", prompts[-1])
         self.assertNotIn("unique prior event", prompts[0])
         self.assertNotIn('"baseline":', prompts[0])
         self.assertTrue(prompts[-1].startswith(prompts[0]))

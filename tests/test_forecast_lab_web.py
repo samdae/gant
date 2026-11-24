@@ -276,3 +276,75 @@ class LabWebTest(unittest.TestCase):
             ],
         }
         self.assertEqual(browser_check([case]), "passed")
+
+    def test_sector_classification_memory_and_scored_pairs(self):
+        checks = """
+        const failures = [];
+        const check = (condition, message) => { if (!condition) failures.push(message); };
+        try {
+          const d = document.createElement("div");
+          const cl = {asset_class:"equity", sector:"technology", industry:"semiconductors"};
+          const caseData = {ticker:"TEST", market:"kr", snapshot:{classification:cl}, arms:[]};
+          renderCase(d, caseData);
+          check(d.querySelectorAll(".arm").length===4 && !d.textContent.includes("동결 당시의 종목 분류"), "legacy case");
+          caseData.snapshot.retrieval_policy="sector-v1";
+          const selection = {basis:"equity_peer",selected_ticker:"SOURCE",peer_ticker:"WITNESS",
+            peer_reference:"watchlist_median",reference_count:4};
+          const arm = {method:"memory_sector",status:"published",probability:.56,audit:{sector_selection_v1:selection}};
+          caseData.arms=[arm];
+          renderCase(d,caseData);
+          check(d.querySelectorAll(".arm").length===5 && d.textContent.includes("반도체") &&
+            d.textContent.includes("SOURCE") && d.textContent.includes("WITNESS") &&
+            d.textContent.includes("다른 업종 관찰 종목 4개의 중앙값 대비"), "peer evidence");
+          selection.source_window_return=-.034;
+          renderCase(d,caseData);
+          check(!d.textContent.includes("이전 사례의 5거래일 만기 수익률"), "incomplete historical pair");
+          selection.peer_window_return=0;
+          renderCase(d,caseData);
+          check(d.textContent.includes("이전 사례의 5거래일 만기 수익률-3.4%") &&
+            d.textContent.includes("확인 종목의 같은 기간 수익률0.0%"), "paired realized window returns");
+          selection.peer_reference="market_benchmark";
+          renderCase(d,caseData);
+          check(d.textContent.includes("시장 기준 대비"), "benchmark comparison");
+          caseData.snapshot.classification={asset_class:"etf",exposure:"gold"};
+          selection.basis="etf_exposure";
+          renderCase(d,caseData);
+          check(d.textContent.includes("추종 자산") && d.textContent.includes("같은 자산을 추종"),"ETF basis");
+          caseData.snapshot.classification={asset_class:"unknown"};
+          Object.assign(arm,{status:"skipped",error:"same_memory",audit:{}});
+          renderCase(d,caseData);
+          check(d.textContent.includes("기존 방식과 같은 기억") && d.textContent.includes("미확인"),"same selection");
+          arm.error="no_eligible_sector_memory";
+          renderCase(d,caseData);
+          check(d.textContent.includes("기준을 충족한 과거 사례가 없어"),"no history");
+          Object.assign(arm,{status:"failed",error:"timeout"});
+          renderCase(d,caseData);
+          check(d.textContent.includes("발행 실패"),"failed");
+          const coverage={eligible_cases:6,published:3,scored:2,same_memory:1,no_eligible_sector_memory:1,
+            failed:1,pending:0,expired_unpublished:0};
+          const row={control:"memory",treated:"memory_sector",n:2,control_model:"model",treated_model:"model",
+            distinct_entry_dates:2,distinct_tickers:1,control_brier:.25,treated_brier:.2,improvement:.05};
+          const stats={sector_coverage:coverage,comparisons:[row],counts:{},
+            sector_by_basis:[{...row,n:1,basis:"same_ticker",improvement:-.02},{...row,n:1,basis:"equity_peer",improvement:.12}]};
+          renderStats(stats);
+          const results=$("sector-results");
+          check(results.textContent.includes("+0.050") && results.textContent.includes("이번 표본에서 개선") &&
+            results.textContent.includes("진입일 2일 · 종목 1개"), "positive");
+          check(!$("comparisons").querySelector(".comparison"),"duplicate comparison");
+          check(results.querySelector("table").textContent.includes("동일 종목의 다른 회차1쌍-0.020 악화") &&
+            results.querySelector("table").textContent.includes("동종주 · 동조 확인1쌍+0.120 개선"),"by basis");
+          row.treated_brier=.3;row.improvement=-.05;renderStats(stats);
+          check(results.textContent.includes("-0.050") && results.textContent.includes("이번 표본에서 악화"),"negative");
+          stats.comparisons=[];coverage.scored=0;renderStats(stats);
+          check(results.textContent.includes("채점된 쌍이 아직 없습니다") && !results.textContent.includes("이번 표본에서 개선"), "zero pairs");
+          renderStats({counts:{}});check($("sector-performance").hidden,"old stats");
+          renderStatus({tickers:[{ticker:"TAG",classification:cl},{ticker:"OLD"}],progress:{}});
+          check($("tickers").textContent.includes("현재 등록 분류") &&
+            $("tickers").textContent.includes("주식 · 정보기술") &&
+            $("tickers").querySelectorAll(".watch-classification").length===1, "current register");
+        } catch (e) { failures.push(String(e)); }
+        const node=document.createElement("output");node.id="dom-result";
+        node.textContent=failures.length ? failures.join(" / ") : "passed";
+        document.body.replaceChildren(node);
+        """
+        self.assertEqual(browser_check([], checks), "passed")

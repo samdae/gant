@@ -7,13 +7,17 @@ from zoneinfo import ZoneInfo
 
 import exchange_calendars
 import psycopg
+from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from .engine import DELAY, _valid_bar
+from .sector_retrieval import sector_candidates, valid_classification
 
 METHODS = ("baseline", "single", "debate", "memory")
+SECTOR = "memory_sector"
+ARM_COUNT = "CASE WHEN c.snapshot->>'retrieval_policy'='sector-v1' THEN 5 ELSE 4 END"
 STATUSES = ("pending", "awaiting", "matured", "excluded", "unpublished")
 ZONES = {"us": "America/New_York", "kr": "Asia/Seoul"}
 
@@ -41,32 +45,49 @@ CREATE TABLE IF NOT EXISTS lab_memories(
  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, case_id bigint UNIQUE NOT NULL REFERENCES lab_outcomes,
  created_at timestamptz NOT NULL DEFAULT clock_timestamp());
 CREATE TABLE IF NOT EXISTS lab_arms(
- case_id bigint NOT NULL REFERENCES lab_cases, method text NOT NULL CHECK(method IN ('baseline','single','debate','memory')),
+ case_id bigint NOT NULL REFERENCES lab_cases, method text NOT NULL CONSTRAINT lab_arms_method_sector_v1
+ CHECK(method IN ('baseline','single','debate','memory','memory_sector')),
  status text NOT NULL CHECK(status IN ('published','failed','skipped')), probability double precision,
  rationale text NOT NULL, model text NOT NULL, version text NOT NULL, memory_id bigint REFERENCES lab_memories,
  error text, audit jsonb NOT NULL, published_at timestamptz, recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  PRIMARY KEY(case_id,method), CHECK ((status='published')=(published_at IS NOT NULL)),
  CHECK((status='published' AND probability BETWEEN 0 AND 1) OR (status<>'published' AND probability IS NULL)),
- CHECK(memory_id IS NULL OR method='memory'));
+ CONSTRAINT lab_arms_citation_sector_v1 CHECK(memory_id IS NULL OR method IN ('memory','memory_sector')));
 CREATE INDEX IF NOT EXISTS lab_memory_uses ON lab_arms(memory_id,case_id)
  WHERE method='memory' AND status='published';
+CREATE INDEX IF NOT EXISTS lab_sector_memory_uses ON lab_arms(memory_id,case_id)
+ WHERE method='memory_sector' AND status='published';
+CREATE INDEX IF NOT EXISTS lab_sector_peer_sessions ON lab_cases(market,experiment_version,data_session)
+ WHERE snapshot->>'retrieval_policy'='sector-v1';
 CREATE INDEX IF NOT EXISTS lab_cases_recent ON lab_cases(created_at DESC,id DESC);
 CREATE INDEX IF NOT EXISTS lab_cases_market_version ON lab_cases(market,experiment_version);
 """
 
-STATE = """CASE WHEN o.status='scored' THEN 'matured' WHEN o.status='excluded' THEN 'excluded'
+STATE = f"""CASE WHEN o.status='scored' THEN 'matured' WHEN o.status='excluded' THEN 'excluded'
 WHEN c.entry_at > statement_timestamp() AND
- (SELECT count(*) FROM lab_arms a WHERE a.case_id=c.id AND a.status<>'failed') < 4 THEN 'pending'
+ (SELECT count(*) FROM lab_arms a WHERE a.case_id=c.id AND a.status<>'failed') < {ARM_COUNT} THEN 'pending'
 WHEN EXISTS(SELECT FROM lab_arms a WHERE a.case_id=c.id AND a.status='published') THEN 'awaiting'
 ELSE 'unpublished' END"""
 SUMMARY = f"""SELECT c.id,c.ticker,c.market,c.data_session,c.experiment_version,c.created_at,
  c.entry_at AS entry_open_at,c.exit_at AS exit_close_at,{STATE} AS status
  FROM lab_cases c LEFT JOIN lab_outcomes o ON o.case_id=c.id"""
-MEMORY = """SELECT m.id,m.case_id,m.created_at,c.ticker,c.market,c.data_session,c.experiment_version,
- c.snapshot->'features' AS features,a.probability,a.rationale,a.model,a.version,o.actual,o.entry_open,o.exit_close,
- o.observed_at, power(a.probability-o.actual,2) AS brier
+MEMORY_FROM = """
  FROM lab_memories m JOIN lab_cases c ON c.id=m.case_id JOIN lab_outcomes o ON o.case_id=m.case_id
  JOIN lab_arms a ON a.case_id=m.case_id AND a.method='single' AND a.status='published'"""
+MEMORY = (
+    """SELECT m.id,m.case_id,m.created_at,c.ticker,c.market,c.data_session,c.experiment_version,
+ c.snapshot->'features' AS features,a.probability,a.rationale,a.model,a.version,o.actual,o.entry_open,o.exit_close,
+ o.observed_at, power(a.probability-o.actual,2) AS brier"""
+    + MEMORY_FROM
+)
+SECTOR_CANDIDATES = (
+    """SELECT m.id,m.case_id,c.ticker,c.data_session,c.entry_at,c.exit_at,
+ c.snapshot->'features' AS features,o.entry_open,o.exit_close,
+ CASE WHEN c.snapshot->>'retrieval_policy'='sector-v1' THEN c.snapshot->'classification' END AS classification"""
+    + MEMORY_FROM
+)
+MEMORY_CUTOFF = """ WHERE c.market=%s AND c.experiment_version=%s AND c.id<>%s
+ AND m.created_at<%s AND o.observed_at<%s"""
 
 
 def stamp(value):
@@ -134,6 +155,27 @@ class Store:
         with self._connect() as conn:
             conn.execute("SELECT pg_advisory_xact_lock(892417601)")
             conn.execute(SCHEMA)
+            if conn.execute("""SELECT 1 FROM pg_constraint WHERE conrelid='lab_arms'::regclass
+                               AND conname='lab_arms_method_sector_v1'""").fetchone():
+                return
+            # Compare canonical PostgreSQL expressions, including custom constraint names.
+            # Preserve operator-added checks which happen to reference the same columns.
+            conn.execute("""CREATE TEMP TABLE old_arm_checks(method text, memory_id bigint,
+                CHECK(method IN ('baseline','single','debate','memory')),
+                CHECK(memory_id IS NULL OR method='memory')) ON COMMIT DROP""")
+            obsolete = conn.execute("""SELECT c.conname FROM pg_constraint c
+                JOIN pg_constraint t ON t.conrelid='pg_temp.old_arm_checks'::regclass
+                  AND pg_get_constraintdef(t.oid)=pg_get_constraintdef(c.oid)
+                WHERE c.conrelid='lab_arms'::regclass AND c.contype='c'""").fetchall()
+            for check in obsolete:
+                conn.execute(
+                    sql.SQL("ALTER TABLE lab_arms DROP CONSTRAINT {}").format(
+                        sql.Identifier(check["conname"])
+                    )
+                )
+            conn.execute("""ALTER TABLE lab_arms ADD CONSTRAINT lab_arms_method_sector_v1
+                CHECK(method IN ('baseline','single','debate','memory','memory_sector')),
+                ADD CONSTRAINT lab_arms_citation_sector_v1 CHECK(memory_id IS NULL OR method IN ('memory','memory_sector'))""")
 
     @contextmanager
     def worker_lock(self):
@@ -160,6 +202,12 @@ class Store:
             ).fetchall()
 
     def create_case(self, snapshot, experiment_version=None):
+        policy = snapshot.get("retrieval_policy")
+        if policy is not None and (
+            policy != "sector-v1"
+            or not valid_classification(snapshot.get("classification"))
+        ):
+            raise ValueError("invalid sector retrieval metadata")
         ticker, market = ticker_key(snapshot["ticker"], snapshot["market"])
         version = experiment_version or snapshot["experiment_version"]
         day = date.fromisoformat(
@@ -258,7 +306,11 @@ class Store:
         published_at=None,
     ):
         version = version or prompt_version or ""
-        if method not in METHODS or status not in ("published", "skipped", "failed"):
+        if method not in (*METHODS, SECTOR) or status not in (
+            "published",
+            "skipped",
+            "failed",
+        ):
             raise ValueError("unknown arm or status")
         if status == "published" and (
             not number(probability)
@@ -270,10 +322,12 @@ class Store:
             raise ValueError(
                 "published arm requires valid probability, rationale, model and version"
             )
-        if status == "published" and ((method == "memory") != (memory_id is not None)):
+        if status == "published" and (
+            (method in ("memory", SECTOR)) != (memory_id is not None)
+        ):
             raise ValueError("memory arm must cite exactly one eligible memory")
         if status != "published" and (
-            probability is not None or not (error or rationale)
+            probability is not None or memory_id is not None or not (error or rationale)
         ):
             raise ValueError("unpublished arm requires a reason and no probability")
         with self._connect() as conn:
@@ -282,10 +336,53 @@ class Store:
             ).fetchone()
             if not c:
                 raise KeyError(case_id)
-            if memory_id is not None:
+            if (
+                method == SECTOR
+                and c["snapshot"].get("retrieval_policy") != "sector-v1"
+            ):
+                raise ValueError("sector policy not frozen in target")
+            if method == SECTOR and status != "failed":
+                selected = self._select_memory(conn, c, method)
+                control = conn.execute(
+                    """SELECT memory_id FROM lab_arms WHERE case_id=%s
+                    AND method='memory' AND status='published'""",
+                    (case_id,),
+                ).fetchone()
+                control_id = control["memory_id"] if control else None
+                selected_id = selected["id"] if selected else None
+                reason = error or rationale
+                if status == "published":
+                    if (
+                        not control_id
+                        or selected_id != memory_id
+                        or memory_id == control_id
+                    ):
+                        raise ValueError(
+                            "sector arm needs distinct eligible memory and published control"
+                        )
+                elif not (
+                    (reason == "no_eligible_sector_memory" and selected is None)
+                    or (
+                        reason == "same_memory"
+                        and control_id
+                        and selected_id == control_id
+                    )
+                ):
+                    raise ValueError("sector skip reason inconsistent with selection")
+                audit = {
+                    **(audit or {}),
+                    "sector_selection_v1": {
+                        **(selected["sector_selection_v1"] if selected else {}),
+                        "control_memory_id": control_id,
+                        "selected_memory_id": selected_id,
+                        "reason": reason if status == "skipped" else None,
+                    },
+                }
+            elif memory_id is not None:
                 selected = self._select_memory(conn, c)
                 if not selected or selected["id"] != memory_id:
                     raise ValueError("ineligible memory")
+            if memory_id is not None:
                 audit = {
                     **(audit or {}),
                     "memory_selection_v1": {
@@ -324,51 +421,97 @@ class Store:
             ).fetchone()
             return bool(row)
 
-    def select_memory(self, case_id):
+    def select_memory(self, case_id, method="memory"):
         with self._connect() as conn:
             c = conn.execute(
                 "SELECT * FROM lab_cases WHERE id=%s", (case_id,)
             ).fetchone()
             if not c:
                 raise KeyError(case_id)
-            return self._select_memory(conn, c)
+            return self._select_memory(conn, c, method)
 
     @staticmethod
-    def _select_memory(conn, c):
-        rows = conn.execute(
-            MEMORY
-            + """ WHERE c.market=%s AND c.experiment_version=%s AND c.id<>%s
-            AND m.created_at < %s AND o.observed_at < %s""",
-            (
-                c["market"],
-                c["experiment_version"],
-                c["id"],
-                c["observed_at"],
-                c["observed_at"],
-            ),
-        ).fetchall()
+    def _select_memory(conn, c, method="memory"):
+        if method not in ("memory", SECTOR):
+            raise ValueError("unknown retrieval method")
+        sector = method == SECTOR
+        if sector and c["snapshot"].get("retrieval_policy") != "sector-v1":
+            return None
+        cutoff = c["observed_at"]
+        params = (c["market"], c["experiment_version"], c["id"], cutoff, cutoff)
+        if sector:
+            group = c["snapshot"].get("classification")
+            if not valid_classification(group):
+                return None
+            query = SECTOR_CANDIDATES + MEMORY_CUTOFF
+            key = {"equity": "sector", "etf": "exposure"}.get(group["asset_class"])
+            if key and group[key]:
+                identifying = {
+                    field: group[field] for field in ("version", "asset_class", key)
+                }
+                query += """ AND (c.ticker=%s OR (c.snapshot->>'retrieval_policy'='sector-v1'
+                          AND c.snapshot->'classification' @> %s))"""
+                params += (c["ticker"], Jsonb(identifying))
+            else:
+                query += " AND c.ticker=%s"
+                params += (c["ticker"],)
+        else:
+            query = MEMORY + MEMORY_CUTOFF
+        rows = conn.execute(query, params).fetchall()
         if not rows:
             return None
-        features = c["snapshot"].get("features") or {}
-        for row in rows:
-            historical = row["features"] or {}
-            comparable = [
-                k
-                for k, v in features.items()
-                if number(v) and number(historical.get(k))
-            ]
-            row["feature_distance"] = (
-                sum(
-                    abs(features[k] - historical[k])
-                    / (1 + abs(features[k]) + abs(historical[k]))
-                    for k in comparable
+        if sector:
+            sessions = {
+                row["data_session"]
+                for row in rows
+                if group["asset_class"] == "equity" and row["ticker"] != c["ticker"]
+            }
+            peers = []
+            if sessions:
+                peers = conn.execute(
+                    """SELECT p.id,p.ticker,p.data_session,p.entry_at,p.exit_at,
+                    p.snapshot->'features' AS features,p.snapshot->'classification' AS classification,
+                    o.entry_open,o.exit_close FROM lab_cases p
+                    LEFT JOIN lab_outcomes o ON o.case_id=p.id AND o.status='scored'
+                        AND o.observed_at<%s AND p.exit_at<=%s
+                    WHERE p.market=%s AND p.experiment_version=%s AND p.data_session=ANY(%s)
+                      AND p.snapshot->>'retrieval_policy'='sector-v1' AND p.created_at<%s AND p.observed_at<%s
+                      AND p.snapshot->'classification' @> %s""",
+                    (
+                        cutoff,
+                        cutoff,
+                        c["market"],
+                        c["experiment_version"],
+                        list(sessions),
+                        cutoff,
+                        cutoff,
+                        Jsonb({"version": group["version"], "asset_class": "equity"}),
+                    ),
+                ).fetchall()
+            pool = sector_candidates(c, rows, peers)
+            if not pool:
+                return None
+        else:
+            features = c["snapshot"].get("features") or {}
+            for row in rows:
+                historical = row["features"] or {}
+                comparable = [
+                    k
+                    for k, v in features.items()
+                    if number(v) and number(historical.get(k))
+                ]
+                row["feature_distance"] = (
+                    sum(
+                        abs(features[k] - historical[k])
+                        / (1 + abs(features[k]) + abs(historical[k]))
+                        for k in comparable
+                    )
+                    / len(comparable)
+                    if comparable
+                    else 1.0
                 )
-                / len(comparable)
-                if comparable
-                else 1.0
-            )
-        same_ticker = [row for row in rows if row["ticker"] == c["ticker"]]
-        pool = same_ticker or rows
+            same_ticker = [row for row in rows if row["ticker"] == c["ticker"]]
+            pool = same_ticker or rows
         nearest = min(row["feature_distance"] for row in pool)
         pool = [row for row in pool if row["feature_distance"] <= nearest + 0.05]
         by_id = {row["id"]: row for row in pool}
@@ -376,14 +519,22 @@ class Store:
             row.update(uplift_support=0, shrunk_uplift=0.0)
         # Restrict evidence to the same independent single-model protocol as this target.
         # An unavailable current control keeps the retrieval prior neutral.
+        learning_methods = (
+            "m.method IN ('memory','memory_sector')" if sector else "m.method='memory'"
+        )
+        matched_input = (
+            "AND nullif(m.audit->>'market_input_sha256','')=b.audit->>'market_input_sha256'"
+            if sector
+            else ""
+        )
         pairs = conn.execute(
-            """
+            f"""
             SELECT m.memory_id,p.ticker,p.entry_at,p.exit_at,
               power(b.probability-o.actual,2)-power(m.probability-o.actual,2) AS uplift
             FROM lab_arms active
             JOIN lab_arms b ON b.method='single' AND b.status='published'
                  AND b.model=active.model AND b.version=active.version
-            JOIN lab_arms m ON m.case_id=b.case_id AND m.method='memory' AND m.status='published'
+            JOIN lab_arms m ON m.case_id=b.case_id AND {learning_methods} AND m.status='published'
                  AND m.version=b.version AND m.model=b.model
             JOIN lab_cases p ON p.id=m.case_id
             JOIN lab_cases current_case ON current_case.id=active.case_id
@@ -393,7 +544,8 @@ class Store:
               AND p.created_at<current_case.observed_at AND p.exit_at<current_case.observed_at
               AND b.published_at<current_case.observed_at AND m.published_at<current_case.observed_at
               AND o.observed_at<current_case.observed_at
-            ORDER BY m.memory_id,p.ticker,p.exit_at,p.id
+              {matched_input}
+            ORDER BY m.memory_id,p.ticker,p.exit_at,p.id,m.method
             """,
             (c["id"], list(by_id)),
         ).fetchall()
@@ -412,7 +564,7 @@ class Store:
             row["shrunk_uplift"] = max(
                 -1.0, min(1.0, total / (5 + row["uplift_support"]))
             )
-        return min(
+        selected = min(
             pool,
             key=lambda row: (
                 -row["shrunk_uplift"],
@@ -420,6 +572,13 @@ class Store:
                 -row["id"],
             ),
         )
+
+        if sector:
+            evidence = conn.execute(
+                MEMORY + " WHERE m.id=%s", (selected["id"],)
+            ).fetchone()
+            return {**evidence, **selected} if evidence else None
+        return selected
 
     def record_outcome(self, case_id, *, entry_open, exit_close, evidence):
         if (
@@ -570,16 +729,18 @@ class Store:
             c["memory"] = conn.execute(
                 MEMORY + " WHERE m.case_id=%s", (case_id,)
             ).fetchone()
-            cited = next((arm for arm in c["arms"] if arm["memory_id"]), None)
-            c["selected_memory"] = None
-            if cited:
-                memory = conn.execute(
-                    MEMORY + " WHERE m.id=%s", (cited["memory_id"],)
-                ).fetchone()
-                c["selected_memory"] = {
-                    **memory,
-                    **cited["audit"].get("memory_selection_v1", {}),
-                }
+            c["selected_memories"] = {}
+            for arm in c["arms"]:
+                if arm["memory_id"]:
+                    memory = conn.execute(
+                        MEMORY + " WHERE m.id=%s", (arm["memory_id"],)
+                    ).fetchone()
+                    c["selected_memories"][arm["method"]] = {
+                        **memory,
+                        **arm["audit"].get("memory_selection_v1", {}),
+                        **arm["audit"].get("sector_selection_v1", {}),
+                    }
+            c["selected_memory"] = c["selected_memories"].get("memory")
             c["reference"] = conn.execute(
                 "SELECT * FROM lab_references WHERE case_id=%s", (case_id,)
             ).fetchone()
@@ -671,10 +832,10 @@ class Store:
 
     def pending_cases(self):
         with self._connect() as conn:
-            rows = conn.execute("""SELECT c.id FROM lab_cases c WHERE NOT EXISTS(
+            rows = conn.execute(f"""SELECT c.id FROM lab_cases c WHERE NOT EXISTS(
               SELECT FROM lab_outcomes o WHERE o.case_id=c.id) AND (
               (c.entry_at > clock_timestamp() AND (SELECT count(*) FROM lab_arms a
-                 WHERE a.case_id=c.id AND a.status<>'failed')<4)
+                 WHERE a.case_id=c.id AND a.status<>'failed')<{ARM_COUNT})
               OR (c.exit_at <= clock_timestamp() AND EXISTS(SELECT FROM lab_arms a WHERE a.case_id=c.id
                  AND a.status='published'))) ORDER BY c.entry_at""").fetchall()
         return [self.detail(r["id"]) for r in rows]
@@ -705,16 +866,50 @@ class Store:
               avg(power(a.probability-o.actual,2)-power(b.probability-o.actual,2)) AS improvement,
               avg(CASE WHEN a.probability>0.5 THEN o.exit_close/o.entry_open-1 ELSE 0 END) AS control_paper_return,
               avg(CASE WHEN b.probability>0.5 THEN o.exit_close/o.entry_open-1 ELSE 0 END) AS treated_paper_return,
-              avg(((b.probability>0.5)::int-(a.probability>0.5)::int)*(o.exit_close/o.entry_open-1)) AS paper_improvement
+              avg(((b.probability>0.5)::int-(a.probability>0.5)::int)*(o.exit_close/o.entry_open-1)) AS paper_improvement,
+              CASE WHEN grouping(b.audit->'sector_selection_v1'->>'basis')=0
+                THEN b.audit->'sector_selection_v1'->>'basis' END AS selection_basis
               FROM lab_arms a JOIN lab_arms b ON a.case_id=b.case_id JOIN target_cases c ON c.id=a.case_id
               JOIN lab_outcomes o ON o.case_id=c.id AND o.status='scored'
               WHERE a.status='published' AND b.status='published'
                 AND ((a.method='baseline' AND b.method IN ('single','debate','memory'))
-                  OR (a.method='single' AND b.method IN ('debate','memory')))
+                  OR (a.method='single' AND b.method IN ('debate','memory'))
+                  OR (a.method='memory' AND b.method='memory_sector'
+                    AND c.snapshot->>'retrieval_policy'='sector-v1' AND a.memory_id<>b.memory_id
+                    AND a.model=b.model AND a.version=b.version
+                    AND b.audit->'sector_selection_v1'->>'basis' IN ('same_ticker','equity_peer','etf_exposure')
+                    AND nullif(a.audit->>'market_input_sha256','')=b.audit->>'market_input_sha256'))
                 AND (b.method<>'memory' OR a.method<>'single' OR (a.model=b.model AND a.version=b.version))
-              GROUP BY 1,2,3,4,5,6,7 ORDER BY 1,2,3,4,5,6,7""",
+              GROUP BY 1,2,3,4,5,6,7,GROUPING SETS((), (b.audit->'sector_selection_v1'->>'basis'))
+              HAVING grouping(b.audit->'sector_selection_v1'->>'basis')=1 OR (
+                b.method='memory_sector' AND b.audit->'sector_selection_v1'->>'basis' IS NOT NULL)
+              ORDER BY 1,2,3,4,5,6,7,selection_basis""",
                 params,
             ).fetchall()
+            sector_by_basis, overall = [], []
+            for row in comparisons:
+                basis = row.pop("selection_basis")
+                if basis:
+                    sector_by_basis.append(dict(row, basis=basis))
+                else:
+                    overall.append(row)
+            comparisons = overall
+            coverage = conn.execute(
+                cohort
+                + """SELECT count(*) AS eligible_cases,
+                count(*) FILTER (WHERE a.status='published') AS published,
+                count(*) FILTER (WHERE a.status='failed') AS failed,
+                count(*) FILTER (WHERE a.status='skipped' AND coalesce(a.error,a.rationale)='same_memory') AS same_memory,
+                count(*) FILTER (WHERE a.status='skipped' AND coalesce(a.error,a.rationale)='no_eligible_sector_memory') AS no_eligible_sector_memory,
+                count(*) FILTER (WHERE a.case_id IS NULL AND c.entry_at>statement_timestamp()) AS pending,
+                count(*) FILTER (WHERE a.case_id IS NULL AND c.entry_at<=statement_timestamp()) AS expired_unpublished
+                FROM target_cases c LEFT JOIN lab_arms a ON a.case_id=c.id AND a.method='memory_sector'
+                WHERE c.snapshot->>'retrieval_policy'='sector-v1'""",
+                params,
+            ).fetchone()
+            coverage["scored"] = sum(
+                row["n"] for row in comparisons if row["treated"] == SECTOR
+            )
             memory_effects = conn.execute(
                 cohort
                 + """SELECT m.memory_id,c.experiment_version,b.model,b.version,
@@ -758,6 +953,8 @@ class Store:
             ).fetchall()
             return {
                 "counts": counts,
+                "sector_coverage": coverage,
+                "sector_by_basis": sector_by_basis,
                 "reference_comparisons": references,
                 "comparisons": comparisons,
                 "memory_effects": memory_effects,

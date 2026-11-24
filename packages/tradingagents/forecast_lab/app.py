@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from psycopg import Error as DatabaseError
 from psycopg.conninfo import conninfo_to_dict
 
+from .classification import catalog_classification
 from .worker import Progress, Worker
 
 LOG = logging.getLogger(__name__)
@@ -127,7 +128,10 @@ def application(
             "interval_seconds": interval,
             "reference_enabled": bool(worker.reference),
             "progress": progress.read(),
-            "tickers": store.list_tickers(),
+            "tickers": [
+                {**item, "classification": catalog_classification(item["ticker"], item["market"])}
+                for item in store.list_tickers()
+            ],
         }
 
     def validate_range(from_date, to_date):

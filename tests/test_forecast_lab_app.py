@@ -228,6 +228,14 @@ class LabAcceptanceTest(unittest.TestCase):
             ) as http:
                 self.assertTrue(http.get("/ready").json()["ready"])
                 store.set_ticker("SPY", "us")
+                watch = http.get("/api/status").json()["tickers"]
+                self.assertEqual(watch, [{
+                    "ticker": "SPY", "market": "us",
+                    "classification": {
+                        "version": "research-2026-11-24", "asset_class": "etf",
+                        "sector": None, "industry": None, "exposure": "us_large_cap",
+                    },
+                }])
                 worker.scan()
                 first = http.get("/api/cases").json()[0]
                 first_id = first["id"]

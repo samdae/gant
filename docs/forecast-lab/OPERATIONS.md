@@ -80,6 +80,10 @@ Set-Clipboard -Value $entry.Substring('TRADINGAGENTS_ADMIN_TOKEN='.Length)
 
 ## 연구 대상과 수동 검증
 
+`forecast_lab/classification.py`의 등록 분류는 `/api/status`에서 먼저 확인할 수 있다. 새 사례에서는 가격 공급자가 확인한 상품 유형에 맞춰 정책 버전과 분류를 동결한다. 신규 티커·사업 재편·ETF 추종 대상 변경을 반영할 때는 근거를 확인해 카탈로그와 분류 버전을 갱신하고 한글 표시명을 함께 점검한다. 미분류 사례도 발행하며 다른 종목과의 전이에는 일치하는 분류가 필요하다. 기초자산 구분의 예시는 운용사가 명시한 금, 은, 미국 물가연동 국채다. [GLD](https://www.ssga.com/us/en/individual/etfs/spdr-gold-shares-gld) · [SLV](https://www.ishares.com/us/products/239855/ishares-silver-trust-fund) · [SCHP](https://www.schwabassetmanagement.com/products/schp)
+
+배포 직후 `/api/stats`의 `sector_coverage`에서 대상과 비교 완료 건수를 확인한다. 기존 사례의 종목명이 오늘의 관찰 목록에 있어도 과거 스냅샷의 정책은 유지한다. 상세에서 `same_memory`는 기존 검색과 같은 기억 선택, `no_eligible_sector_memory`는 근거 부족을 뜻한다. 두 상태 모두 별도 모델 호출을 생략한다. `sector_by_basis`는 실제 채점 쌍을 동일 종목·동종 주식·같은 노출의 ETF로 나눈다. 과거 사례를 재현할 때는 별도 인수 DB를 사용한다.
+
 통합 앱의 종목 이름은 콘솔의 `/workspace-api/tickers/names`에서 조회한다. 기본 관찰 종목과 시장 기준 종목 이름은 `packages/tradingagents/forecast_lab/web/instrument-names.json`에도 있어 단독 연구 화면에서 사용할 수 있다. 기본 이름을 갱신할 때는 이 파일과 콘솔 번들을 함께 배포하고 연구 스크립트가 불러오는 카탈로그 URL의 버전을 갱신한다. 이름 표시는 예측 사례나 관찰 티커를 수정하지 않는다.
 
 초기 목록은 기존 24개 예약 중 주식·ETF 23개(한국 10개, 미국 13개)다. 비트코인은 주식 거래소 달력 실험에서 제외했다. 이후 연구 목록은 연구실에서 독립 관리한다. 티커 등록은 다음 형식으로 실행한다.

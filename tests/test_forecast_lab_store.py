@@ -369,6 +369,294 @@ class ForecastStoreTests(unittest.TestCase):
             self.assertGreater(row["distinct_entry_dates"], 0)
             self.assertGreater(row["distinct_tickers"], 0)
 
+    def test_sector_migration_preserves_legacy_rows_and_custom_constraints(self):
+        s = self.store
+        case = s.create_case(self.snapshot())
+        before = s.detail(case)
+        with s._connect() as conn:
+            conn.execute("""ALTER TABLE lab_arms DROP CONSTRAINT lab_arms_method_sector_v1,
+                DROP CONSTRAINT lab_arms_citation_sector_v1,
+                ADD CONSTRAINT backup_custom_methods CHECK(method IN ('baseline','single','debate','memory')),
+                ADD CONSTRAINT backup_custom_memory CHECK(memory_id IS NULL OR method='memory'),
+                ADD CONSTRAINT backup_operator_check CHECK(method<>'other-method')""")
+        try:
+            s.init()
+            s.init()
+            self.assertEqual(before, s.detail(case))
+            with s._connect() as conn:
+                names = {
+                    r["conname"]
+                    for r in conn.execute(
+                        "SELECT conname FROM pg_constraint WHERE conrelid='lab_arms'::regclass"
+                    )
+                }
+            self.assertIn("backup_operator_check", names)
+            self.assertNotIn("backup_custom_methods", names)
+            self.assertNotIn("backup_custom_memory", names)
+        finally:
+            with s._connect() as conn:
+                conn.execute(
+                    "ALTER TABLE lab_arms DROP CONSTRAINT IF EXISTS backup_operator_check"
+                )
+
+    def test_sector_policy_publication_guards_coverage_and_distinct_scoring(self):
+        from test_forecast_lab_sector_retrieval import group, features
+
+        s = self.store
+        target_snap = self.snapshot("GEV")
+        target_snap.update(
+            retrieval_policy="sector-v1", classification=group(), features=features()
+        )
+
+        def prior(ticker, days, trend, mature):
+            cid, snap = self.historical(
+                ticker,
+                days,
+                [("single" if mature is True else "baseline", 0.5, "v1", None)]
+                if mature
+                else [],
+            )
+            if mature:
+                self.settle(cid, snap)
+            snap.update(
+                retrieval_policy="sector-v1",
+                classification=group(),
+                features=features(trend),
+            )
+            with s._connect() as conn:
+                conn.execute(
+                    "UPDATE lab_cases SET snapshot=%s,market=%s WHERE id=%s",
+                    (Jsonb(snap), target_snap["market"], cid),
+                )
+                if mature:
+                    conn.execute(
+                        "UPDATE lab_outcomes SET observed_at=%s WHERE case_id=%s",
+                        (snap["exit_close_at"], cid),
+                    )
+                    conn.execute(
+                        "UPDATE lab_memories SET created_at=%s WHERE case_id=%s",
+                        (snap["exit_close_at"], cid),
+                    )
+            return cid
+
+        old = prior("GEV", 84, 0.148, True)
+        other = prior("ETN", 70, 0.062, True)
+        live = s.create_case(target_snap)
+        arm = dict(
+            model="fixed-model",
+            version="v1",
+            rationale="fixture",
+            probability=0.6,
+            audit={"market_input_sha256": "f" * 64},
+        )
+        s.record_arm(live, "single", **arm)
+        ctrl = s.select_memory(live)["id"]
+        self.assertEqual(s.select_memory(live, "memory_sector")["id"], ctrl)
+        w = prior("GEV", 70, 0.060, "witness")
+        selected = s.select_memory(live, "memory_sector")
+        self.assertEqual(
+            (selected["case_id"], selected["sector_selection_v1"]["peer_case_id"]),
+            (other, w),
+        )
+        self.assertEqual(selected["uplift_support"], 0)
+        # Snapshots first captured after target publication cannot corroborate the past case.
+        with s._connect() as conn:
+            clocks = conn.execute(
+                "SELECT created_at, entry_at, exit_at FROM lab_cases WHERE id=%s", (w,)
+            ).fetchone()
+            conn.execute(
+                """UPDATE lab_cases SET created_at=clock_timestamp(),entry_at=clock_timestamp()+interval '1 day',
+                exit_at=clock_timestamp()+interval '10 days' WHERE id=%s""",
+                (w,),
+            )
+        self.assertEqual(s.select_memory(live, "memory_sector")["id"], ctrl)
+        with s._connect() as conn:
+            conn.execute(
+                "UPDATE lab_cases SET created_at=%s,entry_at=%s,exit_at=%s WHERE id=%s",
+                (clocks["created_at"], clocks["entry_at"], clocks["exit_at"], w),
+            )
+        with s._connect() as conn:
+            conn.execute(
+                "UPDATE lab_outcomes SET observed_at=clock_timestamp() WHERE case_id=%s",
+                (w,),
+            )
+        self.assertEqual(s.select_memory(live, "memory_sector")["id"], ctrl)
+        with s._connect() as conn:
+            conn.execute(
+                "UPDATE lab_outcomes SET observed_at=%s WHERE case_id=%s",
+                (clocks["exit_at"], w),
+            )
+        with self.assertRaises(ValueError):
+            s.record_arm(live, "memory_sector", memory_id=selected["id"], **arm)
+        s.record_arm(live, "memory", memory_id=ctrl, **arm)
+        with self.assertRaises(ValueError):
+            s.record_arm(live, "memory_sector", status="skipped", error="same_memory")
+        with self.assertRaises(ValueError):
+            s.record_arm(live, "memory_sector", memory_id=ctrl, **arm)
+        for method in ("baseline", "debate"):
+            s.record_arm(live, method, **arm)
+        self.assertEqual(s.detail(live)["status"], "pending")
+        self.assertTrue(
+            s.record_arm(
+                live,
+                "memory_sector",
+                memory_id=selected["id"],
+                **{**arm, "probability": 0.8},
+            )
+        )
+        detail = s.detail(live)
+        self.assertEqual(detail["status"], "awaiting")
+        self.assertEqual(set(detail["selected_memories"]), {"memory", "memory_sector"})
+        self.assertEqual(detail["selected_memory"]["case_id"], old)
+        diag = detail["selected_memories"]["memory_sector"]
+        self.assertEqual(
+            (diag["control_memory_id"], diag["peer_reference"]),
+            (ctrl, "market_benchmark"),
+        )
+        # The following outcome is a private, controlled clock replay.
+        with s._connect() as conn:
+            conn.execute(
+                """INSERT INTO lab_outcomes(case_id,status,entry_open,exit_close,actual,observed_at,evidence)
+                VALUES(%s,'scored',100,110,1,clock_timestamp(),'{}')""",
+                (live,),
+            )
+        stats = s.stats(
+            target_snap["market"],
+            target_snap["data_session"],
+            target_snap["data_session"],
+        )
+        self.assertEqual(stats["sector_coverage"]["scored"], 1)
+        (basis,) = stats["sector_by_basis"]
+        self.assertEqual((basis["basis"], basis["n"]), ("equity_peer", 1))
+        self.assertAlmostEqual(basis["improvement"], 0.12)
+        self.assertEqual(
+            s.stats(from_date="2099-01-01")["sector_coverage"]["eligible_cases"], 0
+        )
+        for column, value in (
+            ("model", "different"),
+            ("version", "different"),
+            ("audit", Jsonb({"market_input_sha256": "different"})),
+            ("memory_id", ctrl),
+        ):
+            with s._connect() as conn:
+                conn.execute(
+                    f"UPDATE lab_arms SET {column}=%s WHERE case_id=%s AND method='memory_sector'",
+                    (value, live),
+                )
+            self.assertEqual(s.stats()["sector_coverage"]["scored"], 0)
+            with s._connect() as conn:
+                original = {
+                    "model": arm["model"],
+                    "version": arm["version"],
+                    "audit": Jsonb(arm["audit"]),
+                    "memory_id": selected["id"],
+                }[column]
+                conn.execute(
+                    f"UPDATE lab_arms SET {column}=%s WHERE case_id=%s AND method='memory_sector'",
+                    (original, live),
+                )
+        unknown_snap = self.snapshot("UNKNOWN")
+        unknown_snap.update(
+            retrieval_policy="sector-v1",
+            classification=group(None, None, "unknown"),
+            features=features(),
+        )
+        unknown = s.create_case(unknown_snap)
+        self.assertIsNone(s.select_memory(unknown, "memory_sector"))
+        self.assertTrue(
+            s.record_arm(
+                unknown,
+                "memory_sector",
+                status="skipped",
+                error="no_eligible_sector_memory",
+            )
+        )
+        legacy = s.create_case(self.snapshot("LEGACY"))
+        with self.assertRaises(ValueError):
+            s.record_arm(legacy, "memory_sector", status="failed", error="failure")
+        self.assertIsNone(s.select_memory(legacy, "memory_sector"))
+        self.assertTrue(s.init() is None)
+
+    def test_sector_only_use_changes_future_policy_ranking_not_legacy_control(self):
+        from test_forecast_lab_sector_retrieval import group, features
+
+        s = self.store
+        target = self.snapshot("X")
+        target.update(
+            retrieval_policy="sector-v1", classification=group(), features=features()
+        )
+
+        def historic(ticker, days, methods, mature=True):
+            cid, snap = self.historical(ticker, days, methods)
+            if mature:
+                self.settle(cid, snap)
+            snap.update(
+                retrieval_policy="sector-v1",
+                classification=group(),
+                features=features(),
+            )
+            with s._connect() as conn:
+                conn.execute(
+                    "UPDATE lab_cases SET snapshot=%s,market=%s WHERE id=%s",
+                    (Jsonb(snap), target["market"], cid),
+                )
+                conn.execute(
+                    "UPDATE lab_arms SET audit=%s WHERE case_id=%s",
+                    (Jsonb({"market_input_sha256": "a" * 64}), cid),
+                )
+                if mature:
+                    conn.execute(
+                        "UPDATE lab_outcomes SET observed_at=%s WHERE case_id=%s",
+                        (snap["exit_close_at"], cid),
+                    )
+                    conn.execute(
+                        "UPDATE lab_memories SET created_at=%s WHERE case_id=%s",
+                        (snap["exit_close_at"], cid),
+                    )
+            return cid
+
+        source_ids = [
+            historic("X", day, [("single", 0.5, "v1", None)]) for day in (84, 70)
+        ]
+        older, newer = [s.detail(cid)["memory"]["id"] for cid in source_ids]
+        early = historic("X", 42, [("single", 0.5, "v1", None)], False)
+        pair = historic(
+            "Y", 28, [("single", 0.5, "v1", None), ("memory_sector", 0.9, "v1", older)]
+        )
+        self.assertEqual(s.select_memory(early, "memory_sector")["id"], newer)
+        later = s.create_case(target)
+        arm = dict(
+            probability=0.5,
+            rationale="fixture",
+            model="fixed-model",
+            version="v1",
+            audit={"market_input_sha256": "b" * 64},
+        )
+        s.record_arm(later, "single", **arm)
+        learned = s.select_memory(later, "memory_sector")
+        self.assertEqual((learned["id"], learned["uplift_support"]), (older, 1))
+        self.assertAlmostEqual(learned["shrunk_uplift"], 0.24 / 6)
+        unchanged = s.select_memory(later, "memory")
+        self.assertEqual((unchanged["id"], unchanged["uplift_support"]), (newer, 0))
+        # Removing matching historical inputs neutralizes the treatment; no extra model call is justified.
+        with s._connect() as conn:
+            conn.execute(
+                "UPDATE lab_arms SET audit='{}' WHERE case_id=%s AND method='memory_sector'",
+                (pair,),
+            )
+        self.assertEqual(s.select_memory(later, "memory_sector")["id"], newer)
+        s.record_arm(later, "memory", memory_id=newer, **arm)
+        self.assertTrue(
+            s.record_arm(later, "memory_sector", status="skipped", error="same_memory")
+        )
+        sector = next(
+            r for r in s.detail(later)["arms"] if r["method"] == "memory_sector"
+        )
+        audit = sector["audit"]["sector_selection_v1"]
+        self.assertEqual(
+            (audit["control_memory_id"], audit["selected_memory_id"]), (newer, newer)
+        )
+
     def test_reference_requires_matched_horizon_and_prospective_capture(self):
         s = self.store
         snap = self.snapshot("REF")

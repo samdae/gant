@@ -5,6 +5,7 @@ const names = {
   single: "단일 모델",
   debate: "8개 역할 토론",
   memory: "기억을 제공한 단일 모델",
+  memory_sector: "종목 분류로 기억을 선택한 단일 모델",
 };
 const labels = {
   pending: "발행 대기",
@@ -785,10 +786,128 @@ function renderPriceChart(snapshot) {
   draw(0);
   return box;
 }
-function probabilityComparison(arms) {
+const originalMethods = ["baseline", "single", "debate", "memory"];
+const sectorMethods = [...originalMethods, "memory_sector"];
+
+const sectorLabels = {
+  technology: "정보기술",
+  industrials: "산업재",
+  utilities: "유틸리티",
+  energy: "에너지",
+  financials: "금융",
+  consumer_discretionary: "경기소비재",
+  consumer_staples: "필수소비재",
+  real_estate: "부동산",
+  communication_services: "통신서비스",
+};
+const industryLabels = {
+  semiconductors: "반도체",
+  diversified_electronics: "종합전자",
+  automobiles: "자동차",
+  aerospace_defense: "항공·방산",
+  power_equipment: "발전·전력기기",
+  gas_utilities: "가스공급",
+  integrated_energy: "종합에너지",
+  electrical_equipment: "전력기기",
+  banking: "은행",
+  data_center_reits: "데이터센터 리츠",
+  solar_modules: "태양광 모듈",
+  interactive_media: "인터넷 미디어",
+  beverages: "음료",
+  oil_gas: "석유·가스",
+  power_generation: "발전",
+  staples_retail: "생활필수품 유통",
+};
+const exposureLabels = {
+  us_large_cap: "미국 대형주(S&P 500)",
+  kr_large_cap: "한국 대형주(KOSPI 200)",
+  gold: "금",
+  silver: "은",
+  us_tips: "미국 물가연동국채",
+};
+
+function frozenClassification(snapshot) {
+  const cl = snapshot.classification ?? {};
+  const rows = [
+    ["자산 유형", { equity: "주식", etf: "ETF" }[cl.asset_class] || "미확인"],
+  ];
+  if (cl.asset_class === "equity")
+    rows.push(
+      ["섹터", sectorLabels[cl.sector] || "미분류"],
+      ["산업", industryLabels[cl.industry] || "미분류"],
+    );
+  if (cl.asset_class === "etf")
+    rows.push(["추종 자산", exposureLabels[cl.exposure] || "미분류"]);
+  return disclosure("근거 동결 당시의 종목 분류", facts(rows));
+}
+
+function sectorExplanation(arm, controlMemory) {
+  const info = el("div", null, "report");
+  const selection = arm?.audit?.sector_selection_v1 ?? {};
+  if (arm?.error === "same_memory")
+    info.append(
+      el(
+        "p",
+        "기존 방식과 같은 기억을 선택해 두 번째 예측을 발행하지 않았습니다. 채점 쌍에서 제외합니다.",
+      ),
+    );
+  else if (arm?.error === "no_eligible_sector_memory")
+    info.append(
+      el("p", "발행 당시 분류 기준을 충족한 과거 사례가 없어 건너뛰었습니다."),
+    );
+  else if (arm?.status === "failed")
+    info.append(el("p", "분류 기억 예측 발행 실패 · " + why(arm.error)));
+  else if (arm?.status === "skipped")
+    info.append(el("p", "분류 기억 예측을 건너뛰었습니다. " + why(arm.error)));
+  else if (!arm || arm.status !== "published")
+    info.append(el("p", "분류 방식으로 발행한 예측이 없습니다."));
+
+  const basis = {
+    same_ticker: "같은 종목에서 가격 흐름이 유사했던 과거 사례",
+    equity_peer:
+      "같은 섹터에서 가격 흐름이 유사하고 다른 종목의 움직임으로 확인한 과거 사례",
+    etf_exposure: "같은 자산을 추종하며 가격 흐름이 유사했던 ETF 사례",
+  }[selection.basis];
+  if (basis) {
+    const rows = [["선택 근거", basis]];
+    if (controlMemory?.ticker)
+      rows.push(["기존 방식이 고른 종목", instrument(controlMemory.ticker)]);
+    if (controlMemory?.data_session)
+      rows.push(["기존 기억 기준일", controlMemory.data_session]);
+    if (selection.selected_ticker)
+      rows.push(["선택한 과거 종목", instrument(selection.selected_ticker)]);
+    if (selection.peer_ticker)
+      rows.push(["흐름을 확인한 종목", instrument(selection.peer_ticker)]);
+    if (
+      selection.basis === "equity_peer" &&
+      numeric(selection.source_window_return) &&
+      numeric(selection.peer_window_return)
+    ) {
+      rows.push(
+        ["이전 사례의 5거래일 만기 수익률", pct(selection.source_window_return)],
+        ["확인 종목의 같은 기간 수익률", pct(selection.peer_window_return)],
+      );
+    }
+    if (selection.peer_reference === "market_benchmark")
+      rows.push(["흐름의 기준", "시장 기준 대비"]);
+    if (selection.peer_reference === "watchlist_median")
+      rows.push([
+        "흐름의 기준",
+        "다른 업종 관찰 종목 " +
+          (Number.isInteger(selection.reference_count)
+            ? selection.reference_count + "개"
+            : "") +
+          "의 중앙값 대비",
+      ]);
+    info.append(facts(rows));
+  }
+  return info;
+}
+
+function probabilityComparison(arms, methods) {
   const panel = el("section", null, "prob-panel");
   panel.append(el("h3", "방법별 상승 확률"));
-  for (const method of ["baseline", "single", "debate", "memory"]) {
+  for (const method of methods) {
     const arm = arms.find((a) => a.method === method);
     const value =
       arm?.status === "published" && numeric(arm.probability)
@@ -818,6 +937,8 @@ function probabilityComparison(arms) {
 
 function renderCase(target, c) {
   const s = c.snapshot ?? {};
+  const sectorPolicy = s.retrieval_policy === "sector-v1";
+  const methods = sectorPolicy ? sectorMethods : originalMethods;
   const head = el("div", null, "detail-head"),
     identity = el("div");
   const title = el("h2");
@@ -845,7 +966,10 @@ function renderCase(target, c) {
     "case-meta",
   );
   const visual = el("div", null, "case-visual");
-  visual.append(renderPriceChart(s), probabilityComparison(c.arms || []));
+  visual.append(
+    renderPriceChart(s),
+    probabilityComparison(c.arms || [], methods),
+  );
   target.replaceChildren(
     head,
     meta,
@@ -855,10 +979,11 @@ function renderCase(target, c) {
       ["첫 거래일 개장", kst(s.entry_open_at)],
       ["다섯 번째 거래일 마감", kst(s.exit_close_at)],
     ]),
+    ...(sectorPolicy ? [frozenClassification(s)] : []),
     marketFacts(s),
     el("h3", "판단 근거", "section-title"),
   );
-  for (const method of ["baseline", "single", "debate", "memory"]) {
+  for (const method of methods) {
     const a = (c.arms ?? []).find((row) => row.method === method);
     const block = el("section", null, "arm");
     block.append(
@@ -896,8 +1021,18 @@ function renderCase(target, c) {
           ),
         );
       }
-      if (method === "memory" && c.selected_memory) {
-        block.append(memoryDetails(c.selected_memory));
+      const selectedMemory =
+        c.selected_memories?.[method] ??
+        (method === "memory" ? c.selected_memory : null);
+      if (selectedMemory) {
+        block.append(
+          memoryDetails(
+            selectedMemory,
+            method === "memory_sector"
+              ? "분류 방식이 제공한 과거 사례"
+              : "예측에 사용한 과거 사례",
+          ),
+        );
         const selection = a.audit?.memory_selection_v1;
         if (selection && numeric(selection.uplift_support))
           block.append(
@@ -910,7 +1045,12 @@ function renderCase(target, c) {
             ),
           );
       }
-    } else if (a) block.append(el("p", why(a.error || a.rationale)));
+    } else if (a && method !== "memory_sector")
+      block.append(el("p", why(a.error || a.rationale)));
+    if (method === "memory_sector")
+      block.append(
+        sectorExplanation(a, c.selected_memories?.memory ?? c.selected_memory),
+      );
     target.append(block);
   }
   target.append(el("h3", "실제 관측 결과"));
@@ -954,7 +1094,10 @@ function renderCase(target, c) {
     target.append(memoryDetails(c.memory, "이 사례에서 생성한 연구용 기억"));
 }
 async function get(path) {
-  const response = await fetch(path, { cache: "no-store", signal: AbortSignal.timeout(12000) });
+  const response = await fetch(path, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(12000),
+  });
   if (!response.ok) throw new Error("조회 실패 (" + response.status + ")");
   return response.json();
 }
@@ -1012,7 +1155,10 @@ async function showCase(id) {
   } catch {
     if (serial !== activeRequest) return;
     if (!target.dataset.caseId) target.replaceChildren();
-    resourceError("detail", "사례 상세를 갱신하지 못했습니다. 잠시 후 다시 조회합니다.");
+    resourceError(
+      "detail",
+      "사례 상세를 갱신하지 못했습니다. 잠시 후 다시 조회합니다.",
+    );
   }
 }
 function renderStatus(s) {
@@ -1026,6 +1172,16 @@ function renderStatus(s) {
   for (const item of s.tickers) {
     const li = el("li");
     li.append(instrument(item.ticker));
+    const cl = item.classification;
+    if (cl) {
+      const tag =
+        cl.asset_class === "equity"
+          ? ["주식", sectorLabels[cl.sector] || "섹터 미분류"]
+          : cl.asset_class === "etf"
+            ? ["ETF", exposureLabels[cl.exposure] || "추종 자산 미분류"]
+            : ["자산 분류 미확인"];
+      li.append(el("small", tag.join(" · "), "watch-classification"));
+    }
     instruments.append(li);
   }
   const phase =
@@ -1040,7 +1196,15 @@ function renderStatus(s) {
   progress.append(el("span", "최근 작업 · " + phase));
   if (p.ticker) progress.append(instrument(p.ticker));
   if (p.method) progress.append(el("span", names[p.method] || "연구 예측"));
-  $("tickers").replaceChildren(instruments, progress);
+  $("tickers").replaceChildren();
+  if (s.tickers.some((item) => item.classification))
+    $("tickers").append(
+      el(
+        "p",
+        "현재 등록 분류 · 과거 사례의 분류는 각 예측의 근거 동결 시점에 따릅니다.",
+      ),
+    );
+  $("tickers").append(instruments, progress);
   if (p.finished_at || p.started_at)
     $("tickers").append(
       el(
@@ -1068,7 +1232,7 @@ function renderCounts() {
   for (const [label, value] of [
     ["관찰 종목", latestStatus?.tickers.length ?? "—"],
     ...["pending", "awaiting", "matured", "excluded", "unpublished"].map(
-      (k) => [labels[k], latestStats ? latestStats.counts?.[k] ?? 0 : "—"],
+      (k) => [labels[k], latestStats ? (latestStats.counts?.[k] ?? 0) : "—"],
     ),
   ]) {
     const node = el("div", null, "tile");
@@ -1076,11 +1240,145 @@ function renderCounts() {
     $("counts").append(node);
   }
 }
+function renderSectorStats(coverage, rows, byBasis) {
+  const panel = $("sector-performance");
+  panel.hidden = !coverage;
+  const target = $("sector-results");
+  target.replaceChildren();
+  if (!coverage) return;
+  target.append(
+    facts([
+      ["분류 실험 대상", coverage.eligible_cases],
+      ["확률 발행", coverage.published],
+      ["기존 방식과 같은 기억", coverage.same_memory],
+      ["선택 가능한 분류 기억 없음", coverage.no_eligible_sector_memory],
+      ["발행 실패", coverage.failed],
+      ["발행 대기", coverage.pending],
+      ["마감까지 미발행", coverage.expired_unpublished],
+    ]),
+  );
+  target.append(
+    el(
+      "h3",
+      "서로 다른 기억을 사용한 채점 쌍" +
+        (Number.isInteger(coverage.scored)
+          ? " · " + coverage.scored + "쌍"
+          : ""),
+    ),
+  );
+  target.append(
+    el(
+      "p",
+      "같은 시장 근거와 같은 모델·예측 지침으로 서로 다른 과거 사례를 제공한 두 예측을 비교합니다. 아래 채점 쌍은 위 발행 건수에 포함됩니다.",
+    ),
+  );
+  if (!rows.length) {
+    target.append(el("p", "비교 조건을 충족해 채점된 쌍이 아직 없습니다."));
+    return;
+  }
+  target.append(
+    el(
+      "p",
+      "관측한 차이는 두 기억 검색 방식 전체의 성적 차이입니다. 개별 분류 태그의 효과를 따로 측정한 값은 아닙니다.",
+    ),
+  );
+  for (const row of rows) {
+    const block = el("div", null, "comparison");
+    block.append(
+      el(
+        "strong",
+        modelLabel(row.treated_model) + " · 공통 채점 " + row.n + "쌍",
+      ),
+      el(
+        "small",
+        [
+          versionLabel(row.experiment_version),
+          versionLabel(row.treated_version),
+        ].join(" / "),
+      ),
+      el(
+        "p",
+        "서로 다른 진입일 " +
+          row.distinct_entry_dates +
+          "일 · 종목 " +
+          row.distinct_tickers +
+          "개",
+      ),
+      el(
+        "p",
+        "기존 기억 Brier " +
+          num(row.control_brier) +
+          " · 분류 기억 Brier " +
+          num(row.treated_brier),
+      ),
+    );
+    if (numeric(row.improvement)) {
+      const change = row.improvement;
+      block.append(
+        el(
+          "p",
+          "분류 방식의 Brier 개선량 " +
+            (change > 0 ? "+" : "") +
+            num(change) +
+            (change > 0
+              ? " (이번 표본에서 개선)"
+              : change < 0
+                ? " (이번 표본에서 악화)"
+                : " (차이 없음)"),
+        ),
+      );
+    }
+    const groups = byBasis.filter((group) =>
+      [
+        "control_model",
+        "treated_model",
+        "control_version",
+        "treated_version",
+        "experiment_version",
+      ].every((key) => group[key] === row[key]),
+    );
+    if (groups.length) {
+      const labels = {
+        same_ticker: "동일 종목의 다른 회차",
+        equity_peer: "동종주 · 동조 확인",
+        etf_exposure: "같은 자산을 추종하는 ETF",
+      };
+      block.append(
+        table(
+          ["선택 근거", "채점 쌍", "Brier 개선량"],
+          groups.map((group) => {
+            const change = group.improvement;
+            const text = !numeric(change)
+              ? "미확인"
+              : change > 0
+                ? "+" + num(change) + " 개선"
+                : change < 0
+                  ? num(change) + " 악화"
+                  : "0.000 차이 없음";
+            return [labels[group.basis] || "근거 미확인", group.n + "쌍", text];
+          }),
+          "위 채점 쌍의 선택 근거별 성적",
+        ),
+      );
+    }
+    target.append(block);
+  }
+}
+
 function renderStats(stats) {
   latestStats = stats;
   renderCounts();
   $("comparisons").replaceChildren();
-  for (const r of stats.comparisons ?? []) {
+  const comparisons = stats.comparisons ?? [];
+  renderSectorStats(
+    stats.sector_coverage,
+    comparisons.filter(
+      (r) => r.control === "memory" && r.treated === "memory_sector",
+    ),
+    stats.sector_by_basis ?? [],
+  );
+  for (const r of comparisons) {
+    if (r.control === "memory" && r.treated === "memory_sector") continue;
     const box = el("div", null, "comparison");
     box.append(
       el(
@@ -1194,11 +1492,7 @@ function renderStats(stats) {
       el(
         "small",
         " · " +
-          [
-            r.model,
-            versionLabel(r.version),
-            versionLabel(r.experiment_version),
-          ]
+          [r.model, versionLabel(r.version), versionLabel(r.experiment_version)]
             .filter(Boolean)
             .join(" / "),
       ),
@@ -1212,9 +1506,14 @@ function renderStats(stats) {
 }
 function renderReferenceEmpty() {
   if (latestStats && !latestStats.reference_comparisons?.length)
-    $("reference").replaceChildren(el("p", latestStatus?.reference_enabled === false
-      ? "기존 운영 리포트 수집이 꺼져 있습니다."
-      : "같은 기간에 발행하고 채점한 공통 표본이 아직 없습니다."));
+    $("reference").replaceChildren(
+      el(
+        "p",
+        latestStatus?.reference_enabled === false
+          ? "기존 운영 리포트 수집이 꺼져 있습니다."
+          : "같은 기간에 발행하고 채점한 공통 표본이 아직 없습니다.",
+      ),
+    );
 }
 async function renderList(raw) {
   const list = raw.slice(0, pageSize);
@@ -1256,13 +1555,15 @@ async function renderList(raw) {
       $("cases").append(b);
       if (focused === String(c.id)) b.focus({ preventScroll: true });
     }
-    if (!list.length)
-      $("cases").append(el("p", "아직 발행 사례가 없습니다."));
+    if (!list.length) $("cases").append(el("p", "아직 발행 사례가 없습니다."));
     listKey = key;
   }
   if (selected === null) {
     if (list.length) await showCase(list[0].id);
-    else $("detail").replaceChildren(el("p", "선택한 조건에 맞는 사례가 없습니다."));
+    else
+      $("detail").replaceChildren(
+        el("p", "선택한 조건에 맞는 사례가 없습니다."),
+      );
   }
 }
 async function refresh() {
@@ -1278,7 +1579,10 @@ async function refresh() {
       await render(data);
     } catch {
       if (serial !== refreshSerial) return;
-      resourceError(name, label + "을 갱신하지 못했습니다. 잠시 후 다시 조회합니다.");
+      resourceError(
+        name,
+        label + "을 갱신하지 못했습니다. 잠시 후 다시 조회합니다.",
+      );
       if (name === "list" && !listKey) $("page").textContent = "조회 대기";
     }
   }
@@ -1316,6 +1620,7 @@ $("filters").onsubmit = (event) => {
   $("error").textContent = "";
   latestStats = null;
   renderCounts();
+  $("sector-performance").hidden = true;
   for (const area of ["calibration", "reference", "comparisons"])
     $(area).replaceChildren();
   resourceError("stats");
