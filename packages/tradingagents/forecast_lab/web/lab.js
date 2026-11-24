@@ -473,29 +473,328 @@ function memoryDetails(m, title = "예측에 사용한 과거 사례") {
     report(m.rationale),
   );
 }
+function activateTab(requested, focus = false) {
+  const tabs = ["cases", "results", "observe"];
+  const chosen = tabs.includes(requested) ? requested : "cases";
+  for (const key of tabs) {
+    const button = $("tab-" + key);
+    button.setAttribute("aria-selected", String(key === chosen));
+    button.tabIndex = key === chosen ? 0 : -1;
+    $("panel-" + key).hidden = key !== chosen;
+  }
+  if (focus) $("tab-" + chosen).focus();
+}
+function changeTab(tab) {
+  const url = new URL(location.href);
+  url.hash = tab === "cases" ? "" : tab;
+  history.pushState(null, "", url);
+  activateTab(tab, true);
+}
+const tabs = ["cases", "results", "observe"];
+for (const [i, key] of tabs.entries()) {
+  const button = $("tab-" + key);
+  button.onclick = () => changeTab(key);
+  button.onkeydown = (event) => {
+    const n = {
+      ArrowLeft: (i + 2) % 3,
+      ArrowRight: (i + 1) % 3,
+      Home: 0,
+      End: 2,
+    }[event.key];
+    if (n != null) {
+      event.preventDefault();
+      changeTab(tabs[n]);
+    }
+  };
+}
+const narrowScreen = matchMedia("(max-width: 760px)");
+const filterBox = $("filter-panel");
+filterBox.open =
+  !narrowScreen.matches ||
+  ["market", "from_date", "to_date"].some((key) => route.has(key));
+narrowScreen.addEventListener("change", (event) => {
+  filterBox.open = !event.matches;
+});
+function tabFromUrl() {
+  activateTab(location.hash.slice(1));
+}
+window.addEventListener("popstate", tabFromUrl);
+window.addEventListener("hashchange", tabFromUrl);
+tabFromUrl();
+
+function svgNode(tag, attributes = {}, text) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [key, value] of Object.entries(attributes))
+    node.setAttribute(key, String(value));
+  if (text != null) node.textContent = text;
+  return node;
+}
+function renderPriceChart(snapshot) {
+  const box = el("section", null, "price-card");
+  const header = el("div", null, "chart-head");
+  const info = el("div"),
+    title = el("h3", "종가 추이");
+  const all = (snapshot.bars || [])
+    .filter(
+      (r) =>
+        typeof r?.date === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(r.date) &&
+        Number.isFinite(Date.parse(r.date)) &&
+        numeric(r.close) &&
+        r.close > 0,
+    )
+    .sort((a, b) => a.date.localeCompare(b.date));
+  info.append(title);
+  const price = el("strong", null, "last-price");
+  const change = el("span", null, "price-change");
+  info.append(price, change);
+  const controls = el("div", null, "range-switch");
+  controls.setAttribute("role", "group");
+  controls.setAttribute("aria-label", "가격 차트 기간");
+  header.append(info, controls);
+  const canvas = el("div", null, "price-plot"),
+    caption = el("p", null, "chart-caption");
+  box.append(header, canvas, caption);
+  if (!all.length) {
+    canvas.append(el("p", "확인할 수 있는 동결 종가가 없습니다."));
+    return box;
+  }
+  const buttons = [];
+  function draw(n) {
+    for (const [limit, button] of buttons)
+      button.setAttribute("aria-pressed", String(limit === n));
+    const data = n ? all.slice(-n) : all;
+    const first = data[0],
+      last = data.at(-1);
+    price.textContent = amount(last.close, snapshot.currency);
+    change.textContent =
+      data.length > 1
+        ? "기간 " +
+          (last.close >= first.close ? "+" : "") +
+          ((last.close / first.close - 1) * 100).toFixed(2) +
+          "%"
+        : "";
+    change.className =
+      "price-change " + (last.close >= first.close ? "positive" : "negative");
+    caption.textContent =
+      first.date +
+      " – " +
+      last.date +
+      " · 종가 " +
+      data.length +
+      "개 · " +
+      (snapshot.source?.includes("NAVER")
+        ? "네이버 금융"
+        : snapshot.source?.includes("Yahoo")
+          ? "야후 파이낸스"
+          : "동결 시세");
+    const svg = svgNode("svg", {
+      viewBox: "0 0 600 210",
+      role: "img",
+      "aria-label": caption.textContent,
+    });
+    svg.append(svgNode("title", {}, "종가 추이 · " + caption.textContent));
+    const left = 10,
+      right = 520,
+      top = 12,
+      bottom = 174;
+    const values = data.map((r) => r.close);
+    const lo = Math.min(...values),
+      hi = Math.max(...values),
+      pad = (hi - lo) * 0.12 || hi * 0.01;
+    const yMin = lo - pad,
+      yMax = hi + pad;
+    const dt0 = Date.parse(first.date),
+      dt1 = Date.parse(last.date);
+    const x = (r) =>
+      dt1 === dt0
+        ? (left + right) / 2
+        : left + ((right - left) * (Date.parse(r.date) - dt0)) / (dt1 - dt0);
+    const y = (r) =>
+      bottom - ((r.close - yMin) * (bottom - top)) / (yMax - yMin);
+    const scale = new Intl.NumberFormat("ko-KR", {
+      maximumFractionDigits: snapshot.currency === "KRW" ? 0 : 2,
+    });
+    for (let i = 0; i < 4; i++) {
+      const yy = top + ((bottom - top) * i) / 3;
+      svg.append(
+        svgNode("line", {
+          x1: left,
+          x2: right,
+          y1: yy,
+          y2: yy,
+          class: "grid-line",
+        }),
+        svgNode(
+          "text",
+          { x: right + 8, y: yy + 4, class: "axis" },
+          scale.format(yMax - ((yMax - yMin) * i) / 3),
+        ),
+      );
+    }
+    const ticks = [
+      ...new Set([
+        0,
+        Math.round((data.length - 1) / 3),
+        Math.round((2 * (data.length - 1)) / 3),
+        data.length - 1,
+      ]),
+    ];
+    for (const i of ticks) {
+      const row = data[i],
+        anchor = i === 0 ? "start" : i === data.length - 1 ? "end" : "middle";
+      svg.append(
+        svgNode(
+          "text",
+          { x: x(row), y: 201, "text-anchor": anchor, class: "axis" },
+          row.date.slice(5).replace("-", "."),
+        ),
+      );
+    }
+    const path = data
+      .map((r, i) => (i ? "L" : "M") + x(r).toFixed(2) + " " + y(r).toFixed(2))
+      .join(" ");
+    const grad = svgNode("linearGradient", {
+      id: "price-fill",
+      x1: "0",
+      x2: "0",
+      y1: "0",
+      y2: "1",
+    });
+    grad.append(
+      svgNode("stop", {
+        offset: "0%",
+        "stop-color": "#305ce0",
+        "stop-opacity": ".23",
+      }),
+      svgNode("stop", {
+        offset: "100%",
+        "stop-color": "#305ce0",
+        "stop-opacity": ".015",
+      }),
+    );
+    const defs = svgNode("defs");
+    defs.append(grad);
+    svg.append(defs);
+    svg.append(
+      svgNode("path", {
+        d:
+          path +
+          " L" +
+          x(last) +
+          " " +
+          bottom +
+          " L" +
+          x(first) +
+          " " +
+          bottom +
+          " Z",
+        fill: "url(#price-fill)",
+      }),
+      svgNode("path", {
+        d: path,
+        fill: "none",
+        stroke: "#305ce0",
+        "stroke-linejoin": "round",
+        "stroke-linecap": "round",
+        "stroke-width": "2.5",
+      }),
+      svgNode("circle", {
+        cx: x(last),
+        cy: y(last),
+        r: 4.3,
+        fill: "#305ce0",
+        stroke: "white",
+        "stroke-width": 2,
+      }),
+    );
+    canvas.replaceChildren(svg);
+  }
+  if (all.length > 20) {
+    for (const [n, label] of [
+      [20, "최근 20개"],
+      [0, "전체"],
+    ]) {
+      const button = el("button", label);
+      button.type = "button";
+      button.onclick = () => draw(n);
+      buttons.push([n, button]);
+      controls.append(button);
+    }
+  }
+  draw(0);
+  return box;
+}
+function probabilityComparison(arms) {
+  const panel = el("section", null, "prob-panel");
+  panel.append(el("h3", "방법별 상승 확률"));
+  for (const method of ["baseline", "single", "debate", "memory"]) {
+    const arm = arms.find((a) => a.method === method);
+    const value =
+      arm?.status === "published" && numeric(arm.probability)
+        ? arm.probability
+        : null;
+    const item = el("div", null, "prob-row"),
+      head = el("div", null, "prob-label");
+    head.append(
+      el("span", names[method]),
+      el(
+        "strong",
+        value == null ? labels[arm?.status] || "미발행" : pct(value),
+      ),
+    );
+    const track = el("div", null, "prob-track");
+    track.setAttribute("aria-hidden", "true");
+    if (value != null) {
+      const fill = el("span", null, method);
+      fill.style.width = value * 100 + "%";
+      track.append(fill);
+    }
+    item.append(head, track);
+    panel.append(item);
+  }
+  return panel;
+}
+
 function renderCase(target, c) {
   const s = c.snapshot ?? {};
+  const head = el("div", null, "detail-head"),
+    identity = el("div");
+  identity.append(
+    el(
+      "span",
+      { us: "미국 시장", kr: "한국 시장" }[c.market] || "시장 미확인",
+      "market-name",
+    ),
+    el("h2", c.ticker),
+  );
+  const state = el(
+    "span",
+    labels[c.status] || "상태 미확인",
+    "status-pill " + c.status,
+  );
+  head.append(identity, state);
+  const meta = el(
+    "p",
+    "관측 기준일 " +
+      (c.data_session || "—") +
+      " · " +
+      versionLabel(c.experiment_version),
+    "case-meta",
+  );
+  const visual = el("div", null, "case-visual");
+  visual.append(renderPriceChart(s), probabilityComparison(c.arms || []));
   target.replaceChildren(
-    el(
-      "h3",
-      [c.ticker, { us: "미국", kr: "한국" }[c.market], c.data_session]
-        .filter(Boolean)
-        .join(" · "),
-    ),
-    el(
-      "p",
-      (labels[c.status] ?? "상태 미확인") +
-        " · " +
-        versionLabel(c.experiment_version),
-      "label",
-    ),
+    head,
+    meta,
+    visual,
     facts([
       ["근거 동결", kst(s.observed_at ?? c.created_at)],
-      ["진입 시가 관측", kst(s.entry_open_at)],
-      ["다섯 번째 종가 관측", kst(s.exit_close_at)],
+      ["첫 거래일 개장", kst(s.entry_open_at)],
+      ["다섯 번째 거래일 마감", kst(s.exit_close_at)],
     ]),
     marketFacts(s),
-    el("h3", "방법별 예측"),
+    el("h3", "판단 근거", "section-title"),
   );
   for (const method of ["baseline", "single", "debate", "memory"]) {
     const a = (c.arms ?? []).find((row) => row.method === method);
@@ -648,8 +947,10 @@ async function refresh() {
     );
     if (serial !== refreshSerial) return;
     const list = raw.slice(0, pageSize);
+    $("list-count").textContent = list.length + "건";
     $("error").textContent = "";
     const p = s.progress ?? {};
+    $("runtime").classList.toggle("offline", !s.scheduler_enabled);
     $("runtime").textContent = s.scheduler_enabled
       ? "자동 관측 켜짐"
       : "자동 관측 꺼짐";
@@ -841,16 +1142,17 @@ async function refresh() {
       const focused = document.activeElement?.dataset.id;
       $("cases").replaceChildren();
       for (const c of list) {
-        const b = el(
-          "button",
-          msg(c.ticker, c.data_session) +
-            " · " +
-            (labels[c.status] ?? c.status),
+        const b = el("button", null, "case-item");
+        const line = el("span", null, "case-line");
+        line.append(
+          el("strong", c.ticker),
+          el("span", labels[c.status] || "미확인", "status-pill " + c.status),
         );
         b.append(
+          line,
           el(
             "small",
-            " · " + (versionLabel(c.experiment_version) ?? "버전 미확인"),
+            c.data_session + " · " + versionLabel(c.experiment_version),
           ),
         );
         b.type = "button";
@@ -858,7 +1160,12 @@ async function refresh() {
         b.setAttribute("aria-pressed", String(selected === c.id));
         b.onclick = () => {
           persistView(c.id);
-          showCase(c.id);
+          showCase(c.id).then(() => {
+            if (matchMedia("(max-width: 760px)").matches) {
+              $("detail").focus({ preventScroll: true });
+              $("detail").scrollIntoView({ block: "start" });
+            }
+          });
         };
         $("cases").append(b);
         if (focused === String(c.id)) b.focus({ preventScroll: true });

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { params } from "svelte-spa-router";
   import { fetchReportsByTicker } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
@@ -96,6 +97,10 @@
     },
   ];
 
+  const conclusion = reportGroups.find((group) => group.items.some((field) => field.key === "final_trade_decision"));
+  const orderedGroups = isForecastLab && conclusion ? [conclusion, ...reportGroups.filter((group) => group !== conclusion)] : reportGroups;
+  const sectionsByReport = new Map<number,Record<string,boolean>>();
+
   let ticker = "";
   let loading = true;
   let error = "";
@@ -162,9 +167,10 @@
   };
 
   const selectReport = (id: string) => {
+    if (isForecastLab && report) sectionsByReport.set(report.id, { ...openSections });
     selectedReportId = id;
     report = reports.find((item) => String(item.id) === id) || null;
-    openSections = {};
+    openSections = isForecastLab && report ? sectionsByReport.get(report.id) ?? { final_trade_decision: Boolean(report.final_trade_decision?.trim()) } : {};
   };
 
   const loadReport = async (t: string) => {
@@ -214,7 +220,7 @@
   <div class="page-container">
     <div class="page-header">
       <button class="back-btn" on:click={() => history.back()}>&larr;</button>
-      <h2>{ticker} AI분석</h2>
+      <h2>{ticker} {isForecastLab ? "분석 리포트" : "AI분석"}</h2>
     </div>
 
     {#if loading}
@@ -254,13 +260,14 @@
         {/if}
       </div>
 
-      {#each reportGroups as group}
-        <div class="report-group">
+      {#each orderedGroups as group}
+        <div class="report-group" class:desk-conclusion={isForecastLab && group === conclusion}>
           <div class="report-group-label">{group.name}</div>
 
           {#each group.items as field}
             <button
               class="report-accordion"
+              aria-expanded={!!openSections[field.key]}
               class:open={openSections[field.key]}
               class:decision={field.isDecision}
               on:click={() => toggle(String(field.key))}
@@ -280,6 +287,7 @@
               {#each group.children as child}
                 <button
                   class="report-accordion child"
+                  aria-expanded={!!openSections[child.key]}
                   class:open={openSections[child.key]}
                   on:click={() => toggle(String(child.key))}
                 >

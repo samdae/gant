@@ -229,7 +229,9 @@
     loadSchedules();
   });
 
-  $: filteredSchedules = schedules.filter((s) => matchesCurrency(s.ticker, $currencyFilter));
+  let search = "";
+  $: filteredSchedules = schedules.filter((s) => matchesCurrency(s.ticker, $currencyFilter)
+    && (!isForecastLab || (s.ticker + " " + ($tickerNames[s.ticker] || "")).toLowerCase().includes(search.trim().toLowerCase())));
 </script>
 
 <section class="page" id="page-schedules">
@@ -250,6 +252,14 @@
       <div class="card" style="padding:16px">예약이 없습니다.</div>
     {:else}
       <div class="schedule-list list-grid">
+        {#if isForecastLab}
+          <header class="desk-toolbar">
+            <div class="desk-heading"><h3>예약된 종목</h3><span>{filteredSchedules.length}종목</span></div>
+            <label class="desk-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input type="search" bind:value={search} aria-label="예약 종목 검색" placeholder="예약 종목 검색" /></label>
+          </header>
+          <div class="desk-schedule-head" aria-hidden="true"><span>종목</span><span>상태</span><span>실행 일정</span></div>
+          {#if filteredSchedules.length === 0}<div class="desk-state">조건에 맞는 예약이 없습니다.</div>{/if}
+        {/if}
         {#each filteredSchedules as schedule}
           {@const status = statusBadge(schedule.ticker)}
           <a

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import {
     fetchRetroSummary,
@@ -217,7 +218,7 @@
 <section class="page" id="page-retrospective">
   <div class="page-container">
     <div class="page-header">
-      <h2>AI분석</h2>
+      <h2>{isForecastLab ? "회고 분석" : "AI분석"}</h2>
     </div>
     <AnalysisTabs>
       <button slot="action" class="btn btn-primary" on:click={openModal}>요청</button>

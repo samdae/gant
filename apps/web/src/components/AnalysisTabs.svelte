@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { location } from "svelte-spa-router";
 
   type TabItem = {
@@ -43,13 +44,13 @@
           class="analysis-tab"
           class:active={tab.route === activeBase}
         >
-          {tab.label}
+          {isForecastLab && tab.route === "/reports" ? "리포트" : tab.label}
         </a>
       {/each}
     </div>
     <slot name="action" />
   </div>
-  <p class="analysis-tab-desc">{activeTab.description}</p>
+  <p class="analysis-tab-desc">{isForecastLab && activeTab.route === "/reports" ? "종목별 최근 판단과 발행 이력을 조회합니다." : activeTab.description}</p>
 </div>
 
 <style>

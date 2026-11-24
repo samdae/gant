@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { onDestroy } from "svelte";
   import { location } from "svelte-spa-router";
   import Dashboard from "./Dashboard.svelte";
@@ -22,7 +23,7 @@
       if (id !== request) return;
       if (response?.config === null) {
         state = "empty";
-        setup = true;
+        setup = !isForecastLab || new URLSearchParams(window.location.hash.split("?")[1]).get("setup") === "1";
       } else if (response?.config && typeof response.config === "object") {
         state = "ready";
       } else {
@@ -54,10 +55,20 @@
           <button class="btn btn-secondary" on:click={() => load($viewMode)}>다시 조회</button>
         </div>
       {:else}
-        <div class="card card-body">
-          <h3>가상 포트폴리오 시작</h3>
+        <div class="card card-body portfolio-welcome">
+          {#if isForecastLab}
+            <span class="desk-wallet" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 16V12a3 3 0 0 1 3-3h25v7"/><rect x="7" y="15" width="34" height="24" rx="4"/><path d="M41 23H30v8h11"/><circle cx="33.5" cy="27" r="1" fill="currentColor" stroke="none"/></svg></span>
+          {/if}
+          <div class="setup-action"><h3>가상 포트폴리오 시작</h3>
           <p>이 콘솔에는 아직 포트폴리오가 없습니다. 초기 자본과 기준 통화를 설정하세요.</p>
-          <button class="btn btn-primary" on:click={() => setup = true}>초기 자본·통화 설정</button>
+          <button class="btn btn-primary" on:click={() => setup = true}>초기 자본·통화 설정</button></div>
+          {#if isForecastLab}
+            <dl class="desk-setup-facts">
+              <div><dt>기준 통화</dt><dd>원화(KRW) · 미국 달러(USD)</dd></div>
+              <div><dt>운용 방식</dt><dd>공유 자금으로 종목 간 비중 조정</dd></div>
+              <div><dt>변경 권한</dt><dd>관리자 인증 필요</dd></div>
+            </dl>
+          {/if}
         </div>
       {/if}
     </div>

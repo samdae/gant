@@ -61,20 +61,23 @@
 
 </script>
 
-<div class="app-shell" class:workspace={isForecastLab}>
-  {#if isForecastLab}<WorkspaceNav />{/if}
-  {#if !isForecastLab || $location !== "/research"}
-    {#key isForecastLab && $location === "/portfolio"}
-      <AppHeader />
-    {/key}
-  {/if}
-
-  <main class="main-content">
-    <Router {routes} />
-  </main>
-
-  {#if !isForecastLab}<BottomNav />{/if}
-</div>
+{#if isForecastLab}
+  <div class="workspace">
+    <a class="skip" href="#workspace-content" on:click|preventDefault={() => document.getElementById("workspace-content")?.focus()}>본문으로 이동</a>
+    <div class="workspace-body">
+      <WorkspaceNav>
+        {#if $location !== "/research"}
+          {#key $location === "/portfolio"}<AppHeader />{/key}
+        {:else}
+          <a class="standalone" href="/research/">연구 단독 화면 <span aria-hidden="true">↗</span></a>
+        {/if}
+      </WorkspaceNav>
+      <main class="main-content" id="workspace-content" tabindex="-1"><Router {routes} /></main>
+    </div>
+  </div>
+{:else}
+  <div class="app-shell"><AppHeader /><main class="main-content"><Router {routes} /></main><BottomNav /></div>
+{/if}
 
 <style>
   .app-shell {
@@ -93,9 +96,21 @@
     right: auto;
     transform: translateX(-50%);
   }
-  .workspace { width:100%; max-width:none; border:0; }
-  .workspace .main-content { padding:0; }
-  .workspace :global(.app-header) { position:relative; left:auto; width:100%; transform:none; }
-  .workspace :global(.control-shell), .workspace :global(.page-container) { max-width:1160px; }
-  .workspace :global(.page-container) { padding-bottom:48px; }
+  .workspace {
+    --rail-width: 224px;
+    min-height: 100dvh;
+    width: 100%;
+    font-family: var(--fl-font);
+    font-variant-numeric: tabular-nums;
+    background: var(--fl-bg);
+    color: var(--fl-ink);
+  }
+  .workspace-body { margin-left: var(--rail-width); min-width: 0; }
+  .workspace .main-content { padding: 0; outline: none; }
+  .workspace :global(.page-container) { width:100%; max-width:none; padding:clamp(20px,3vw,42px) clamp(18px,3.5vw,48px) 48px; }
+  .skip { position:fixed; top:-60px; left:8px; background:var(--fl-surface); color:var(--fl-accent); z-index:160; padding:8px 14px; }
+  .skip:focus { top:8px; }
+  .standalone { display:inline-flex; align-items:center; gap:7px; color:var(--fl-muted); font-size:12px; font-weight:600; padding:7px 4px; }
+  .standalone:hover { color:var(--fl-accent); }
+  @media(max-width:900px) { .workspace-body { margin-left:0; } }
 </style>

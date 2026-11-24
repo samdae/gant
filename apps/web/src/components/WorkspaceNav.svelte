@@ -1,63 +1,220 @@
 <script lang="ts">
+  import { onMount, tick } from "svelte";
   import { location } from "svelte-spa-router";
-  import { viewMode } from "../stores/mode";
+  import WorkspaceRail from "./WorkspaceRail.svelte";
+  import { currentPage } from "../lib/workspaceNavigation";
 
-  const pages = [
-    ["/research", "예측 연구"], ["/", "대시보드"], ["/portfolio", "포트폴리오"],
-    ["/positions","보유 종목"], ["/schedules","분석 예약"], ["/live","실시간"],
-    ["/reports","분석 리포트"], ["/reflections","매매 검증"], ["/retrospective","회고 분석"],
-    ["/about","서비스 소개"], ["/auth","관리자 인증"],
-  ];
-  let more = false;
-  let trigger: HTMLButtonElement;
-  $: if ($location) more = false;
+  let drawer: HTMLDialogElement;
+  let opener: HTMLButtonElement;
+  let open = false;
+  let lastRoute = "";
+  $: context = currentPage($location);
+  $: if ($location !== lastRoute) {
+    lastRoute = $location;
+    if (open) closeDrawer(true);
+  }
 
-  function active(route: string, current: string) {
-    return current === route || (route !== "/" && current.startsWith(route + "/"));
+  function openDrawer() {
+    if (drawer.open) return;
+    drawer.showModal();
+    open = true;
   }
-  function navigate(route: string) {
-    if (route === "/") viewMode.set("analysis");
-    more = false;
+  async function closeDrawer(navigated = false) {
+    drawer?.close();
+    open = false;
+    if (navigated) {
+      await tick();
+      const content = document.getElementById("workspace-content");
+      content?.focus({ preventScroll: true });
+    } else opener?.focus({ preventScroll: true });
   }
-  function escape(e: KeyboardEvent) {
-    if (e.key === "Escape" && more) { more = false; trigger.focus(); }
-  }
+  onMount(() => {
+    const desktop = window.matchMedia("(min-width: 901px)");
+    const dismissOnResize = () => {
+      if (desktop.matches && drawer.open) closeDrawer(true);
+    };
+    desktop.addEventListener("change", dismissOnResize);
+    return () => desktop.removeEventListener("change", dismissOnResize);
+  });
 </script>
 
-<svelte:window on:keydown={escape} />
-<header class="workspace-header">
-  <div class="bar">
-    <a class="brand" href="#/research" aria-label="Forecast Lab 연구 홈">Forecast Lab</a>
-    <nav aria-label="작업 공간">
-      {#each pages.slice(0,3) as [route,label]}
-        <a class:current={active(route, $location)} aria-current={active(route, $location) ? "page" : undefined}
-          href={"#"+route} on:click={() => navigate(route)}>{label}</a>
-      {/each}
-      <button bind:this={trigger} type="button" aria-expanded={more} aria-controls="other-pages"
-        on:click={() => more = !more}>전체 메뉴 <span aria-hidden="true">▾</span></button>
-    </nav>
-    {#if more}
-      <nav class="menu" id="other-pages" aria-label="기능별 메뉴">
-        {#each pages.slice(3) as [route,label]}
-          <a class:current={active(route, $location)} href={"#"+route} on:click={() => navigate(route)}>{label}</a>
-        {/each}
-      </nav>
+<aside class="desktop-rail"><WorkspaceRail /></aside>
+<div class="workspace-top">
+  <button
+    class="menu-toggle"
+    type="button"
+    bind:this={opener}
+    aria-label="전체 메뉴 열기"
+    aria-controls="workspace-drawer"
+    aria-expanded={open}
+    on:click={openDrawer}
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true"
+      ><path d="M3 6h18M3 12h18M3 18h18" /></svg
+    >
+  </button>
+  <nav class="crumb" aria-label="현재 위치">
+    <span class="ancestor">{context.section}</span><span
+      class="separator"
+      aria-hidden="true">/</span
+    >
+    {#if context.detail}
+      <a href={"#" + context.page.route}>{context.page.label}</a>
+      <span aria-hidden="true">/</span><strong aria-current="page"
+        >{context.detail.toUpperCase()}</strong
+      >
+    {:else}
+      <strong aria-current="page">{context.page.label}</strong>
     {/if}
+  </nav>
+  <div class="actions"><slot /></div>
+</div>
+<dialog
+  id="workspace-drawer"
+  aria-label="작업 공간 메뉴"
+  bind:this={drawer}
+  on:close={() => (open = false)}
+>
+  <button
+    class="backdrop-dismiss"
+    type="button"
+    tabindex="-1"
+    aria-label="메뉴 배경 닫기"
+    on:click={() => closeDrawer()}
+  ></button>
+  <div class="drawer-panel">
+    <WorkspaceRail
+      onNavigate={() => closeDrawer(true)}
+      dismiss={() => closeDrawer()}
+    />
   </div>
-</header>
+</dialog>
 
 <style>
-  .workspace-header { color:#e8f3ee; background:#16383a; border-bottom:1px solid #325154; }
-  .bar { position:relative; max-width:1160px; margin:auto; padding:9px 22px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
-  .brand { font-weight:750; letter-spacing:-.03em; white-space:nowrap; font-size:1.25rem; }
-  nav { display:flex; align-items:center; gap:3px; }
-  nav a, nav button { background:none; color:inherit; font:inherit; font-size:.9rem; border:0; border-radius:6px; padding:9px 12px; white-space:nowrap; }
-  nav a:hover, nav button:hover, .current { color:white; background:#345954; }
-  .menu { position:absolute; z-index:150; right:16px; top:calc(100% - 2px); width:min(340px,calc(100vw - 24px)); display:grid; grid-template-columns:1fr 1fr; padding:8px; border:1px solid #48625e; border-radius:8px; background:#173b38; box-shadow:0 8px 24px #0004; }
-  a:focus-visible,button:focus-visible {outline:2px solid #bbe8d4;outline-offset:1px}
-  @media(max-width:630px) {
-    .bar {padding:8px 10px;flex-wrap:wrap;gap:4px;}
-    .brand {font-size:1.06rem;}
-    nav a,nav button {padding:8px 7px;font-size:.78rem;}
+  .desktop-rail {
+    position: fixed;
+    z-index: 110;
+    inset: 0 auto 0 0;
+    width: var(--rail-width);
+    overflow-y: auto;
+    background: var(--fl-nav);
+    scrollbar-width: thin;
+    scrollbar-color: #405474 var(--fl-nav);
+  }
+  .workspace-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 clamp(20px, 3.5vw, 48px);
+    min-height: 64px;
+    border-bottom: 1px solid var(--fl-line);
+    background: var(--fl-surface);
+    color: var(--fl-ink);
+  }
+  .crumb {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    min-width: 0;
+    white-space: nowrap;
+    color: var(--fl-muted);
+  }
+  .crumb strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--fl-ink);
+    font-weight: 650;
+  }
+  .crumb span[aria-hidden] {
+    color: #aab6c8;
+  }
+  .crumb a:hover {
+    text-decoration: underline;
+  }
+  .actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+  .menu-toggle {
+    display: none;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--fl-line);
+    border-radius: 9px;
+    background: white;
+    color: var(--fl-ink);
+    flex: none;
+  }
+  .menu-toggle svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+  }
+  .menu-toggle:focus-visible,
+  .crumb a:focus-visible {
+    outline: 2px solid var(--fl-accent);
+    outline-offset: 3px;
+  }
+  dialog {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    background: transparent;
+    color: inherit;
+  }
+  dialog::backdrop {
+    background: rgb(8 20 37 / 52%);
+  }
+  .backdrop-dismiss {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: transparent;
+  }
+  .drawer-panel {
+    position: relative;
+    width: min(290px, 85vw);
+    height: 100%;
+    overflow-y: auto;
+    background: var(--fl-nav);
+  }
+  @media (max-width: 900px) {
+    .desktop-rail {
+      display: none;
+    }
+    .menu-toggle {
+      display: flex;
+    }
+    .workspace-top {
+      min-height: 58px;
+      gap: 10px;
+      padding: 5px 14px;
+    }
+  }
+  @media (max-width: 550px) {
+    .ancestor,
+    .separator {
+      display: none;
+    }
+    .crumb {
+      gap: 5px;
+      font-size: 12px;
+    }
+    .workspace-top {
+      gap: 8px;
+      padding: 5px 10px;
+    }
   }
 </style>

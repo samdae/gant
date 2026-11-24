@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { params } from "svelte-spa-router";
   import { renderNarrative } from "../lib/utils/researchMarkdown";
   import { fetchReflectionDetail } from "../lib/api/endpoints";
@@ -72,7 +73,7 @@
   <div class="page-container">
     <div class="page-header reflection-page-header">
       <a href="#/reflections" class="back-link" aria-label="뒤로">&larr;</a>
-      <h2>AI분석</h2>
+      <h2>{isForecastLab ? "매매 검증 상세" : "AI분석"}</h2>
     </div>
     <AnalysisTabs />
 

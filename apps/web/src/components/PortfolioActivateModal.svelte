@@ -1,7 +1,6 @@
 <script lang="ts">
   import { tokenStore } from "../stores/auth";
   import { isForecastLab } from "../lib/workspace";
-  import { redirectToAuth } from "../lib/api/client";
   import { onMount } from "svelte";
   import { createPortfolioConfig } from "../lib/api/endpoints";
   import { formatErrorMessage } from "../lib/utils/format";
@@ -11,7 +10,21 @@
   export let onActivated: () => void;
 
   let dialog: HTMLDialogElement;
-  onMount(() => dialog.showModal());
+  const draftKey = "forecast-lab:portfolio-setup-draft";
+  onMount(() => {
+    if (isForecastLab && new URLSearchParams(window.location.hash.split("?")[1]).get("setup") === "1") {
+      try {
+        const raw = sessionStorage.getItem(draftKey);
+        sessionStorage.removeItem(draftKey);
+        const draft = raw && JSON.parse(raw);
+        if (draft && Number.isFinite(draft.capital) && draft.capital > 0 && ["KRW","USD"].includes(draft.currency)) {
+          capital = draft.capital;
+          currency = draft.currency;
+        }
+      } catch { /* The form works with defaults if browser storage is unavailable. */ }
+    }
+    dialog.showModal();
+  });
 
   let capital = 100000000;
   let currency: "KRW" | "USD" = "KRW";
@@ -24,7 +37,10 @@
       return;
     }
     if (isForecastLab && !$tokenStore) {
-      redirectToAuth();
+      try {
+        sessionStorage.setItem(draftKey, JSON.stringify({ capital, currency }));
+      } catch { /* Continue to authentication even if the browser cannot retain a draft. */ }
+      window.location.hash = "#/auth?return=" + encodeURIComponent("#/portfolio?setup=1");
       return;
     }
     loading = true;

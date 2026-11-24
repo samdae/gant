@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { isForecastLab } from "../lib/workspace";
   import {
+    fetchReportTickers,
     fetchHealth,
     fetchMetrics,
     fetchPositionsMarket,
@@ -8,7 +11,7 @@
     fetchPortfolioConfig,
     fetchPortfolioHoldings,
   } from "../lib/api/endpoints";
-  import { formatPercent, formatErrorMessage, formatAmount, formatSignedAmount } from "../lib/utils/format";
+  import { formatDateTime, formatPercent, formatErrorMessage, formatAmount, formatSignedAmount } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
   import { currencyFilter, showAmount, matchesCurrency, tickerCurrency } from "../stores/currency";
   import { viewMode, portfolioRefreshTrigger } from "../stores/mode";
@@ -91,6 +94,21 @@
       ? pos.current_price * pos.shares
       : null;
 
+  type RecentReport = { ticker: string; report_count: number; latest_at: string };
+  let reports: RecentReport[] = [];
+  let reportStatus: "loading" | "ready" | "error" = "loading";
+  onMount(async () => {
+    if (!isForecastLab) return;
+    try {
+      reports = (await fetchReportTickers() as RecentReport[]).slice().sort(
+        (a,b) => Date.parse(b.latest_at) - Date.parse(a.latest_at));
+      reportStatus = "ready";
+    } catch {
+      reportStatus = "error";
+    }
+  });
+  $: recentReports = reports.filter((r) => r.report_count > 0 && matchesCurrency(r.ticker, $currencyFilter)).slice(0, 3);
+
   let generation = 0;
   const loadData = async () => {
     const request = ++generation;
@@ -149,7 +167,7 @@
 <section class="page" id="page-dashboard">
   <div class="page-container">
     <div class="page-header">
-      <h2>홈</h2>
+      <h2>{isForecastLab ? ($viewMode === "portfolio" ? "포트폴리오 현황" : "운영 대시보드") : "홈"}</h2>
       {#if error}
         <span class="badge badge-loss">
           <span class="status-dot status-error" style="width:6px;height:6px;margin-right:4px"></span>
@@ -171,12 +189,19 @@
     <button class="card summary-banner" type="button" on:click={goArchive}>
       <div class="summary-header">
         <div>
-          <div class="summary-title">오늘 실행</div>
+          <div class="summary-title">{isForecastLab ? "오늘의 분석 실행" : "오늘 실행"}</div>
         </div>
         <div class="summary-total">
           {todayRunsTotal ?? "-"}
         </div>
       </div>
+      {#if isForecastLab && scheduleSummary}
+        <div class="desk-progress" aria-hidden="true">
+          {#each [scheduleSummary.done,scheduleSummary.skipped,scheduleSummary.failed,scheduleSummary.running] as n,index}
+            {#if n > 0}<span class={`run-${index}`} style={`flex:${n}`}></span>{/if}
+          {/each}
+        </div>
+      {/if}
       <div class="summary-metrics">
         <div class="summary-item">
           <span class="summary-label">완료</span>
@@ -205,6 +230,22 @@
       </div>
     </button>
 
+    {#if isForecastLab}
+      <section class="desk-panel desk-recent">
+        <header class="desk-toolbar"><h3>최근 발행 리포트</h3><a href="#/reports">전체 보기 <span aria-hidden="true">→</span></a></header>
+        {#if recentReports.length}
+          {#each recentReports as report}
+            <a class="desk-recent-row" href={`#/reports/${encodeURIComponent(report.ticker.toLowerCase())}`}>
+              <span class="desk-document" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h5"/></svg></span>
+              <span class="desk-instrument"><b>{report.ticker}</b>{#if $tickerNames[report.ticker]}<small>{$tickerNames[report.ticker]}</small>{/if}</span>
+              <time datetime={report.latest_at}>{formatDateTime(report.latest_at)}</time>
+            </a>
+          {/each}
+        {:else}
+          <div class="desk-state">{reportStatus === "loading" ? "리포트를 불러오는 중입니다." : reportStatus === "error" ? "최근 리포트를 조회할 수 없습니다." : "발행된 리포트가 없습니다."}</div>
+        {/if}
+      </section>
+    {/if}
     <div class="card metric-strip" style="margin-bottom:16px">
       {#if $viewMode === "portfolio"}
         <div class="metric-segment">

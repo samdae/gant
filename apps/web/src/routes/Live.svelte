@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import { fetchQueue, fetchLiveEvents, type LiveMessage as WsMessage } from "../lib/api/endpoints";
   import { connectLiveStream } from "../lib/ws/liveStream";
@@ -132,7 +133,7 @@
 <section class="page" id="page-live">
   <div class="page-container">
     <div class="page-header">
-      <h2>실시간</h2>
+      <h2>{isForecastLab ? "실시간 실행" : "실시간"}</h2>
     </div>
 
     <div class="live-layout">

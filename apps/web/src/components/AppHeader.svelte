@@ -21,7 +21,7 @@
   let showActivateModal = false;
 
   async function checkPortfolioConfig() {
-    if (isForecastLab && ["#/", "#/portfolio"].includes(window.location.hash.split("?")[0])) return;
+    if (isForecastLab) return;
     try {
       const r = (await fetchPortfolioConfig()) as { config?: unknown };
       showActivateModal = $viewMode === "portfolio" && !r.config;
@@ -52,6 +52,16 @@
   });
 </script>
 
+{#if isForecastLab}
+  <div class="work-controls" aria-label="콘솔 보기 설정">
+    <label><span>모드</span><select aria-label="콘솔 모드" value={$viewMode} on:change={(e) => onModeChange(e.currentTarget.value)}>
+      {#each modeOptions as option}<option value={option.value}>{option.label}</option>{/each}
+    </select></label>
+    <label><span>통화</span><select aria-label="표시 통화" value={$currencyFilter} on:change={(e) => onCurrencyChange(e.currentTarget.value)}>
+      {#each currencyOptions as option}<option value={option.value}>{option.label}</option>{/each}
+    </select></label>
+  </div>
+{:else}
 <header class="app-header control-header">
   <div class="control-shell">
     <section class="control-block">
@@ -80,6 +90,8 @@
     </section>
   </div>
 </header>
+{/if}
+
 
 {#if showActivateModal}
   <PortfolioActivateModal
@@ -89,6 +101,12 @@
 {/if}
 
 <style>
+  .work-controls { display:flex; align-items:center; gap:12px; }
+  .work-controls label { display:flex; gap:6px; align-items:center; color:var(--fl-muted); font-size:12px; }
+  .work-controls select { max-width:110px; color:var(--fl-ink); background:var(--fl-surface); border:1px solid var(--fl-line); border-radius:8px; padding:6px; min-height:32px; font:600 12px var(--fl-font); }
+  .work-controls select:focus-visible { outline:2px solid var(--fl-accent); outline-offset:2px; }
+  @media(max-width:630px) { .work-controls { gap:4px; } .work-controls label span { display:none; } }
+
   .control-header {
     padding: 8px 16px;
     height: 60px;

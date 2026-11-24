@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -40,7 +41,18 @@ def browser_check(cases):
             if (leaks.length) result.push(c.id + " leaked " + leaks.join(","));
             if (d.querySelector("script,img,iframe,[onerror]") || window.pwned) result.push("executable markup");
             if (document.body.scrollWidth > window.innerWidth) result.push("mobile overflow");
+            if (c.id === 8889) {
+                const svg = d.querySelector(".price-plot svg");
+                const axis = [...(svg?.querySelectorAll(".axis") || [])];
+                const middle = axis.find(t => t.textContent === "01.06");
+                if (!middle || Number(middle.getAttribute("x")) < 400) result.push("calendar gaps lost");
+                if (!svg?.querySelector("title")?.textContent.includes("2026-01-02 – 2026-01-07 · 종가 3개"))
+                    result.push("chart coverage wrong");
+                const readouts = [...d.querySelectorAll(".prob-label strong")].map(n => n.textContent);
+                if (readouts.join() !== "미발행,0.0%,미발행,건너뜀") result.push("probability missing/zero ambiguity");
+            }
             if (c.id === 8888) {
+                if (d.querySelector(".price-plot svg")) result.push("fabricated chart");
                 for (const sel of ["strong","ul li","ol li","h5","blockquote","table","details > summary"]) {
                     if (!d.querySelector(".report " + sel) && !d.querySelector(sel)) result.push("missing " + sel);
                 }
@@ -56,11 +68,25 @@ def browser_check(cases):
         """.replace("CASE_DATA", fixture_data)
         # Mock HTTP before running the normal script. A never-resolving fetch keeps the
         # periodic refresh out of this synchronous DOM renderer check.
-        html = html.replace(
-            '<link rel="stylesheet" href="/lab.css" />',
-            "<style>" + (WEB / "lab.css").read_text(encoding="utf-8") + "</style>",
+        for name in ("workspace-tokens.css", "lab.css"):
+            pattern = (
+                r'<link rel="stylesheet" href="/(?:research/)?'
+                + re.escape(name)
+                + r'\?v=[^"]+" />'
+            )
+            css = (WEB / name).read_text(encoding="utf-8")
+            html, count = re.subn(
+                pattern, lambda _, css=css: "<style>" + css + "</style>", html
+            )
+            if count != 1:
+                raise AssertionError(
+                    f"Expected exactly one versioned {name} stylesheet"
+                )
+        html, count = re.subn(
+            r'<script defer src="/lab\.js\?v=[^"]+"></script>', "", html
         )
-        html = html.replace('<script defer src="/lab.js"></script>', "")
+        if count != 1:
+            raise AssertionError("Expected exactly one versioned lab.js script")
         html = html.replace(
             "</body>",
             "<script>window.fetch=()=>new Promise(()=>{});</script><script>"
@@ -142,3 +168,24 @@ class LabWebTest(unittest.TestCase):
             ],
         }
         self.assertEqual(browser_check([c]), "passed")
+
+    def test_truthful_price_axis_and_missing_probability(self):
+        case = {
+            "id": 8889,
+            "ticker": "TEST",
+            "market": "us",
+            "status": "awaiting",
+            "snapshot": {
+                "currency": "USD",
+                "bars": [
+                    {"date": "2026-01-02", "close": 100},
+                    {"date": "2026-01-06", "close": 120},
+                    {"date": "2026-01-07", "close": 110},
+                ],
+            },
+            "arms": [
+                {"method": "single", "status": "published", "probability": 0},
+                {"method": "memory", "status": "skipped"},
+            ],
+        }
+        self.assertEqual(browser_check([case]), "passed")

@@ -4,79 +4,133 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>시장 예측 연구실</title>
-    <link rel="stylesheet" href="/lab.css" />
-    <script defer src="/lab.js"></script>
+    <link rel="stylesheet" href="/research/workspace-tokens.css?v=20261124-1" />
+    <link rel="stylesheet" href="/lab.css?v=20261124-1" />
+    <script defer src="/lab.js?v=20261124-1"></script>
   </head>
   <body>
     <a class="skip" href="#archive">예측 사례로 이동</a>
-    <header>
-      <span>시장 예측 연구</span><span id="runtime" role="status">연결 중</span>
+    <header class="masthead">
+      <strong>Forecast Lab</strong><span>시장 예측 연구실</span>
     </header>
     <main>
-      <h1>시장 예측 연구실</h1>
-      <p class="intro">
-        같은 시장 근거에서 발행한 상승 확률을 다섯 거래일 뒤의 가격으로
-        평가합니다.
-      </p>
-      <form id="filters" class="filters">
-        <label
-          >시장<select id="market">
-            <option value="">전체 시장</option>
-            <option value="kr">한국</option>
-            <option value="us">미국</option>
-          </select></label
-        ><label>관측 기준일 시작<input id="from-date" type="date" /></label
-        ><label>관측 기준일 종료<input id="to-date" type="date" /></label
-        ><button type="submit">기간 적용</button>
-      </form>
+      <div class="heading">
+        <div>
+          <h1>시장 예측 연구실</h1>
+          <p class="intro">
+            개장 전에 발행한 상승 확률과 이후 다섯 거래일의 가격을 비교합니다.
+          </p>
+        </div>
+        <span id="runtime" role="status">연결 중</span>
+      </div>
+      <div class="tabbar" role="tablist" aria-label="연구 보기">
+        <button
+          id="tab-cases"
+          role="tab"
+          aria-controls="panel-cases"
+          aria-selected="true"
+        >
+          예측 사례
+        </button>
+        <button
+          id="tab-results"
+          role="tab"
+          aria-controls="panel-results"
+          aria-selected="false"
+          tabindex="-1"
+        >
+          성과 분석
+        </button>
+        <button
+          id="tab-observe"
+          role="tab"
+          aria-controls="panel-observe"
+          aria-selected="false"
+          tabindex="-1"
+        >
+          관측 현황
+        </button>
+      </div>
+      <details class="filter-panel" id="filter-panel" open>
+        <summary>시장·기간 필터</summary>
+        <form id="filters" class="filters">
+          <label
+            >시장<select id="market">
+              <option value="">전체 시장</option>
+              <option value="kr">한국</option>
+              <option value="us">미국</option>
+            </select></label
+          >
+          <label>관측 시작일<input id="from-date" type="date" /></label
+          ><label>관측 종료일<input id="to-date" type="date" /></label
+          ><button type="submit">필터 적용</button>
+        </form>
+      </details>
       <p id="error" role="alert"></p>
-      <section aria-labelledby="overview">
-        <h2 id="overview">관측 현황</h2>
-        <div id="counts" class="counts"></div>
-        <details>
-          <summary>관찰 종목과 수집 진행</summary>
-          <div id="tickers"></div>
-        </details>
-      </section>
-      <section>
-        <h2>방법별 성과</h2>
-        <p>
-          같은 실험 버전에서 공통으로 채점된 사례만 비교합니다. Brier 점수는 0에
-          가까울수록 정확하며, 개선량은 비교 기준의 점수에서 실험 방법의 점수를
-          뺀 값입니다. 표본 수가 적거나 관측 기간이 겹치면 결과를 일반화하기
-          어렵습니다.
-        </p>
-        <div id="comparisons"></div>
-        <details>
-          <summary>기존 운영 모델과의 관측 비교</summary>
-          <p>
-            두 서비스가 개장 전에 같은 종목·기간에 발행한 예측을 비교합니다.
-            수집한 시장 정보와 분석 과정이 서로 달라 성과 차이에는 입력의 차이도
-            포함됩니다.
-          </p>
-          <div id="reference"></div>
-        </details>
-        <details>
-          <summary>예측 확률과 실제 상승 빈도</summary>
-          <p>
-            동일 방법·버전의 예측을 확률 구간별로 묶었습니다. 각 구간의 평균
-            예측과 실제 상승 비율을 함께 봅니다.
-          </p>
-          <div id="calibration"></div>
-        </details>
-      </section>
-      <section>
-        <h2 id="archive" tabindex="-1">예측 사례</h2>
-        <nav class="pages" aria-label="사례 목록 페이지">
-          <button id="prev" disabled>이전 페이지</button
-          ><span id="page" role="status">불러오는 중</span
-          ><button id="next" disabled>다음 페이지</button>
-        </nav>
+      <section id="panel-cases" role="tabpanel" aria-labelledby="tab-cases">
         <div class="case-layout">
-          <div id="cases"></div>
-          <article id="detail" aria-live="polite">
+          <aside class="casebook" aria-labelledby="archive">
+            <div class="casebook-head">
+              <h2 id="archive" tabindex="-1">사례 목록</h2>
+              <span id="list-count"></span>
+            </div>
+            <div id="cases"></div>
+            <nav class="pages" aria-label="사례 목록 페이지">
+              <button id="prev" aria-label="이전 페이지" disabled>‹</button
+              ><span id="page" role="status">불러오는 중</span
+              ><button id="next" aria-label="다음 페이지" disabled>›</button>
+            </nav>
+          </aside>
+          <article id="detail" tabindex="-1" aria-label="선택한 예측 사례">
             <p>사례를 선택하면 당시 근거와 관측 결과를 확인할 수 있습니다.</p>
           </article>
+        </div>
+      </section>
+      <section
+        id="panel-results"
+        role="tabpanel"
+        aria-labelledby="tab-results"
+        hidden
+      >
+        <div class="panel">
+          <h2>방법별 성과</h2>
+          <p>
+            같은 실험 버전에서 공통으로 채점한 사례를 비교합니다. Brier 점수는
+            0에 가까울수록 정확합니다. 기준 방법에서 비교 방법의 점수를 뺀
+            개선량은 양수일 때 개선을 뜻합니다.
+          </p>
+          <div id="comparisons"></div>
+        </div>
+        <div class="panel">
+          <h2>예측 확률과 실제 상승 빈도</h2>
+          <p>
+            같은 방법과 버전의 예측을 확률 구간별로 묶었습니다. 표본이 적거나
+            관측 기간이 겹치면 결과를 일반화하기 어렵습니다.
+          </p>
+          <div id="calibration"></div>
+        </div>
+        <div class="panel">
+          <h2>기존 운영 모델과의 비교</h2>
+          <p>
+            두 서비스가 개장 전에 같은 종목과 기간에 발행한 예측을 비교합니다.
+            수집한 시장 정보와 분석 과정도 성과 차이에 영향을 줍니다.
+          </p>
+          <div id="reference"></div>
+        </div>
+      </section>
+      <section
+        id="panel-observe"
+        role="tabpanel"
+        aria-labelledby="tab-observe"
+        hidden
+      >
+        <div class="panel">
+          <h2>관측 현황</h2>
+          <div id="counts" class="counts"></div>
+        </div>
+        <div class="panel">
+          <h2>관찰 종목과 수집 진행</h2>
+          <div id="tickers"></div>
         </div>
       </section>
     </main>

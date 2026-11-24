@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import {
     fetchReflections,
@@ -124,7 +125,7 @@
 <section class="page" id="page-reflections">
   <div class="page-container">
     <div class="page-header">
-      <h2>AI분석</h2>
+      <h2>{isForecastLab ? "매매 검증" : "AI분석"}</h2>
     </div>
     <AnalysisTabs />
 

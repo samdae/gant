@@ -1,0 +1,22 @@
+:root {
+  --fl-bg: #f4f6fa;
+  --fl-surface: #fff;
+  --fl-surface-subtle: #f8fafd;
+  --fl-ink: #17243b;
+  --fl-muted: #52647a;
+  --fl-line: #dbe2eb;
+  --fl-accent: #305ce0;
+  --fl-accent-hover: #234abf;
+  --fl-accent-soft: #ecf1ff;
+  --fl-nav: #101d33;
+  --fl-nav-ink: #e6edf9;
+  --fl-nav-muted: #96a8c3;
+  --fl-positive: #137657;
+  --fl-negative: #b33d48;
+  --fl-font:
+    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic",
+    sans-serif;
+  --fl-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --fl-radius: 12px;
+  --fl-shadow: 0 2px 6px rgb(23 36 59 / 5%);
+}

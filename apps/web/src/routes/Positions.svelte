@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { fetchPositionsMarket, fetchPositionsClosed, fetchMetrics, fetchPortfolioHoldings, fetchPortfolioClosedTickers } from "../lib/api/endpoints";
   import { formatAmount, formatSignedAmount, formatPercent, formatErrorMessage } from "../lib/utils/format";
   import { tickerNames } from "../stores/tickerNames";
@@ -110,7 +111,7 @@
 <section class="page" id="page-positions">
   <div class="page-container">
     <div class="page-header">
-      <h2>투자</h2>
+      <h2>{isForecastLab ? "보유 포지션" : "투자"}</h2>
       {#if $viewMode === "analysis" && $showAmount && !loading && !error && currencyPnl != null}
         <span class={`pnl-banner ${currencyPnl >= 0 ? "pnl-pos" : "pnl-neg"}`}>
           평가손익 {formatSignedAmount(currencyPnl, $currencyFilter === "KRW" ? ".KS" : "USD")}

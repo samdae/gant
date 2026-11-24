@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import { fetchReportTickers } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
@@ -20,6 +21,7 @@
   };
 
   let tickers: TickerSummary[] = [];
+  let query = "";
   let loading = true;
   let error = "";
 
@@ -84,15 +86,46 @@
   });
 
   $: filteredTickers = tickers.filter((t) => matchesCurrency(t.ticker, $currencyFilter));
+  $: normalizedQuery = query.trim().toLowerCase();
+  $: published = filteredTickers.filter((t) => t.report_count > 0).sort((a,b) => Date.parse(b.latest_at) - Date.parse(a.latest_at));
+  $: visibleTickers = published.filter((t) =>
+    !normalizedQuery || t.ticker.toLowerCase().includes(normalizedQuery)
+    || ($tickerNames[t.ticker] || "").toLowerCase().includes(normalizedQuery));
 </script>
 
 <section class="page" id="page-reports">
   <div class="page-container">
     <div class="page-header">
-      <h2>AI분석</h2>
+      <h2>{isForecastLab ? "분석 리포트" : "AI분석"}</h2>
     </div>
     <AnalysisTabs />
 
+    {#if isForecastLab}
+      <section class="desk-panel report-directory" aria-label="종목별 리포트">
+        <header class="desk-toolbar">
+          <div class="desk-heading"><h3>종목별 리포트</h3>{#if !loading && !error}<span>{published.length}종목</span>{/if}</div>
+          <label class="desk-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
+            <input type="search" bind:value={query} aria-label="티커 또는 종목명 검색" placeholder="티커 또는 종목명 검색" />
+          </label>
+        </header>
+        {#if loading || error || !visibleTickers.length}
+          <div class="desk-state" role="status">{loading ? "리포트를 불러오는 중입니다." : error || (query ? "검색 결과가 없습니다." : "발행된 분석 리포트가 없습니다.")}</div>
+        {:else}
+          <div class="desk-report-row desk-report-head" aria-hidden="true"><span>종목</span><span>최근 판단</span><span>리포트 수</span><span>최근 발행</span><span></span></div>
+          {#each visibleTickers as item}
+            {@const action = normalizeDecision(item.decision_position || item.portfolio_action || item.trade_action || "")}
+            <a href={`#/reports/${encodeURIComponent(item.ticker.toLowerCase())}`} class="desk-report-row">
+              <span class="desk-instrument"><b>{item.ticker}</b>{#if $tickerNames[item.ticker]}<small>{$tickerNames[item.ticker]}</small>{/if}</span>
+              <span><span class="desk-pill" class:buy={action === "BUY"} class:sell={action === "SELL"}>{action === "BUY" ? "매수" : action === "SELL" ? "매도" : action === "HOLD" ? "관망" : item.report_count ? "미기록" : "미발행"}</span></span>
+              <span class="desk-report-count">{item.report_count}건</span>
+              <time datetime={item.latest_at}>{formatDateTime(item.latest_at)}</time>
+              <span aria-hidden="true" class="desk-arrow">›</span>
+            </a>
+          {/each}
+        {/if}
+      </section>
+    {:else}
     {#if loading}
       <div class="card" style="padding:16px">불러오는 중...</div>
     {:else if error}
@@ -125,6 +158,7 @@
           </a>
         {/each}
       </div>
+    {/if}
     {/if}
   </div>
 </section>

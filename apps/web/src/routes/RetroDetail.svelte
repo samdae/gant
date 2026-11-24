@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { params } from "svelte-spa-router";
   import { fetchRetroByTicker } from "../lib/api/endpoints";
   import { formatErrorMessage } from "../lib/utils/format";
@@ -98,7 +99,7 @@
   <div class="page-container">
     <div class="page-header" style="display:flex;align-items:center;gap:8px">
       <a href="#/retrospective" class="back-link" aria-label="뒤로">&larr;</a>
-      <h2>AI분석</h2>
+      <h2>{isForecastLab ? "회고 분석 상세" : "AI분석"}</h2>
     </div>
     <AnalysisTabs />
 

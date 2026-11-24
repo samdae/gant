@@ -19,11 +19,19 @@
   onDestroy(() => observer?.disconnect());
 </script>
 
-<iframe bind:this={viewer} title="예측 연구 관측 및 성과" src="/research/?embedded=1"
-  style:height={height + "px"} on:load={fitViewer}></iframe>
-<a class="standalone" href="/research/">연구 화면만 열기</a>
+<iframe
+  bind:this={viewer}
+  title="예측 연구 관측 및 성과"
+  src="/research/?embedded=1"
+  style:height={height + "px"}
+  on:load={fitViewer}
+></iframe>
 
 <style>
-  iframe { display: block; width: 100%; border: 0; background: #f7f8f4; }
-  .standalone { display: inline-block; padding: .65rem 1rem; font-size: .82rem; text-decoration: underline; }
+  iframe {
+    display: block;
+    width: 100%;
+    border: 0;
+    background: var(--fl-bg);
+  }
 </style>
