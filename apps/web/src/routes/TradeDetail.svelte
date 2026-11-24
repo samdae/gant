@@ -1,4 +1,6 @@
 <script lang="ts">
+  import DecisionBadge from "../components/DecisionBadge.svelte";
+  import { isForecastLab } from "../lib/workspace";
   import { onMount, onDestroy } from "svelte";
   import { params, querystring } from "svelte-spa-router";
   import {
@@ -99,6 +101,7 @@
   let reports: PositionDetail["reports"] = [];
   let trades: PositionDetail["trades"] = [];
   let portfolioTrades: PortfolioTrade[] = [];
+  let portfolioBaseCurrency = "";
   let portfolioHolding: { shares: number; current_value_base?: number } | null = null;
   let tab: "report" | "history" | "trades" = "report";
   let totalAmount: number | null = null;
@@ -231,7 +234,8 @@
           fetchPortfolioTrades(t, undefined, 100),
         ]);
         if (requestId !== detailRequest) return;
-        const h = holdingsRes as { holdings?: Array<{ ticker: string; shares: number; current_value_base?: number }> };
+        const h = holdingsRes as { base_currency?: string; holdings?: Array<{ ticker: string; shares: number; current_value_base?: number }> };
+        portfolioBaseCurrency = h?.base_currency || "";
         const holding = h?.holdings?.find((x) => x.ticker.toUpperCase() === t.toUpperCase());
         portfolioHolding = holding ? { shares: holding.shares, current_value_base: holding.current_value_base } : null;
         portfolioTrades = ((tradesRes as { items?: PortfolioTrade[] })?.items ?? []) as PortfolioTrade[];
@@ -729,6 +733,48 @@
       {/if}
     </div>
 
+    {#if isForecastLab && !loading && !error}
+      <dl class="review-facts">
+        <div>
+          <dt>계좌</dt>
+          <dd>{$viewMode === "portfolio" ? "포트폴리오" : "종목별 분석"}</dd>
+        </div>
+        {#if summary}
+          <div>
+            <dt>보유 수량</dt>
+            <dd>{summary.shares}주</dd>
+          </div>
+          {#if $viewMode === "portfolio"}
+            <div>
+              <dt>평가액</dt>
+              <dd>
+                {portfolioHolding?.current_value_base != null && portfolioBaseCurrency
+                  ? portfolioHolding.current_value_base.toLocaleString() + " " + portfolioBaseCurrency
+                  : "—"}
+              </dd>
+            </div>
+          {:else}
+            <div>
+              <dt>평균 단가</dt>
+              <dd>{formatAmount(summary.avg_cost, ticker)}</dd>
+            </div>
+            <div>
+              <dt>평가손익</dt>
+              <dd>{formatSignedAmount(summary.pnl, ticker)}</dd>
+            </div>
+            <div>
+              <dt>평가액</dt>
+              <dd>{formatAmount(totalAmount, ticker)}</dd>
+            </div>
+          {/if}
+        {:else}
+          <div>
+            <dt>현재 보유</dt>
+            <dd>조회된 잔고 없음</dd>
+          </div>
+        {/if}
+      </dl>
+    {/if}
     <div class={`price-panel ${chartTrend}`}>
       <div class="price-panel-top">
         <div class="price-panel-title">
@@ -927,6 +973,7 @@
       {/if}
     </div>
 
+    {#if !isForecastLab}
     <div class="card-grid" style="margin-bottom:16px">
       <div class="card">
         <div class="card-header"><h3>투자</h3></div>
@@ -950,6 +997,23 @@
       </div>
     </div>
 
+    {/if}
+    {#if isForecastLab}
+    <div class="review-switch" role="group" aria-label="거래 상세 보기">
+      {#if $viewMode === "portfolio"}
+        <button aria-pressed={tab === "trades"} on:click={() => (tab = "trades")}
+          ><span>거래 내역</span></button
+        >
+      {:else}
+        <button aria-pressed={tab === "report"} on:click={() => (tab = "report")}
+          ><span>최신 AI 분석</span></button
+        >
+        <button aria-pressed={tab === "history"} on:click={() => (tab = "history")}
+          ><span>분석 이력</span></button
+        >
+      {/if}
+    </div>
+    {:else}
     <div class="tab-bar">
       {#if $viewMode === "portfolio"}
         <button class={`tab-btn ${tab === "trades" ? "active" : ""}`} on:click={() => (tab = "trades")}>거래 내역</button>
@@ -959,10 +1023,27 @@
       {/if}
     </div>
 
+    {/if}
     {#if loading}
       <div class="card" style="padding:16px">불러오는 중...</div>
     {:else if error}
       <div class="card error-text" style="padding:16px">{error}</div>
+    {:else if isForecastLab && $viewMode === "portfolio" && tab === "trades"}
+      {#if portfolioTrades.length}
+        <div class="review-register">
+          <table>
+            <caption>포트폴리오 체결 내역</caption>
+            <thead><tr><th>거래 일시</th><th>구분</th><th>체결 수량</th><th>체결 단가</th></tr></thead>
+            <tbody
+              >{#each portfolioTrades as tr}<tr
+                  ><td>{formatDateTime(tr.executed_at)}</td><td
+                    ><DecisionBadge value={tr.action || ""} /></td
+                  ><td>{tr.shares}주</td><td>{formatAmount(tr.price, ticker)}</td></tr
+                >{/each}</tbody
+            >
+          </table>
+        </div>
+      {:else}<div class="review-state">이 계좌에 기록된 {ticker} 체결 내역이 없습니다.</div>{/if}
     {:else if $viewMode === "portfolio" && tab === "trades"}
       <div class="history-list">
         {#if portfolioTrades.length === 0}
@@ -987,7 +1068,7 @@
           <div class="card" style="margin-bottom:12px">
             <div class="card-body">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                <span class={getDecisionClass(getReportDecision(latestReport()))}>{mapDecision(getReportDecision(latestReport()))}</span>
+                {#if isForecastLab}<DecisionBadge value={getReportDecision(latestReport()) || ""} />{:else}<span class={getDecisionClass(getReportDecision(latestReport()))}>{mapDecision(getReportDecision(latestReport()))}</span>{/if}
                 <span style="font-size:0.8125rem;color:var(--text-dim)">{formatDateTime(latestReport()?.created_at)}</span>
               </div>
               {#if getExecutionNote(latestReport())}
@@ -1012,7 +1093,7 @@
                   <div class="history-top">
                     <span class="history-no">{getReportTitle(report)}</span>
                     <span class="history-date">{formatDateTime(report.created_at)}</span>
-                    <span class={getDecisionClass(getReportDecision(report))}>{mapDecision(getReportDecision(report))}</span>
+                    {#if isForecastLab}<DecisionBadge value={getReportDecision(report) || ""} />{:else}<span class={getDecisionClass(getReportDecision(report))}>{mapDecision(getReportDecision(report))}</span>{/if}
                   </div>
                 </button>
                 {#if selectedHistoryId === String(report.id)}

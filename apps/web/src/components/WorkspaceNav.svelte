@@ -117,12 +117,12 @@
     gap: 10px;
     font-size: 13px;
     min-width: 0;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    flex-wrap: wrap;
     color: var(--fl-muted);
   }
   .crumb strong {
-    overflow: hidden;
-    text-overflow: ellipsis;
+    min-width: 0;
     color: var(--fl-ink);
     font-weight: 650;
   }
@@ -213,8 +213,14 @@
       font-size: 12px;
     }
     .workspace-top {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       gap: 8px;
-      padding: 5px 10px;
+      padding: 6px 10px;
     }
+  }
+  @media (max-width: 340px) {
+    .workspace-top { grid-template-columns: auto minmax(0, 1fr); }
+    .actions:not(:empty) { grid-column: 2; margin: 0; }
   }
 </style>

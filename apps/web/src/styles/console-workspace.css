@@ -50,9 +50,9 @@
 }
 .workspace .page .page-container {
   width: 100%;
-  max-width: 1320px;
+  max-width: var(--content-max);
   margin: 0 auto;
-  padding: clamp(20px, 3vw, 42px);
+  padding: var(--content-top) var(--content-gutter) 32px;
 }
 .workspace .page .page-header {
   margin: 0 0 22px;
@@ -339,6 +339,23 @@
   font-size: 0.84rem;
   background: #fff;
 }
+.workspace .desk-report-row .desk-instrument {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.workspace .desk-report-head > :nth-child(3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.workspace .report-metadata {
+  display: contents;
+}
+.workspace .desk-report-count {
+  text-align: right;
+}
+.workspace .mobile-report-label {
+  display: none;
+}
 .workspace .desk-report-row:last-child {
   border-bottom: none;
 }
@@ -594,9 +611,6 @@
   margin-left: 0;
 }
 @media (max-width: 900px) {
-  .workspace .page .page-container {
-    padding: 22px 18px;
-  }
   .workspace #page-dashboard .page-container,
   .workspace #page-dashboard .dashboard-grid {
     grid-template-columns: 1fr;
@@ -607,9 +621,6 @@
   }
 }
 @media (max-width: 640px) {
-  .workspace .page .page-container {
-    padding: 18px 14px 28px;
-  }
   .workspace .page .page-header {
     margin-bottom: 16px;
   }
@@ -630,12 +641,10 @@
     width: 100%;
   }
   .workspace .desk-report-row {
-    grid-template-columns: minmax(0, 1fr) 62px minmax(92px, 0.77fr);
+    grid-template-columns: minmax(0, 1fr) 3.35rem 3.25rem minmax(64px, 0.95fr);
     padding: 12px 14px;
     gap: 6px;
   }
-  .workspace .desk-report-count,
-  .workspace .desk-report-head > span:nth-child(3),
   .workspace .desk-arrow,
   .workspace .desk-report-head > span:last-child {
     display: none;
@@ -674,6 +683,57 @@
   }
   .workspace .page .portfolio-welcome {
     min-height: 245px;
+  }
+}
+
+@media (max-width: 560px) {
+  .workspace .report-directory .desk-report-head {
+    display: none;
+  }
+  .workspace .report-directory a.desk-report-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "instrument decision"
+      "metadata metadata";
+    gap: 10px;
+    padding: 15px;
+  }
+  .workspace .desk-report-row .desk-instrument {
+    grid-area: instrument;
+    align-self: start;
+  }
+  .workspace .desk-report-row .desk-instrument small {
+    font-size: 0.81rem;
+  }
+  .workspace .desk-report-row .desk-report-decision {
+    grid-area: decision;
+    align-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78rem;
+  }
+  .workspace .mobile-report-label {
+    display: inline;
+    color: var(--fl-muted);
+  }
+  .workspace .desk-report-row .report-metadata {
+    grid-area: metadata;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    text-align: left;
+  }
+  .workspace .report-metadata .desk-report-count,
+  .workspace .report-metadata time {
+    font-size: 0.81rem;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+  .workspace .report-metadata time {
+    color: var(--fl-ink);
   }
 }
 

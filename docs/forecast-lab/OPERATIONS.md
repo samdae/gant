@@ -64,6 +64,8 @@ Invoke-RestMethod http://127.0.0.1:8014/workspace-api/health
 
 화면 배포 때는 Svelte 번들과 연구실 정적 파일을 함께 확인한다. Svelte는 파일명 해시로 버전을 구분한다. 연구실 CSS·JS·공통 스타일을 바꾸면 연구실 HTML의 해당 자산 URL에 붙은 `v` 값을 갱신한다. 공통 스타일 URL은 Svelte 진입점에도 있으므로 같은 버전을 지정한 뒤 빌드한다. 8014에서 연구 사례의 종가 차트, 리포트 본문, 모바일 전체 메뉴를 열고 외부 호스트가 Cloudflare Access로 연결되는지 확인한다.
 
+보유 종목·거래 상세·매매 검증의 레이아웃을 변경했을 때는 저장소 루트에서 `.\.venv\Scripts\python.exe scripts/check-forecast-review-layout.py apps/web/dist`를 실행한다. 배포 전에는 마지막 인수로 빌드한 후보 폴더도 인자로 쓸 수 있다. 이 검사는 Chrome에서 로컬 검증 자료를 열어 빈 목록과 기록이 있는 목록, 한국어 버튼과 건수의 실제 줄 위치를 확인한다. `--screenshots <폴더>`를 붙이면 화면 캡처도 저장한다.
+
 처음 통합할 때 기존 운영 DB의 읽기 전용 스냅샷을 비어 있던 콘솔 DB로 한 번 복원했고 15개 테이블의 행 수를 대조했다. 이 시점에 분석 예약 24개, 실제 리포트 2개, 예약 실행 기록 3개, 포트폴리오 계좌 0개였다. 이후에는 각 DB가 독립적으로 누적된다. 이전 콘솔의 리포트·거래는 연구실 Brier 점수의 표본에 포함되지 않는다. 최초 계좌의 통화·자본은 포트폴리오 화면에서 설정한다.
 
 새 PC에서는 `forecast_lab_console_app`을 전용 비관리자 로그인 역할로 만들고 이 역할이 소유한 `forecast_lab_console`을 준비한다. 접근을 제한한 런타임 디렉터리의 `console.env`에 `FORECAST_LAB_CONSOLE_DSN`(호스트 127.0.0.1, 포트 55434, 전용 역할과 DB)과 이 콘솔만의 `TRADINGAGENTS_ADMIN_TOKEN`을 둔다. 콘솔 캐시와 벡터 저장소는 런타임의 `console` 아래에 둔다. 새 설치 시 전용 콘솔 백업이 있으면 해당 덤프를 복원한다.

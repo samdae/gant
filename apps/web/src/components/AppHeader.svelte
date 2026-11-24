@@ -7,6 +7,9 @@
   import PortfolioActivateModal from "./PortfolioActivateModal.svelte";
   import SelectMenu from "./SelectMenu.svelte";
 
+  export let showMode = true;
+  export let showCurrency = true;
+
   const modeOptions: { value: ViewMode; label: string }[] = [
     { value: "analysis", label: "분석" },
     { value: "portfolio", label: "포트폴리오" },
@@ -40,7 +43,7 @@
     }
     showActivateModal = false;
     viewMode.set("analysis");
-    if (isForecastLab && window.location.hash === "#/portfolio") window.location.hash = "#/";
+    if (isForecastLab && window.location.hash.split("?")[0] === "#/portfolio") window.location.hash = "#/";
   }
 
   function onCurrencyChange(next: string) {
@@ -54,12 +57,12 @@
 
 {#if isForecastLab}
   <div class="work-controls" aria-label="콘솔 보기 설정">
-    <label><span>모드</span><select aria-label="콘솔 모드" value={$viewMode} on:change={(e) => onModeChange(e.currentTarget.value)}>
+    {#if showMode}<label><span>모드</span><select aria-label="콘솔 모드" value={$viewMode} on:change={(e) => onModeChange(e.currentTarget.value)}>
       {#each modeOptions as option}<option value={option.value}>{option.label}</option>{/each}
-    </select></label>
-    <label><span>통화</span><select aria-label="표시 통화" value={$currencyFilter} on:change={(e) => onCurrencyChange(e.currentTarget.value)}>
+    </select></label>{/if}
+    {#if showCurrency}<label><span>통화</span><select aria-label="표시 통화" value={$currencyFilter} on:change={(e) => onCurrencyChange(e.currentTarget.value)}>
       {#each currencyOptions as option}<option value={option.value}>{option.label}</option>{/each}
-    </select></label>
+    </select></label>{/if}
   </div>
 {:else}
 <header class="app-header control-header">

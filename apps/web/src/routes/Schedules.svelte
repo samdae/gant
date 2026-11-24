@@ -1,4 +1,6 @@
 <script lang="ts">
+  import "../components/labOperations.css";
+  import { operationTime, operationState } from "../lib/utils/operations";
   import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import {
@@ -234,6 +236,97 @@
     && (!isForecastLab || (s.ticker + " " + ($tickerNames[s.ticker] || "")).toLowerCase().includes(search.trim().toLowerCase())));
 </script>
 
+{#if isForecastLab}
+  <section class="op-page">
+    <header class="op-title">
+      <div>
+        <h1>분석 예약</h1>
+        <p>가상매매 콘솔에서 종목별 분석 주기와 실행 회차를 관리합니다.</p>
+      </div>
+      <button class="op-primary" id="addScheduleBtn" on:click={openAdd}>예약 추가</button>
+    </header>
+    {#if error}<p class="op-error" role="alert">
+        {error} <button on:click={loadSchedules}>다시 조회</button>
+      </p>{/if}
+    <div class="op-summary">
+      <div><span>등록 종목</span><strong>{loading || error ? "—" : schedules.length}</strong></div>
+      <div>
+        <span>현재 실행</span><strong
+          >{queue.running || (loading || error ? "—" : "실행 없음")}</strong
+        >
+      </div>
+      <div>
+        <span>대기열</span><strong>{loading || error ? "—" : queue.pending.length + "종목"}</strong>
+      </div>
+    </div>
+    <section class="op-panel op-schedule-panel">
+      <header class="op-toolbar">
+        <div>
+          <h2>종목별 일정</h2>
+          <small>시각은 한국 시간 기준입니다.</small>
+        </div>
+        <label
+          >종목 검색 <input
+            type="search"
+            bind:value={search}
+            placeholder="티커 또는 표시 이름"
+          /></label
+        >
+      </header>
+      {#if loading}<p class="op-hint" role="status">예약을 불러오는 중입니다.</p>
+      {:else if !error && !filteredSchedules.length}<p class="op-hint">
+          {schedules.length ? "검색 조건에 맞는 종목이 없습니다." : "등록된 종목이 없습니다."}
+        </p>
+      {:else if filteredSchedules.length}
+        <div class="op-schedules" role="list">
+          <div class="op-grid-row op-colhead" aria-hidden="true">
+            <span>종목 / 주기</span><span>상태</span><span>다음 실행</span><span>최근 회차</span><span
+              >관리</span
+            >
+          </div>
+          {#each filteredSchedules as schedule}
+            {@const badge = statusBadge(schedule.ticker)}
+            {@const cycle = cycles[schedule.ticker]}
+            <div class="op-grid-row" role="listitem">
+              <a href={`#/schedules/${encodeURIComponent(schedule.ticker.toLowerCase())}`}
+                ><strong>{schedule.ticker}</strong><small
+                  >{$tickerNames[schedule.ticker] || ""}
+                  {formatInterval(schedule.interval_days)}</small
+                ></a
+              >
+              <span class="op-state" data-state={queue.running === schedule.ticker ? "running" : ""}
+                >{badge.label}</span
+              >
+              <div>
+                <span class="op-mobile-label">다음 실행</span><time
+                  >{operationTime(schedule.next_run_time)}</time
+                >
+              </div>
+              <div>
+                <span class="op-mobile-label">최근 회차</span>{#if cycle}<b
+                    >{cycle.scheduled_cycle}회 · {operationState(cycle.status)}</b
+                  ><small>{operationTime(cycle.created_at)}</small>{:else}<span>기록 없음</span>{/if}
+              </div>
+              <button
+                class="op-cancel"
+                aria-label={schedule.ticker + " 예약 삭제"}
+                title={schedule.ticker + " 예약 삭제"}
+                on:click={() => openDelete(schedule.ticker)}
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none"
+                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5m4-5v5" />
+                </svg>
+              </button>
+            </div>
+          {/each}
+        </div>{/if}
+    </section>
+    <nav class="op-related">
+      <a href="#/live">실시간 대기열 →</a><a href="#/research">예측 연구 관찰 종목 →</a>
+    </nav>
+  </section>
+{:else}
 <section class="page" id="page-schedules">
   <div class="page-container">
     <div class="page-header">
@@ -314,6 +407,7 @@
   </div>
 </section>
 
+{/if}
 {#if showAdd}
   <div class="modal-overlay" id="addModal">
     <div class="modal">
@@ -388,6 +482,7 @@
     <div class="modal-body">
       <p><strong>{deleteTarget}</strong> 예약을 삭제할까요?</p>
       <p>대기중이면 함께 제거됩니다.</p>
+      {#if isForecastLab && error}<p role="alert" class="op-error">{error}</p>{/if}
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" on:click={() => (showDelete = false)} disabled={submitting}>취소</button>

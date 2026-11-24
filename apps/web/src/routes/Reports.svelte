@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DecisionBadge from "../components/DecisionBadge.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import { fetchReportTickers } from "../lib/api/endpoints";
@@ -114,12 +115,14 @@
         {:else}
           <div class="desk-report-row desk-report-head" aria-hidden="true"><span>종목</span><span>최근 판단</span><span>리포트 수</span><span>최근 발행</span><span></span></div>
           {#each visibleTickers as item}
-            {@const action = normalizeDecision(item.decision_position || item.portfolio_action || item.trade_action || "")}
+            {@const action = item.decision_position || ""}
             <a href={`#/reports/${encodeURIComponent(item.ticker.toLowerCase())}`} class="desk-report-row">
               <span class="desk-instrument"><b>{item.ticker}</b>{#if $tickerNames[item.ticker]}<small>{$tickerNames[item.ticker]}</small>{/if}</span>
-              <span><span class="desk-pill" class:buy={action === "BUY"} class:sell={action === "SELL"}>{action === "BUY" ? "매수" : action === "SELL" ? "매도" : action === "HOLD" ? "관망" : item.report_count ? "미기록" : "미발행"}</span></span>
-              <span class="desk-report-count">{item.report_count}건</span>
-              <time datetime={item.latest_at}>{formatDateTime(item.latest_at)}</time>
+              <span class="desk-report-decision"><span class="mobile-report-label">최근 판단</span><DecisionBadge value={action} /></span>
+              <span class="report-metadata">
+                <span class="desk-report-count"><span class="mobile-report-label">리포트 </span>{item.report_count}건</span>
+                <time datetime={item.latest_at}><span class="mobile-report-label">최근 발행 </span>{formatDateTime(item.latest_at)}</time>
+              </span>
               <span aria-hidden="true" class="desk-arrow">›</span>
             </a>
           {/each}

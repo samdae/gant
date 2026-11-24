@@ -1,6 +1,11 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
+  import LabGuide from "../components/LabGuide.svelte";
 </script>
 
+{#if isForecastLab}
+  <LabGuide />
+{:else}
 <section class="page about-page">
   <div class="page-container about-container">
     <!-- 1. 헤드라인 -->
@@ -198,6 +203,7 @@
   </div>
 </section>
 
+{/if}
 <style>
   .about-page {
     padding-bottom: 80px;

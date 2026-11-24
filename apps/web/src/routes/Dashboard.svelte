@@ -1,4 +1,6 @@
 <script lang="ts">
+  import PortfolioSummary from "../components/PortfolioSummary.svelte";
+  import DecisionBadge from "../components/DecisionBadge.svelte";
   import { onMount } from "svelte";
   import { isForecastLab } from "../lib/workspace";
   import {
@@ -94,7 +96,7 @@
       ? pos.current_price * pos.shares
       : null;
 
-  type RecentReport = { ticker: string; report_count: number; latest_at: string };
+  type RecentReport = { decision_position?: string; ticker: string; report_count: number; latest_at: string };
   let reports: RecentReport[] = [];
   let reportStatus: "loading" | "ready" | "error" = "loading";
   onMount(async () => {
@@ -186,6 +188,10 @@
       {/if}
     </div>
 
+    {#if isForecastLab && $viewMode === "portfolio"}
+      <PortfolioSummary config={portfolioConfig} />
+    {/if}
+
     <button class="card summary-banner" type="button" on:click={goArchive}>
       <div class="summary-header">
         <div>
@@ -238,6 +244,7 @@
             <a class="desk-recent-row" href={`#/reports/${encodeURIComponent(report.ticker.toLowerCase())}`}>
               <span class="desk-document" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h5"/></svg></span>
               <span class="desk-instrument"><b>{report.ticker}</b>{#if $tickerNames[report.ticker]}<small>{$tickerNames[report.ticker]}</small>{/if}</span>
+              <DecisionBadge value={report.decision_position || ""} />
               <time datetime={report.latest_at}>{formatDateTime(report.latest_at)}</time>
             </a>
           {/each}
@@ -246,6 +253,7 @@
         {/if}
       </section>
     {/if}
+    {#if !isForecastLab || $viewMode !== "portfolio"}
     <div class="card metric-strip" style="margin-bottom:16px">
       {#if $viewMode === "portfolio"}
         <div class="metric-segment">
@@ -331,6 +339,8 @@
         </div>
       {/if}
     </div>
+
+    {/if}
 
     {#if $viewMode === "analysis" && metrics}
       <div class="card metric-strip" style="margin-bottom:16px">

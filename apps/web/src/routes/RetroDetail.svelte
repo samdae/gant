@@ -128,6 +128,44 @@
         </div>
 
         {#if selectedItem}
+          {#if isForecastLab}
+          <dl class="review-facts">
+            <div>
+              <dt>포지션</dt>
+              <dd>
+                {selectedItem.pos_status === "open"
+                  ? "보유 중"
+                  : selectedItem.pos_status === "reset"
+                    ? "초기화"
+                    : selectedItem.pos_status === "closed"
+                      ? "종료"
+                      : "미기록"}
+              </dd>
+            </div>
+            <div>
+              <dt>보유 시작</dt>
+              <dd>
+                {selectedItem.position_open_date ? formatDate(selectedItem.position_open_date) : "미기록"}
+              </dd>
+            </div>
+            <div>
+              <dt>보유 종료</dt>
+              <dd>{selectedItem.position_close_date ? formatDate(selectedItem.position_close_date) : "—"}</dd>
+            </div>
+            <div>
+              <dt>종료 수익률</dt>
+              <dd>
+                {selectedItem.pos_status === "closed" && selectedItem.return_pct != null
+                  ? selectedItem.return_pct.toFixed(2) + "%"
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt>분석 횟수</dt>
+              <dd>{selectedItem.analysis_count}회</dd>
+            </div>
+          </dl>
+          {:else}
           <div class="retro-meta" style="margin:12px 0;display:flex;gap:12px;flex-wrap:wrap;font-size:0.8125rem;color:var(--text-dim)">
             <span>{formatDate(selectedItem.position_open_date)} ~ {formatDate(selectedItem.position_close_date)}</span>
             {#if selectedItem.pos_status === "closed" && selectedItem.return_pct != null}
@@ -135,12 +173,14 @@
                 {selectedItem.return_pct >= 0 ? "승" : "패"} ({selectedItem.return_pct >= 0 ? "+" : ""}{selectedItem.return_pct.toFixed(2)}%)
               </span>
             {:else}
-              <span>진행중</span>
+              <span>{selectedItem.pos_status === "closed" ? "종료 · 수익률 미기록" : "진행 중"}</span>
             {/if}
             <span>분석 {selectedItem.analysis_count}회</span>
           </div>
 
+          {/if}
           <div class="card retro-result-card">
+            {#if isForecastLab}<div class="card-header"><h3>회차별 판단 평가</h3></div>{/if}
             <div class="md-content retro-result-body">
               {@html renderMd(selectedItem.analysis_content)}
             </div>

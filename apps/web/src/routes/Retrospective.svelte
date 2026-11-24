@@ -221,15 +221,38 @@
       <h2>{isForecastLab ? "회고 분석" : "AI분석"}</h2>
     </div>
     <AnalysisTabs>
-      <button slot="action" class="btn btn-primary" on:click={openModal}>요청</button>
+      <button slot="action" class="btn btn-primary" on:click={openModal}>{isForecastLab ? "회고 요청" : "요청"}</button>
     </AnalysisTabs>
 
     {#if loading}
       <div class="card" style="padding:16px">불러오는 중...</div>
     {:else if error}
-      <div class="card error-text" style="padding:16px">{error}</div>
+      <div class="card error-text" style="padding:16px">{error} <button class="btn btn-secondary" on:click={loadSummary}>다시 조회</button></div>
     {:else if filteredTickers.length === 0}
-      <div class="card" style="padding:16px;color:var(--text-dim)">완료된 회고분석이 없습니다. "회고분석 요청" 버튼으로 분석을 요청하세요.</div>
+      {#if isForecastLab}<section class="review-empty">
+        <header>완료된 회고</header>
+        <div>
+          <h3>완료된 분석이 없습니다</h3>
+          <p>종목과 포지션 회차를 선택해 당시 판단 근거의 평가를 요청하세요.</p>
+          <button on:click={openModal}>회고 요청</button>
+        </div>
+      </section>
+      {:else}<div class="card" style="padding:16px;color:var(--text-dim)">완료된 회고분석이 없습니다.</div>{/if}
+    {:else if isForecastLab}
+      <div class="review-register">
+        <table>
+          <caption>완료된 회고 · {$currencyFilter === "ALL" ? "전체 통화" : $currencyFilter}</caption>
+          <thead><tr><th>종목</th><th>완료 회차</th><th>최근 분석일</th></tr></thead><tbody
+            >{#each filteredTickers as item}<tr
+                ><td
+                  ><a href={`#/retrospective/${item.ticker.toLowerCase()}`}>{item.ticker}</a><small
+                    >{displayName(item)}</small
+                  ></td
+                ><td>{item.completed_count}건</td><td>{formatDate(item.latest_at)}</td></tr
+              >{/each}</tbody
+          >
+        </table>
+      </div>
     {:else}
       <div class="retro-ticker-list list-grid">
         {#each filteredTickers as item}

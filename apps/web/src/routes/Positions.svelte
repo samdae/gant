@@ -1,4 +1,5 @@
 <script lang="ts">
+  import "../styles/review-register.css";
   import { isForecastLab } from "../lib/workspace";
   import { fetchPositionsMarket, fetchPositionsClosed, fetchMetrics, fetchPortfolioHoldings, fetchPortfolioClosedTickers } from "../lib/api/endpoints";
   import { formatAmount, formatSignedAmount, formatPercent, formatErrorMessage } from "../lib/utils/format";
@@ -119,6 +120,139 @@
       {/if}
     </div>
 
+    {#if isForecastLab}
+      {@const portfolio = $viewMode === "portfolio"}
+      {@const activeCount = portfolio ? filteredPortfolioHoldings.length : filteredPositions.length}
+      {@const closedCount = portfolio ? filteredPortfolioClosed.length : filteredClosed.length}
+      <p class="review-context">
+        {portfolio ? "포트폴리오 계좌" : "종목별 분석 계좌"} · {$currencyFilter === "ALL"
+          ? "전체 통화"
+          : $currencyFilter}
+      </p>
+      <div class="review-switch" role="group" aria-label="포지션 상태">
+        <button aria-pressed={tab === "active"} on:click={() => (tab = "active")}
+          ><span>보유 중</span>{#if !loading && !error}<small>{activeCount}</small>{/if}</button
+        >
+        <button aria-pressed={tab === "closed"} on:click={() => (tab = "closed")}
+          ><span>종료</span>{#if !loading && !error}<small>{closedCount}</small>{/if}</button
+        >
+      </div>
+      {#if loading}<div class="review-state" role="status">포지션 조회 중…</div>
+      {:else if error}<div class="review-state" role="alert">
+          {error} <button class="btn btn-secondary" on:click={loadData}>다시 조회</button>
+        </div>
+      {:else if !(tab === "active" ? activeCount : closedCount)}<section class="review-empty">
+          <header>{tab === "active" ? "보유 명세" : "종료 포지션 명세"}</header>
+          <div>
+            <h3>{tab === "active" ? "보유 중인 포지션이 없습니다" : "종료된 포지션이 없습니다"}</h3>
+            <p>
+              {portfolio ? "포트폴리오 계좌" : "종목별 분석 계좌"}에서 {$currencyFilter === "ALL"
+                ? "전체 통화"
+                : $currencyFilter} 기준으로 {tab === "active" ? "잔고가 있는 종목" : "거래가 종료된 종목"}을
+              표시합니다.
+            </p>
+            {#if $currencyFilter !== "ALL"}<button on:click={() => ($currencyFilter = "ALL")}
+                >전체 통화 보기</button
+              >
+            {:else if tab === "active" && closedCount}<button on:click={() => (tab = "closed")}
+                >종료 포지션 보기</button
+              >
+            {:else if portfolio}<a href="#/portfolio">포트폴리오 보기</a>
+            {:else}<a href="#/reports">최근 리포트 보기</a>{/if}
+          </div>
+        </section>
+      {:else}<div class="review-register">
+          <table>
+            <caption
+              >{tab === "active"
+                ? "보유 명세"
+                : portfolio
+                  ? "거래가 종료된 종목"
+                  : "종료 포지션 명세"}</caption
+            >
+            {#if tab === "active" && portfolio}
+              <thead
+                ><tr
+                  ><th>종목</th><th>보유 수량</th><th>비중</th>{#if $showAmount}<th>평가액</th>{/if}</tr
+                ></thead
+              >
+              <tbody
+                >{#each filteredPortfolioHoldings as h}<tr
+                    ><td
+                      ><a href={tradeLink(h.ticker)}>{h.ticker}</a><small
+                        >{$tickerNames[h.ticker] || ""}</small
+                      ></td
+                    ><td>{h.shares}주</td><td
+                      >{h.allocation_pct == null ? "—" : h.allocation_pct.toFixed(1) + "%"}</td
+                    >{#if $showAmount}<td
+                        >{h.current_value_base == null || !portfolioConfig?.base_currency
+                          ? "—"
+                          : h.current_value_base.toLocaleString() + " " + portfolioConfig.base_currency}</td
+                      >{/if}</tr
+                  >{/each}</tbody
+              >
+            {:else if tab === "active"}
+              <thead
+                ><tr
+                  ><th>종목</th><th>보유 수량</th>{#if $showAmount}<th class="review-extra">평균 단가</th><th
+                      class="review-extra">현재가</th
+                    ><th class="review-extra">평가액</th><th class="review-extra">평가손익</th>{/if}<th
+                    >수익률</th
+                  ></tr
+                ></thead
+              >
+              <tbody
+                >{#each filteredPositions as p}<tr
+                    ><td
+                      ><a href={tradeLink(p.ticker, p.position_id)}>{p.ticker}</a><small
+                        >{$tickerNames[p.ticker] || ""}</small
+                      ></td
+                    ><td>{p.shares}주</td>{#if $showAmount}<td class="review-extra"
+                        >{formatAmount(p.avg_cost, p.ticker)}</td
+                      ><td class="review-extra">{formatAmount(p.current_price, p.ticker)}</td><td
+                        class="review-extra">{formatAmount(getTotalAmount(p), p.ticker)}</td
+                      ><td class="review-extra">{formatSignedAmount(p.pnl, p.ticker)}</td>{/if}<td
+                      >{formatPercent(p.return_pct)}</td
+                    ></tr
+                  >{/each}</tbody
+              >
+            {:else if portfolio}
+              <thead><tr><th>종목</th><th>마지막 거래일</th></tr></thead><tbody
+                >{#each filteredPortfolioClosed as p}<tr
+                    ><td
+                      ><a href={tradeLink(p.ticker)}>{p.ticker}</a><small
+                        >{$tickerNames[p.ticker] || ""}</small
+                      ></td
+                    ><td>{formatDate(p.last_trade_at ?? null)}</td></tr
+                  >{/each}</tbody
+              >
+            {:else}
+              <thead
+                ><tr><th>종목</th><th class="review-extra">보유 기간</th><th>종료일</th><th>수익률</th></tr
+                ></thead
+              ><tbody
+                >{#each filteredClosed as p}<tr
+                    ><td
+                      ><a href={tradeLink(p.ticker, p.position_id)}>{p.ticker}</a><small
+                        >{$tickerNames[p.ticker] || ""}</small
+                      ><small>{p.shares}주 · 평균 {formatAmount(p.avg_cost, p.ticker)}</small></td
+                    ><td class="review-extra">{formatDate(p.opened_at)} ~ {formatDate(p.closed_at)}</td><td
+                      >{formatDate(p.closed_at)}</td
+                    ><td
+                      >{formatPercent(p.return_pct)}<small
+                        >{p.outcome === "win"
+                          ? "승"
+                          : p.outcome === "loss"
+                            ? "패"
+                            : "체결 기록 불완전"}</small
+                      ></td
+                    ></tr
+                  >{/each}</tbody
+              >
+            {/if}
+          </table>
+        </div>{/if}
+    {:else}
     <div class="tab-bar" style="margin-bottom:16px">
       <button class={`tab-btn ${tab === "active" ? "active" : ""}`} on:click={() => (tab = "active")}>
         보유중 <span class="tab-count">{$viewMode === "portfolio" ? filteredPortfolioHoldings.length : filteredPositions.length}</span>
@@ -312,6 +446,7 @@
           {/each}
         {/if}
       </div>
+    {/if}
     {/if}
   </div>
 </section>

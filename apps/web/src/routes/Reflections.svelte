@@ -34,27 +34,31 @@
   let reflections: Reflection[] = [];
   let candidates: RetryCandidate[] = [];
   let candidateLoading = false;
+  let candidateError = "";
   let retrying: Record<number, boolean> = {};
 
   let filter: "all" | "win" | "loss" = "all";
   let hasMore = true;
   let loadingMore = false;
 
+  let generation = 0;
   const PAGE_SIZE = 15;
 
   const loadCandidates = async () => {
     candidateLoading = true;
+    candidateError = "";
     try {
       const rows = (await fetchReflectionRetryCandidates(40)) as RetryCandidate[];
       candidates = (rows || []).filter((r) => r.retryable);
     } catch (err) {
-      console.error("failed to load retry candidates", err);
+      candidateError = formatErrorMessage(err, "재검증 대상 상태를 조회하지 못했습니다.");
     } finally {
       candidateLoading = false;
     }
   };
 
   const loadData = async (append = false) => {
+    const request = ++generation;
     if (append) {
       loadingMore = true;
     } else {
@@ -65,6 +69,7 @@
       const cursor = append && reflections.length > 0 ? reflections[reflections.length - 1].id : undefined;
       const outcome = filter === "all" ? undefined : filter;
       const res = (await fetchReflections(PAGE_SIZE, outcome, cursor)) as Reflection[];
+      if (request !== generation) return;
       if (append) {
         reflections = [...reflections, ...res];
       } else {
@@ -72,8 +77,10 @@
       }
       hasMore = res.length >= PAGE_SIZE;
     } catch (err) {
+      if (request !== generation) return;
       error = formatErrorMessage(err, "회고 목록을 불러오지 못했습니다.");
     } finally {
+      if (request !== generation) return;
       loading = false;
       loadingMore = false;
     }
@@ -132,7 +139,7 @@
     {#if candidates.length > 0}
       <div class="card" style="margin-bottom:14px">
         <div class="card-header">
-          <h3>반성 재실행 필요</h3>
+          <h3>재검증이 필요한 거래</h3>
         </div>
         <div class="retry-list">
           {#each candidates as c}
@@ -157,23 +164,75 @@
           {/each}
         </div>
       </div>
+    {:else if candidateError && isForecastLab}
+      <div class="review-state" role="alert">{candidateError}
+        <button class="btn btn-secondary" on:click={loadCandidates}>재검증 대상 다시 조회</button>
+      </div>
     {:else if candidateLoading}
       <div class="card" style="padding:12px;margin-bottom:14px;color:var(--text-dim)">반성 상태 확인 중...</div>
     {/if}
 
+    {#if isForecastLab}
+    <div class="review-switch" role="group" aria-label="거래 결과">
+      <button aria-pressed={filter === "all"} on:click={() => setFilter("all")}
+        ><span>전체</span></button
+      >
+      <button aria-pressed={filter === "win"} on:click={() => setFilter("win")}><span>승</span></button>
+      <button aria-pressed={filter === "loss"} on:click={() => setFilter("loss")}
+        ><span>패</span></button
+      >
+    </div>
+    {:else}
     <div class="tab-bar" style="margin-bottom:16px">
       <button class={`tab-btn ${filter === "all" ? "active" : ""}`} on:click={() => setFilter("all")}>전체</button>
       <button class={`tab-btn ${filter === "win" ? "active" : ""}`} on:click={() => setFilter("win")}>승</button>
       <button class={`tab-btn ${filter === "loss" ? "active" : ""}`} on:click={() => setFilter("loss")}>패</button>
     </div>
 
+    {/if}
+
     {#if loading}
       <div class="card" style="padding:16px">불러오는 중...</div>
     {:else if error}
-      <div class="card" style="padding:16px"><span class="error-text">{error}</span></div>
+      <div class="card" style="padding:16px"><span class="error-text">{error}</span> <button class="btn btn-secondary" on:click={() => loadData()}>다시 조회</button></div>
     {:else if reflections.length === 0}
-      <div class="card" style="padding:16px">회고 기록이 없습니다.</div>
+      {#if isForecastLab}
+      <section class="review-empty">
+        <header>종료 거래 검증 기록</header>
+        <div>
+          <h3>
+            {filter === "all" ? "아직 검증 기록이 없습니다" : "선택한 결과에 해당하는 기록이 없습니다"}
+          </h3>
+          <p>
+            {filter === "all"
+              ? "거래가 종료되고 검증이 완료되면 수익률과 당시 판단에 대한 교훈을 확인할 수 있습니다."
+              : "전체 결과에서 다른 거래의 검증 기록을 확인할 수 있습니다."}
+          </p>
+          {#if filter !== "all"}<button on:click={() => setFilter("all")}>전체 결과 보기</button>{:else}<a
+              href="#/positions">포지션 확인</a
+            >{/if}
+        </div>
+      </section>
+      {:else}<div class="card" style="padding:16px">회고 기록이 없습니다.</div>{/if}
     {:else}
+      {#if isForecastLab}
+      <div class="review-register">
+        <table>
+          <caption>종료 거래 검증 기록</caption>
+          <thead><tr><th>종목</th><th>결과</th><th>수익률</th><th>작성일</th></tr></thead>
+          <tbody
+            >{#each reflections as ref}<tr
+                ><td
+                  ><a href={`#/reflections/${ref.id}`}>{ref.ticker || `포지션 #${ref.position_id}`}</a
+                  ><small>{displayName(ref.ticker)}</small></td
+                ><td>{ref.outcome === "win" ? "승" : ref.outcome === "loss" ? "패" : "미확정"}</td><td
+                  >{formatPercent(ref.return_pct)}</td
+                ><td>{formatDate(ref.created_at)}</td></tr
+              >{/each}</tbody
+          >
+        </table>
+      </div>
+      {:else}
       <div class="reflection-list list-grid">
         {#each reflections as ref}
           <a class="reflection-card list-row" href={`#/reflections/${ref.id}`}>
@@ -200,6 +259,7 @@
         {/each}
       </div>
 
+      {/if}
       {#if hasMore}
         <div style="text-align:center;margin-top:16px">
           <button class="btn btn-secondary" on:click={() => loadData(true)} disabled={loadingMore}>

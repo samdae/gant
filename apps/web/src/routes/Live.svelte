@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LabTimeline from "../components/LabTimeline.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import { fetchQueue, fetchLiveEvents, type LiveMessage as WsMessage } from "../lib/api/endpoints";
@@ -12,6 +13,9 @@
 
   let queue: QueueStatus = { running: null, pending: [] };
   let messages: WsMessage[] = [];
+  let queueSeen = false;
+  let queueFailed = false;
+  let checkedAt = "";
   let ws: WebSocket | null = null;
   let connectedTicker: string | null = null;
   let stepStates: Record<string, WsMessage> = {};
@@ -106,6 +110,9 @@
         const next = (await fetchQueue()) as QueueStatus;
         if (stopped) return;
         queue = next;
+        queueSeen = true;
+        queueFailed = false;
+        checkedAt = new Date().toISOString();
         if (!queue.running) {
           ws?.close();
           ws = null;
@@ -114,6 +121,7 @@
           connect(queue.running);
         }
       } catch {
+        if (!stopped) queueFailed = true;
         // Retry on the next poll; keep the last confirmed queue state.
       } finally {
         if (!stopped) timer = setTimeout(poll, 5000);
@@ -130,6 +138,47 @@
 
 </script>
 
+{#if isForecastLab}
+  <section class="op-page">
+    <header class="op-title">
+      <div>
+        <h1>실시간 실행</h1>
+        <p>가상매매 분석의 실행 종목과 단계별 진행 상황입니다.</p>
+      </div>
+      <a class="op-link" href="#/schedules">분석 예약 보기 →</a>
+    </header>
+    {#if queueFailed}<p role="alert" class="op-error">
+        대기열을 갱신하지 못했습니다. {queueSeen
+          ? "마지막 확인 상태를 표시합니다."
+          : "다시 연결하고 있습니다."}
+      </p>{/if}
+    <div class="op-summary">
+      <div>
+        <span>현재 실행</span><strong>{queue.running || (queueSeen ? "실행 없음" : "확인 중")}</strong
+        >
+      </div>
+      <div>
+        <span>다음 대기 종목</span><strong
+          >{queue.pending[0] || (queueSeen ? "대기 없음" : "확인 중")}</strong
+        >
+      </div>
+      <div><span>최근 확인 · 현지 시각</span><strong>{formatStepTime(checkedAt)}</strong></div>
+    </div>
+    {#if queue.pending.length}<section class="op-panel">
+        <h2>실행 대기열</h2>
+        <ol class="op-pending">
+          {#each queue.pending as symbol}<li>{symbol}</li>{/each}
+        </ol>
+      </section>{/if}
+    {#if queue.running || messages.length}
+      {#if !queue.running}<p class="op-hint">가장 최근에 수신한 실행 기록입니다.</p>{/if}
+      <LabTimeline groups={phaseGroups} states={stepStates} events={messages} />
+    {:else if queueSeen}<section class="op-panel">
+        <h2>단계별 진행</h2>
+        <p>분석이 시작되면 단계와 이벤트 시각을 표시합니다.</p>
+      </section>{/if}
+  </section>
+{:else}
 <section class="page" id="page-live">
   <div class="page-container">
     <div class="page-header">
@@ -216,3 +265,5 @@
     </div>
   </div>
 </section>
+
+{/if}

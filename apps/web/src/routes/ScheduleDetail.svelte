@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
+  import LabTimeline from "../components/LabTimeline.svelte";
+  import { operationTime, operationState } from "../lib/utils/operations";
   import { params } from "svelte-spa-router";
   import { fetchScheduleCycles, fetchScheduleCycleEvents } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
@@ -10,6 +13,8 @@
     ticker: string;
     interval_days: number;
     scheduled_cycle: number;
+    status?: string;
+    error_message?: string;
     created_at: string;
   };
 
@@ -173,6 +178,47 @@
 
 </script>
 
+{#if isForecastLab}
+  <section class="op-page">
+    <a class="op-link" href="#/schedules">← 분석 예약</a>
+    <header class="op-title">
+      <div>
+        <h1>{ticker} 실행 기록</h1>
+        <p>{$tickerNames[ticker] || ticker}의 최근 20개 회차를 확인할 수 있습니다.</p>
+      </div>
+      <a class="op-link" href="#/live">실시간 실행 →</a>
+    </header>
+    {#if loading}<p class="op-panel" role="status">회차를 불러오는 중입니다.</p>
+    {:else if cycleError}<p class="op-error" role="alert">{cycleError}</p>
+    {:else if !cycles.length}<p class="op-panel">이 종목에 기록된 실행 회차가 없습니다.</p>
+    {:else}
+      {@const cycle = cycles.find((c) => String(c.id) === selectedCycleId)}
+      <section class="op-panel">
+        <div class="op-toolbar">
+          <h2>실행 회차</h2>
+          <label
+            >회차 선택 <select
+              value={selectedCycleId}
+              on:change={(e) => handleCycleChange(e.currentTarget.value)}
+              >{#each cycles as item}<option value={String(item.id)}
+                  >{item.scheduled_cycle}회 · {operationTime(item.created_at)}</option
+                >{/each}</select
+            ></label
+          >
+        </div>
+        <div class="op-summary">
+          <div><span>선택 회차</span><strong>{cycle?.scheduled_cycle}회</strong></div>
+          <div><span>실행 상태</span><strong>{operationState(cycle?.status)}</strong></div>
+          <div><span>등록 시각 · 한국</span><strong>{operationTime(cycle?.created_at)}</strong></div>
+        </div>
+        {#if cycle?.error_message}<p class="op-error">{cycle.error_message}</p>{/if}
+      </section>
+      {#if loadingEvents}<p class="op-panel" role="status">이벤트를 불러오는 중입니다.</p>
+      {:else if eventsError}<p class="op-error" role="alert">{eventsError}</p>
+      {:else}<LabTimeline groups={phaseGroups} states={stepStates} {events} />{/if}
+    {/if}
+  </section>
+{:else}
 <section class="page" id="page-schedule-detail">
   <div class="page-container">
     <div class="page-header">
@@ -269,3 +315,5 @@
     </div>
   </div>
 </section>
+
+{/if}

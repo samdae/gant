@@ -95,8 +95,8 @@
                 {/if}
               {/if}
             </div>
-            <span class={`badge ${reflection.outcome === "win" ? "badge-gain" : "badge-loss"}`}>
-              {reflection.outcome === "win" ? "승" : "패"}
+            <span class={`badge ${reflection.outcome === "win" ? "badge-gain" : reflection.outcome === "loss" ? "badge-loss" : ""}`}>
+              {reflection.outcome === "win" ? "승" : reflection.outcome === "loss" ? "패" : "미확정"}
             </span>
           </div>
 
@@ -112,6 +112,7 @@
         </div>
       </div>
 
+      {#if !isForecastLab}
       <div class="card reflection-report-card">
         <div class="card-header">
           <h3>회고 리포트</h3>
@@ -121,6 +122,7 @@
         </div>
       </div>
 
+      {/if}
       <div class="card reflection-lessons-card">
         <div class="card-header">
           <h3>핵심 교훈</h3>
@@ -129,6 +131,18 @@
           {@html renderMd(reflection.key_lessons)}
         </div>
       </div>
+      {#if isForecastLab}
+      <div class="card reflection-report-card">
+        <div class="card-header">
+          <h3>회고 리포트</h3>
+        </div>
+        <div class="card-body reflection-report-body markdown-body">
+          {@html renderMd(reflection.reflection)}
+        </div>
+      </div>
+
+      <a class="back-link" href="#/reflections">검증 목록으로</a>
+      {/if}
     {/if}
   </div>
 </section>

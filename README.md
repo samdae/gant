@@ -10,6 +10,8 @@ Windows 통합 앱에서 예측 연구, 종목별 에이전트, 포트폴리오 
 
 데스크톱은 왼쪽 메뉴, 모바일은 상단의 전체 메뉴에서 화면을 전환한다. 분석 리포트는 종목명이나 티커로 찾을 수 있고, 상세 화면을 열면 최종 매매 판단이 먼저 보인다. 포트폴리오를 처음 사용할 때는 **초기 자본·통화 설정**을 선택한다. [원격 리포트](https://lab.daehun.app/#/reports) · [원격 포트폴리오](https://lab.daehun.app/#/portfolio)
 
+처음이라면 [서비스 소개](https://lab.daehun.app/#/about)에서 한 사례가 발행·채점되는 과정과 기억을 제공한 예측을 비교하는 법을 볼 수 있다. 리포트의 최근 분석 판단은 매수(적색)·관망(황갈색)·매도(청색)로 표시한다. 상세에서는 실행 에이전트의 판단과 제안 수량을 함께 읽을 수 있으며, 모의 체결 내역은 거래 상세에서 확인한다. [보유 종목](https://lab.daehun.app/#/positions) · [매매 검증](https://lab.daehun.app/#/reflections)
+
 - [기획과 인수 기준](docs/forecast-lab/PRODUCT.md)
 - [실험 규약·설계 결정·검증 기록](docs/forecast-lab/DESIGN.md)
 - [연구실 실행과 복구](docs/forecast-lab/OPERATIONS.md)

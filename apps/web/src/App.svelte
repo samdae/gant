@@ -51,6 +51,9 @@
     loadTickerNames();
   });
 
+  $: showMode = ["/", "/portfolio", "/positions"].includes($location) || $location.startsWith("/trade/");
+  $: showCurrency = ["/", "/portfolio", "/positions", "/reports", "/retrospective", "/schedules"].includes($location);
+
   let lastLocation = "";
   $: if ($location && $location !== lastLocation) {
     lastLocation = $location;
@@ -66,9 +69,9 @@
     <a class="skip" href="#workspace-content" on:click|preventDefault={() => document.getElementById("workspace-content")?.focus()}>본문으로 이동</a>
     <div class="workspace-body">
       <WorkspaceNav>
-        {#if $location !== "/research"}
-          {#key $location === "/portfolio"}<AppHeader />{/key}
-        {:else}
+        {#if showMode || showCurrency}
+          <AppHeader {showMode} {showCurrency} />
+        {:else if $location === "/research"}
           <a class="standalone" href="/research/">연구 단독 화면 <span aria-hidden="true">↗</span></a>
         {/if}
       </WorkspaceNav>
@@ -98,6 +101,9 @@
   }
   .workspace {
     --rail-width: 224px;
+    --content-max: 1320px;
+    --content-gutter: clamp(14px, 2.3vw, 32px);
+    --content-top: clamp(18px, 2.3vw, 32px);
     min-height: 100dvh;
     width: 100%;
     font-family: var(--fl-font);
@@ -107,7 +113,6 @@
   }
   .workspace-body { margin-left: var(--rail-width); min-width: 0; }
   .workspace .main-content { padding: 0; outline: none; }
-  .workspace :global(.page-container) { width:100%; max-width:none; padding:clamp(20px,3vw,42px) clamp(18px,3.5vw,48px) 48px; }
   .skip { position:fixed; top:-60px; left:8px; background:var(--fl-surface); color:var(--fl-accent); z-index:160; padding:8px 14px; }
   .skip:focus { top:8px; }
   .standalone { display:inline-flex; align-items:center; gap:7px; color:var(--fl-muted); font-size:12px; font-weight:600; padding:7px 4px; }

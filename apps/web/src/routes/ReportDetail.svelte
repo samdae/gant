@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DecisionBadge from "../components/DecisionBadge.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { params } from "svelte-spa-router";
   import { fetchReportsByTicker } from "../lib/api/endpoints";
@@ -219,7 +220,7 @@
 <section class="page" id="page-report-detail">
   <div class="page-container">
     <div class="page-header">
-      <button class="back-btn" on:click={() => history.back()}>&larr;</button>
+      <button class="back-btn" aria-label="이전 화면" on:click={() => history.back()}>&larr;</button>
       <h2>{ticker} {isForecastLab ? "분석 리포트" : "AI분석"}</h2>
     </div>
 
@@ -241,7 +242,9 @@
         </div>
       {/if}
       <div class="report-meta">
-        {#if decisionKey}
+        {#if isForecastLab}
+          <span class="report-date">분석 판단 <DecisionBadge value={report.decision_position || ""} /></span>
+        {:else if decisionKey}
           <span class={`decision-badge decision-${decisionKey.toLowerCase()}`}>{decisionLabel}</span>
         {:else}
           <span class="decision-badge decision-unknown">—</span>
@@ -252,9 +255,9 @@
         {/if}
         {#if report.portfolio_action}
           <span class="report-date">
-            실제 매매: {getDecisionLabel(normalizeDecision(report.portfolio_action))}
+            {#if isForecastLab}실행 에이전트 판단 <DecisionBadge value={report.portfolio_action} />{:else}실제 매매: {getDecisionLabel(normalizeDecision(report.portfolio_action))}{/if}
             {#if report.portfolio_shares != null}
-              · {formatShares(report.portfolio_shares)}주
+              · {isForecastLab ? "제안 수량 " : ""}{formatShares(report.portfolio_shares)}주
             {/if}
           </span>
         {/if}
