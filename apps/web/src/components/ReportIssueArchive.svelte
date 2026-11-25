@@ -106,9 +106,9 @@
 
 <style>
   .archive {
-    background: #fff;
-    color: #222321;
-    border-block: 1px solid #d9d5ce;
+    background: var(--fl-surface, #202124);
+    color: var(--fl-ink, #f4f2e9);
+    border-block: 1px solid var(--fl-line, #3b3d41);
     margin: 1rem 0;
     padding: 1rem;
   }
@@ -118,13 +118,13 @@
   }
   p,
   small {
-    color: #625d57;
+    color: var(--fl-muted, #b5b4ad);
     font-size: 0.86rem;
     line-height: 1.5;
   }
   .source {
     padding: 0.5rem 0;
-    border-top: 1px solid #e4dfd8;
+    border-top: 1px solid var(--fl-line, #3b3d41);
   }
   h4 {
     margin: 0;
@@ -139,7 +139,7 @@
     overflow-wrap: anywhere;
   }
   a {
-    color: #72223b;
+    color: var(--fl-forecast, #c3a9ff);
     text-underline-offset: 0.15em;
   }
   small {

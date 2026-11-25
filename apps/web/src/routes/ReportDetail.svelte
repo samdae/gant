@@ -3,7 +3,7 @@
   import ReportIssueArchive from "../components/ReportIssueArchive.svelte";
   import ReportDecisionEvidence from "../components/ReportDecisionEvidence.svelte";
   import { isForecastLab, isPublicViewer } from "../lib/workspace";
-  import { params } from "svelte-spa-router";
+  import { params, querystring } from "svelte-spa-router";
   import { fetchReportsByTicker } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
   import { renderNarrative } from "../lib/utils/researchMarkdown";
@@ -178,7 +178,7 @@
   };
 
   let loadSequence = 0;
-  const loadReport = async (t: string) => {
+  const loadReport = async (t: string, requested: string) => {
     const request = ++loadSequence;
     loading = true;
     error = "";
@@ -196,7 +196,7 @@
       if (request !== loadSequence || ticker !== t) return;
       reports = result;
       if (reports && reports.length > 0) {
-        selectReport(publicId || String(reports[0].id));
+        selectReport(publicId || requested || String(reports[0].id));
       } else {
         report = null;
         selectedReportId = "";
@@ -218,7 +218,8 @@
   }
 
   $: if (ticker) {
-    loadReport(ticker);
+    const requested = isForecastLab ? new URLSearchParams($querystring).get("report") || "" : "";
+    loadReport(ticker, /^[1-9]\d{0,15}$/.test(requested) ? requested : "");
   }
 
   $: decisionKey = getDecision(report);
@@ -234,7 +235,8 @@
 <section class="page" id="page-report-detail">
   <div class="page-container">
     <div class="page-header">
-      <button class="back-btn" aria-label="이전 화면" on:click={() => history.back()}>&larr;</button>
+      {#if isForecastLab}<a class="archive-back" href="#/reports">리포트 목록</a>
+      {:else}<button class="back-btn" aria-label="이전 화면" on:click={() => history.back()}>&larr;</button>{/if}
       <h2><InstrumentLabel ticker={report?.ticker || ticker} name={report?.display_name} inline /> {isForecastLab ? "분석 리포트" : "AI분석"}</h2>
     </div>
 
@@ -329,3 +331,7 @@
     {/if}
   </div>
 </section>
+
+<style>
+  .archive-back { display:inline-flex; align-items:center; color:var(--fl-accent, #d5f65e); font-size:.85rem; font-weight:600; }
+</style>

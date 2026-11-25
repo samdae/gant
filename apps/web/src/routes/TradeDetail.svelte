@@ -1033,7 +1033,9 @@
             >
           </table>
         </div>
-      {:else}<div class="review-state">이 계좌에 기록된 체결 내역이 없습니다.</div>{/if}
+      {:else}<div class="review-state">이 계좌에 기록된 체결 내역이 없습니다.
+        <a href={"#/reports/" + encodeURIComponent(ticker.toLowerCase())}>이 종목의 분석 리포트</a>
+      </div>{/if}
     {:else if $viewMode === "portfolio" && tab === "trades"}
       <div class="history-list">
         {#if portfolioTrades.length === 0}

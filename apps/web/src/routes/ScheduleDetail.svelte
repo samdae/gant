@@ -187,7 +187,7 @@
         <h1><InstrumentLabel {ticker} /></h1>
         <p>최근 20개 분석 회차의 실행 기록입니다.</p>
       </div>
-      <a class="op-link" href="#/schedules">← 전체 예약</a>
+
     </header>
     {#if loading}<p class="op-panel" role="status">회차를 불러오는 중입니다.</p>
     {:else if cycleError}<p class="op-error" role="alert">{cycleError}</p>

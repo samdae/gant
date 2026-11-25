@@ -1,0 +1,94 @@
+/* Bundle with the application so a deployment switches layout and tokens together. */
+html.gant-workspace {
+  --fl-bg: #18191b;
+  --fl-backdrop: #131415;
+  --fl-surface: #202124;
+  --fl-surface-subtle: #27282b;
+  --fl-ink: #f4f2e9;
+  --fl-muted: #b5b4ad;
+  --fl-line: #3b3d41;
+  --fl-accent: #d5f65e;
+  --fl-on-accent: #171912;
+  --fl-accent-hover: #e1ff81;
+  --fl-accent-soft: #313621;
+  --fl-forecast: #c3a9ff;
+  --fl-forecast-soft: #332c41;
+  --fl-nav: #151617;
+  --fl-nav-ink: var(--fl-ink);
+  --fl-nav-muted: #aaa9a1;
+  --fl-chart-bg: var(--fl-backdrop);
+  --fl-chart-line: var(--fl-accent);
+  --fl-down: #ff9a85;
+  --fl-positive: var(--fl-accent);
+  --fl-negative: var(--fl-down);
+  --fl-font: Inter, "Noto Sans KR", "Apple SD Gothic Neo", system-ui,
+    "Malgun Gothic", sans-serif;
+  --fl-display: var(--fl-font);
+  --fl-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --fl-radius: 8px;
+  --fl-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  --bg: var(--fl-bg);
+  --bg-card: var(--fl-surface);
+  --bg-header: var(--fl-surface);
+  --bg-input: var(--fl-backdrop);
+  --surface: var(--fl-surface);
+  --text: var(--fl-ink);
+  --text-primary: var(--fl-ink);
+  --text-secondary: var(--fl-muted);
+  --text-dim: var(--fl-muted);
+  --primary: var(--fl-accent);
+  --primary-hover: var(--fl-accent-hover);
+  --primary-border: #626c37;
+  --primary-bg: var(--fl-accent-soft);
+  --border: var(--fl-line);
+  --border-light: var(--fl-line);
+  --bg-modal: rgb(0 0 0 / 66%);
+  --fl-sell: #acd0df;
+  color-scheme: dark;
+  background: var(--fl-bg);
+  scroll-padding-bottom: max(76px, env(safe-area-inset-bottom));
+}
+/* Navigation should reveal the destination immediately, especially under the fixed mobile tabs. */
+.gant-workspace .workspace .page {
+  animation: none;
+}
+
+html.gant-workspace :is(input, select, textarea) {
+  color-scheme: dark;
+  accent-color: var(--fl-accent);
+}
+html.gant-workspace select option {
+  background: var(--fl-surface);
+  color: var(--fl-ink);
+}
+html.gant-workspace ::selection {
+  background: #53642d;
+  color: var(--fl-ink);
+}
+html.gant-workspace :focus-visible {
+  outline-color: var(--fl-accent);
+}
+html.gant-workspace
+  .workspace
+  :is(.btn-primary, .op-primary, .modal-footer .btn-primary) {
+  background: var(--fl-accent);
+  border-color: var(--fl-accent);
+  color: var(--fl-on-accent);
+}
+html.gant-workspace
+  .workspace
+  :is(.input, .select-trigger, .select-panel, .modal .form-group input) {
+  color: var(--fl-ink);
+  background: var(--fl-backdrop);
+  border-color: var(--fl-line);
+}
+html.gant-workspace .workspace input::placeholder,
+html.gant-workspace .workspace textarea::placeholder {
+  color: var(--fl-muted);
+  opacity: 0.9;
+}
+html.gant-workspace .workspace :is(.modal, .retro-modal, .select-panel) {
+  background: var(--fl-surface);
+  color: var(--fl-ink);
+  border-color: var(--fl-line);
+}

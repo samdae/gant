@@ -61,9 +61,18 @@
 
 <section class="forecast-reports" aria-label="확률 예측 리포트">
   <h3>확률 예측</h3>
+  {#if visible.length}
+    <div class="list-columns" aria-hidden="true">
+      <span>회사 · 사례</span><span>상승 확률</span><span>관측일</span>
+    </div>
+  {/if}
   {#each visible as row (row.id)}
     <a href={"#/research/" + row.id}>
-      <InstrumentLabel ticker={row.ticker} />
+      <span class="subject"
+        ><InstrumentLabel ticker={row.ticker} /><small
+          >{row.market === "kr" ? "한국" : "미국"} · 사례 #{row.id}</small
+        ></span
+      >
       <span class="figure"
         ><small>단일 모델 상승 확률</small><strong
           >{probability(row.forecast_probabilities?.single)}</strong
@@ -94,10 +103,33 @@
 </section>
 
 <style>
+  .list-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.5fr) minmax(
+        6rem,
+        0.45fr
+      );
+    gap: 0.75rem;
+    padding: 0.45rem 1rem;
+    background: var(--fl-surface-subtle, #27282b);
+    color: var(--fl-muted, #b5b4ad);
+    font-size: 0.8rem;
+  }
+  .subject {
+    display: grid;
+    gap: 0.25rem;
+  }
+  @media (max-width: 520px) {
+    .list-columns {
+      display: none;
+    }
+  }
   .forecast-reports {
     margin-block: 1rem 1.5rem;
-    border-block: 1px solid #d9d5ce;
-    background: #fff;
+    border: 1px solid var(--fl-line, #3b3d41);
+    border-radius: 0.25rem;
+    overflow: hidden;
+    background: var(--fl-surface, #202124);
   }
   h3 {
     margin: 0;
@@ -113,25 +145,47 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.85rem 1rem;
-    border-top: 1px solid #e7e2dc;
+    border-top: 1px solid var(--fl-line, #3b3d41);
     text-decoration: none;
-    color: #252423;
+    color: var(--fl-ink, #f4f2e9);
   }
   a:hover,
   a:focus-visible {
-    background: #f8f4f2;
+    background: var(--fl-surface-subtle, #27282b);
   }
   small {
     display: block;
-    color: #635f59;
+    color: var(--fl-muted, #b5b4ad);
     font-size: 0.77rem;
+  }
+  .figure small,
+  .day small {
+    display: none;
+  }
+  @media (max-width: 520px) {
+    .figure small,
+    .day small {
+      display: block;
+    }
+  }
+  .figure strong {
+    font-size: clamp(1.15rem, 2vw, 1.55rem);
+    letter-spacing: -0.025em;
+    line-height: 1.3;
+  }
+  @media (min-width: 521px) {
+    .figure,
+    .day,
+    .list-columns span:not(:first-child) {
+      text-align: right;
+    }
   }
   .figure,
   .day {
     font-variant-numeric: tabular-nums;
   }
   strong {
-    color: #852641;
+    color: var(--fl-forecast, #c3a9ff);
   }
   p,
   button {
@@ -144,7 +198,7 @@
     .day {
       grid-column: 1 / -1;
       font-size: 0.8rem;
-      color: #635f59;
+      color: var(--fl-muted, #b5b4ad);
     }
     .day small {
       display: inline;

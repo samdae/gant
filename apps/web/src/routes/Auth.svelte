@@ -31,7 +31,7 @@
 
 <section class="page" id="page-auth">
   <div class="page-container" style="max-width:420px">
-    <form class="card" style="padding:22px" on:submit|preventDefault={save}>
+    <form class="card" class:admin-form={isForecastLab} style="padding:22px" on:submit|preventDefault={save}>
       <div class="page-header" style="margin-bottom:12px">
         <h2>관리자 인증</h2>
       </div>
@@ -45,8 +45,13 @@
 
       <div class="modal-footer" style="justify-content:flex-end;margin-top:16px">
         <button type="button" class="btn btn-ghost" on:click={cancel}>취소</button>
-        <button type="submit" class="btn btn-primary">저장</button>
+        <button type="submit" class="btn btn-primary">{isForecastLab ? "인증 정보 저장" : "저장"}</button>
       </div>
     </form>
   </div>
 </section>
+
+<style>
+  .admin-form {background:var(--fl-surface, #202124); color:var(--fl-ink, #f4f2e9); border:1px solid var(--fl-line, #3b3d41); border-radius:.65rem;}
+  .admin-form input {width:100%; font:inherit; border-color:var(--fl-line, #3b3d41);}
+</style>

@@ -2,80 +2,123 @@
   import { location } from "svelte-spa-router";
   import { isPublicViewer } from "../lib/workspace";
   import { sections, currentPage } from "../lib/workspaceNavigation";
-
-  export let dismiss: () => void;
+  import GantMark from "./GantMark.svelte";
+  import WorkspaceIcon from "./WorkspaceIcon.svelte";
+  export let drawer = false;
+  export let dismiss: (() => void) | undefined = undefined;
+  export let onNavigate: (() => void) | undefined = undefined;
   $: active = currentPage($location).page.route;
 </script>
 
-<header class="drawer-head">
-  <strong>전체 메뉴</strong><button
-    type="button"
-    on:click={dismiss}
-    aria-label="메뉴 닫기">닫기</button
-  >
-</header>
-<nav aria-label="전체 메뉴">
-  {#each sections as section}
-    <section>
-      <h2>{section.name}</h2>
-      {#each section.pages.filter((page) => !isPublicViewer || page.route !== "/auth") as page}
-        <a
-          href={"#" + page.route}
-          on:click={dismiss}
-          aria-current={active === page.route ? "page" : undefined}
-          >{page.label}</a
-        >
-      {/each}
-    </section>
-  {/each}
-</nav>
+<div class="rail-body" class:as-drawer={drawer}>
+  <header class="rail-brand">
+    <a href="#/research" on:click={onNavigate} aria-label="GANT 연구 홈"
+      ><GantMark size={31} /><b>GANT</b></a
+    >
+    {#if drawer}<button aria-label="메뉴 닫기" type="button" on:click={dismiss}
+        ><WorkspaceIcon name="close" /></button
+      >{/if}
+  </header>
+  <nav aria-label={drawer ? "전체 메뉴" : "주 탐색"}>
+    {#each sections as section}
+      <section>
+        <h2>{section.name}</h2>
+        {#each section.pages.filter((page) => !isPublicViewer || page.route !== "/auth") as page}
+          <a
+            href={"#" + page.route}
+            aria-current={active === page.route ? "page" : undefined}
+            on:click={onNavigate}
+          >
+            <WorkspaceIcon name={page.route.slice(1)} /><span>{page.label}</span
+            >
+          </a>
+        {/each}
+      </section>
+    {/each}
+  </nav>
+</div>
 
 <style>
-  .drawer-head {
+  .rail-body {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    color: var(--fl-ink);
+    background: var(--fl-nav);
+  }
+  .rail-brand {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 15px 22px;
-    border-bottom: 2px solid var(--fl-ink);
-    font-size: 19px;
+    min-height: 76px;
+    padding: 0 22px;
+    flex: none;
   }
-  button {
-    font: inherit;
-    font-size: 13px;
-    padding: 8px 12px;
-    border: 1px solid var(--fl-line);
-    background: white;
+  .rail-brand a {
+    display: flex;
+    align-items: center;
+    gap: 9px;
     color: var(--fl-ink);
+    text-decoration: none;
+  }
+  .rail-brand b {
+    font: 750 23px/1 var(--fl-font);
+    letter-spacing: -1.5px;
+    transform: skewX(-7deg);
+  }
+  .rail-brand button {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    background: none;
+    color: var(--fl-muted);
+    cursor: pointer;
   }
   nav {
-    padding: 4px 22px 20px;
+    overflow: auto;
+    flex: 1;
+    scrollbar-width: thin;
+    padding: 3px 12px 18px;
   }
-  section {
-    display: flex;
-    gap: 8px 18px;
-    flex-wrap: wrap;
-    padding: 13px 0;
-    border-bottom: 1px solid var(--fl-line);
+  section + section {
+    margin-top: 14px;
   }
   h2 {
-    font-size: 13px;
-    color: var(--fl-accent);
-    margin: 0;
-    width: 100%;
+    font: 650 11px/1.5 var(--fl-font);
+    color: var(--fl-muted);
+    margin: 0 10px 4px;
   }
-  a {
-    display: inline-flex;
+  nav a {
+    display: flex;
     align-items: center;
-    min-height: 36px;
+    gap: 10px;
+    min-height: 34px;
+    padding: 4px 10px;
+    border-radius: 7px;
     color: var(--fl-ink);
-    font-size: 15px;
+    font: 550 14px/1.3 var(--fl-font);
+    text-decoration: none;
   }
-  a[aria-current] {
-    font-weight: 800;
-    text-decoration: underline;
+  nav a:hover {
+    background: var(--fl-surface-subtle);
   }
-  nav a,
-  .drawer-head button {
+  nav a[aria-current] {
+    color: var(--fl-accent);
+    background: var(--fl-accent-soft);
+    box-shadow: inset 2px 0 var(--fl-accent);
+    font-weight: 720;
+  }
+  nav a:focus-visible,
+  .rail-brand :is(a, button):focus-visible {
+    outline: 2px solid var(--fl-accent);
+    outline-offset: -2px;
+  }
+  .as-drawer nav a {
     min-height: 44px;
+  }
+  .as-drawer .rail-brand {
+    min-height: 60px;
   }
 </style>

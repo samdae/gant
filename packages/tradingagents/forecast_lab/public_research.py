@@ -122,10 +122,13 @@ def prices(rows, cutoff):
             continue
         day = iso_day(row.get("date"))
         if day and day <= cutoff and number(row.get("close"), 0) is not None:
+            volume = row.get("volume")
+            if type(volume) is float and volume.is_integer() and 0 <= volume <= 2**53 - 1:
+                volume = int(volume)
             result.append(
                 {
                     "date": day,
-                    "volume": count(row.get("volume")),
+                    "volume": count(volume),
                     **{
                         k: number(row.get(k), 0)
                         for k in ("open", "high", "low", "close")

@@ -13,11 +13,16 @@ export default defineConfig(({ mode }) => ({
   } : undefined,
   plugins: [
     {
-      name: "forecast-lab-local-fonts",
+      name: "forecast-lab-document",
       enforce: "pre",
       apply: () => loadEnv(mode, ".", "VITE_").VITE_FORECAST_LAB === "1",
       transformIndexHtml(html) {
-        return html.replace(/<link\b[^>]*https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*>\s*/g, "");
+        return html
+          .replace('<html lang="en">', '<html lang="ko" class="gant-workspace">')
+          .replace(/(<meta name="viewport"\s+content=")[^"]*/, '$1width=device-width, initial-scale=1, viewport-fit=cover')
+          .replace('<meta name="theme-color" content="#0d0f13" />', '<meta name="theme-color" content="#18191b" />\n  <meta name="color-scheme" content="dark" />')
+          .replace("<title>GANT</title>", "<title>GANT &middot; Forecast Lab</title>")
+          .replace(/<link\b[^>]*https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*>\s*/g, "");
       },
     },
     svelte(),

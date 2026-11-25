@@ -1,257 +1,253 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { onMount, tick } from "svelte";
   import { location } from "svelte-spa-router";
-  import { currentPage, sections } from "../lib/workspaceNavigation";
+  import { currentPage } from "../lib/workspaceNavigation";
   import { isPublicViewer } from "../lib/workspace";
   import WorkspaceRail from "./WorkspaceRail.svelte";
+  import WorkspaceIcon from "./WorkspaceIcon.svelte";
+  import GantMark from "./GantMark.svelte";
 
-  let drawer: HTMLDialogElement;
+  const tabs = [
+    { href: "/research", label: "연구", group: "예측 연구", icon: "research" },
+    { href: "/reports", label: "리포트", group: "분석 기록", icon: "reports" },
+    {
+      href: "/portfolio",
+      label: "모의계좌",
+      group: "모의 거래",
+      icon: "portfolio",
+    },
+  ];
+  let dialog: HTMLDialogElement;
   let opener: HTMLButtonElement;
   let open = false;
+  let viaLink = false;
   $: context = currentPage($location);
 
-  async function closeMenu() {
-    drawer.close();
-    await tick();
-    opener?.focus();
+  function showMenu() {
+    viaLink = false;
+    dialog.showModal();
+    open = true;
+    dialog.querySelector<HTMLButtonElement>("button")?.focus();
   }
+  function finish(navigated = false) {
+    viaLink = navigated;
+    dialog.close();
+  }
+  async function closed() {
+    open = false;
+    await tick();
+    if (viaLink)
+      document
+        .getElementById("workspace-content")
+        ?.focus({ preventScroll: true });
+    else if (opener?.offsetParent) opener.focus({ preventScroll: true });
+  }
+  onMount(() => {
+    const desktop = window.matchMedia("(min-width: 901px)");
+    const resize = () => {
+      if (desktop.matches && dialog.open) finish(true);
+    };
+    desktop.addEventListener("change", resize);
+    return () => desktop.removeEventListener("change", resize);
+  });
 </script>
 
-<header class="folio-mast">
-  <div class="mast-inner">
-    <a class="brand" href="#/research" aria-label="GANT Forecast Lab 연구 홈"
-      ><span>GANT<span class="brand-dot">.</span></span><small
-        >Forecast Lab</small
-      ></a
+<aside class="desktop-rail"><WorkspaceRail /></aside>
+<header class="context-bar">
+  <div class="context-inner">
+    <a href="#/research" class="mobile-brand" aria-label="GANT 연구 홈"
+      ><GantMark size={26} /><b>GANT</b></a
     >
-    <nav class="desktop-rail" aria-label="주 탐색">
-      {#each sections as section}
-        <a
-          href={"#" + section.pages[0].route}
-          class:active={context.section.name === section.name}>{section.name}</a
-        >
-      {/each}
-    </nav>
-    <span class="access">{isPublicViewer ? "공개 열람" : "운영 콘솔"}</span>
-    <button
-      class="menu-toggle"
-      type="button"
-      bind:this={opener}
-      aria-label="전체 메뉴 열기"
-      aria-expanded={open}
-      aria-controls="workspace-drawer"
-      on:click={() => {
-        drawer.showModal();
-        open = true;
-      }}>메뉴 <span aria-hidden="true">☰</span></button
-    >
-  </div>
-</header>
-<div class="folio-subnav">
-  <div class="sub-inner">
-    <nav aria-label={context.section.name + " 세부 메뉴"}>
-      {#each context.section.pages.filter((p) => !isPublicViewer || p.route !== "/auth") as page}
-        <a
-          href={"#" + page.route}
-          aria-current={context.page.route === page.route ? "page" : undefined}
-          >{page.label}</a
-        >
-      {/each}
+    <nav aria-label="현재 위치" class="crumb">
+      <span>{context.section.name}</span><WorkspaceIcon
+        name="chevron"
+        size={12}
+      /><strong>{context.page.label}</strong>
     </nav>
     <div class="actions"><slot /></div>
+    <div class="access">
+      <WorkspaceIcon name={isPublicViewer ? "globe" : "auth"} size={15} /><span
+        >{isPublicViewer ? "공개 열람" : "운영 콘솔"}</span
+      >
+    </div>
   </div>
-</div>
+</header>
+<nav class="phone-tabs" aria-label="모바일 주 탐색">
+  {#each tabs as tab}<a
+      href={"#" + tab.href}
+      aria-current={context.section.name === tab.group ? "location" : undefined}
+      ><WorkspaceIcon name={tab.icon} size={21} /><span>{tab.label}</span></a
+    >{/each}
+  <button
+    type="button"
+    bind:this={opener}
+    aria-controls="workspace-drawer"
+    aria-expanded={open}
+    aria-label="전체 메뉴 열기"
+    class:active={open ||
+      !tabs.some((tab) => tab.group === context.section.name)}
+    on:click={showMenu}
+    ><WorkspaceIcon name="menu" size={21} /><span>전체 메뉴</span></button
+  >
+</nav>
 <dialog
   id="workspace-drawer"
   aria-label="전체 메뉴"
-  bind:this={drawer}
-  on:close={() => (open = false)}
+  bind:this={dialog}
+  on:close={closed}
 >
-  <WorkspaceRail dismiss={closeMenu} />
+  <WorkspaceRail
+    drawer
+    dismiss={() => finish()}
+    onNavigate={() => finish(true)}
+  />
 </dialog>
 
 <style>
-  .folio-mast {
-    background: #272722;
-    color: #fff;
-  }
-  .mast-inner,
-  .sub-inner {
-    max-width: 1280px;
-    margin: auto;
-    padding-inline: var(--content-gutter);
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-  }
-  .mast-inner {
-    gap: clamp(20px, 4vw, 64px);
-    min-height: 66px;
-  }
-  .brand {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    color: #fff;
-    white-space: nowrap;
-  }
-  .brand > span {
-    font:
-      700 38px/0.9 Georgia,
-      "Times New Roman",
-      serif;
-    letter-spacing: -2.3px;
-  }
-  .brand-dot {
-    color: #e1a7ac;
-  }
-  .brand small {
-    font:
-      italic 16px Georgia,
-      serif;
-    color: #eae7dd;
-  }
   .desktop-rail {
-    display: flex;
-    align-self: stretch;
-    gap: clamp(18px, 2.5vw, 34px);
+    position: fixed;
+    left: 0;
+    inset-block: 0;
+    width: var(--rail-width);
+    border-right: 1px solid var(--fl-line);
+    z-index: 40;
   }
-  .desktop-rail a {
-    color: #d6d4ca;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    position: relative;
-    padding: 0 2px;
-    white-space: nowrap;
-  }
-  .desktop-rail a.active {
-    color: white;
-    font-weight: 750;
-  }
-  .desktop-rail a.active::after {
-    content: "";
-    position: absolute;
-    height: 3px;
-    inset: auto 0 0;
-    background: #d9a3ae;
-  }
-  .access {
-    margin-left: auto;
-    font-size: 12px;
-    color: #dedacf;
-    white-space: nowrap;
-  }
-  .menu-toggle {
-    display: none;
-    background: none;
-    border: 1px solid #77756d;
-    color: #fff;
-    padding: 7px 10px;
-    font: inherit;
-    font-size: 13px;
-  }
-  .folio-subnav {
-    background: #fffefa;
+  .context-bar {
+    background: var(--fl-bg);
     border-bottom: 1px solid var(--fl-line);
   }
-  .sub-inner {
-    min-height: 42px;
-    gap: 12px;
-    justify-content: space-between;
-    flex-wrap: wrap;
-  }
-  .sub-inner nav {
-    display: flex;
-    gap: clamp(15px, 2.4vw, 30px);
-  }
-  .sub-inner a {
-    font-size: 13px;
-    min-height: 41px;
+  .context-inner {
     display: flex;
     align-items: center;
-    color: var(--fl-muted);
-    border-bottom: 2px solid transparent;
+    gap: 15px;
+    padding: 8px var(--content-gutter);
+    min-height: 55px;
   }
-  .sub-inner a[aria-current] {
-    color: var(--fl-accent);
-    border-color: currentColor;
-    font-weight: 750;
+  .crumb,
+  .access,
+  .mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--fl-muted);
+    white-space: nowrap;
+  }
+  .crumb {
+    font-size: 13px;
+  }
+  .crumb strong {
+    color: var(--fl-ink);
+    font-weight: 650;
+  }
+  .actions {
+    margin-left: auto;
   }
   .actions:empty {
     display: none;
   }
-  .actions {
-    padding: 4px 0;
+  .access {
+    margin-left: auto;
+    font-size: 12px;
   }
-  .mast-inner a:focus-visible,
-  .menu-toggle:focus-visible {
-    outline: 2px solid white;
-    outline-offset: 3px;
+  .actions:not(:empty) + .access {
+    margin-left: 0;
+    border-left: 1px solid var(--fl-line);
+    padding-left: 14px;
+  }
+  .mobile-brand,
+  .phone-tabs {
+    display: none;
   }
   dialog {
     position: fixed;
-    inset: 10px 10px auto auto;
+    inset: 0 0 0 auto;
     margin: 0;
-    padding: 0;
+    width: min(370px, 88vw);
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    overflow: hidden;
+    background: var(--fl-surface);
     border: 0;
-    width: min(380px, calc(100vw - 20px));
-    max-height: 90dvh;
-    overflow-y: auto;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
     color: var(--fl-ink);
-    background: #fffefa;
-    box-shadow: 0 12px 60px #24231c40;
+    box-shadow: -10px 0 50px #0005;
   }
   dialog::backdrop {
-    background: #1d191752;
+    background: #0009;
   }
-  @media (max-width: 830px) {
-    .desktop-rail {
+  @media (max-width: 900px) {
+    .desktop-rail,
+    .crumb {
       display: none;
     }
-    .menu-toggle {
-      display: block;
+    .mobile-brand {
+      display: flex;
+      color: var(--fl-ink);
+      text-decoration: none;
     }
-    .mast-inner {
-      min-height: 58px;
-      gap: 15px;
+    .mobile-brand b {
+      transform: skewX(-7deg);
+      font-size: 19px;
+      letter-spacing: -1px;
     }
-    .brand > span {
-      font-size: 32px;
+    .context-inner {
+      min-height: 50px;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      padding-block: 5px;
     }
-    .brand small {
-      font-size: 14px;
+    .actions:not(:empty) + .access {
+      display: none;
     }
-    .sub-inner {
-      gap: 0 15px;
-    }
-    .actions {
-      margin-left: auto;
-    }
-  }
-  @media (max-width: 520px) {
-    .sub-inner {
-      align-items: center;
-    }
-    .actions:not(:empty) {
-      width: 100%;
+    .phone-tabs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      position: fixed;
+      z-index: 60;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      box-sizing: border-box;
+      padding: 4px max(5px, env(safe-area-inset-right))
+        max(4px, env(safe-area-inset-bottom))
+        max(5px, env(safe-area-inset-left));
+      background: var(--fl-surface);
       border-top: 1px solid var(--fl-line);
-      padding: 6px 0;
     }
-    .access {
-      font-size: 11px;
+    .phone-tabs :is(a, button) {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      flex-direction: column;
+      min-height: 48px;
+      color: var(--fl-muted);
+      font: 550 11px/1.3 var(--fl-font);
+      background: none;
+      border: 0;
+      text-decoration: none;
     }
-  }
-  @media (max-width: 830px) {
-    .menu-toggle,
-    .sub-inner nav a {
-      min-height: 44px;
+    .phone-tabs a,
+    .phone-tabs button {
+      position: relative;
     }
-    .menu-toggle {
-      padding-inline: 12px;
+    .phone-tabs :is([aria-current], .active)::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      width: 22px;
+      height: 2px;
+      background: var(--fl-accent);
     }
-    .sub-inner nav a {
-      font-size: 14px;
+    .phone-tabs :is([aria-current], .active) {
+      color: var(--fl-accent);
+      font-weight: 750;
+    }
+    .phone-tabs :focus-visible,
+    .mobile-brand:focus-visible {
+      outline: 2px solid var(--fl-accent);
+      outline-offset: -2px;
     }
   }
 </style>

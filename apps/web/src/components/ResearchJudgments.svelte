@@ -12,7 +12,19 @@
   import ResearchMemory from "./ResearchMemory.svelte";
   import InstrumentLabel from "./InstrumentLabel.svelte";
   export let data: ResearchCase;
-  const basisLabels: Record<string,string> = {same_ticker: "같은 종목", equity_peer: "동종주 동조", etf_exposure: "같은 기초자산 ETF"};
+  const panels: Record<string, HTMLDetailsElement> = {};
+  export function openMethod(key: string) {
+    const panel = panels[key];
+    if (!panel) return;
+    panel.open = true;
+    panel.querySelector("summary")?.focus();
+    panel.scrollIntoView({ block: "start" });
+  }
+  const basisLabels: Record<string, string> = {
+    same_ticker: "같은 종목",
+    equity_peer: "동종주 동조",
+    etf_exposure: "같은 기초자산 ETF",
+  };
   const roles: Record<string, string> = {
     create_bull_researcher: "강세 분석가",
     create_bear_researcher: "약세 분석가",
@@ -48,12 +60,14 @@
       data.selected_memories?.[key] ||
       (key === "memory" ? data.selected_memory : null)}
     {@const select = arm?.audit?.sector_selection_v1}
-    <details class="model">
+    <details class="model" bind:this={panels[key]}>
       <summary
         ><strong>{methodName(key)}</strong>
-          {#if arm?.status === "published" && typeof arm.probability === "number" && arm.probability >= 0 && arm.probability <= 1}
-            <i class="scale" aria-hidden="true"><i style:width={arm.probability * 100 + "%"}></i></i>
-          {/if}<span
+        {#if arm?.status === "published" && typeof arm.probability === "number" && arm.probability >= 0 && arm.probability <= 1}
+          <i class="scale" aria-hidden="true"
+            ><i style:width={arm.probability * 100 + "%"}></i></i
+          >
+        {/if}<span
           >{arm?.status === "published"
             ? probability(arm.probability)
             : arm
@@ -65,7 +79,8 @@
         <p class="meta">
           {arm.model === "deterministic"
             ? "통계 기준선"
-            : arm.model || "모델 미기록"}{#if arm.version} · {arm.version}{/if} · {timeLabel(arm.published_at)} 발행 {arm.brier !=
+            : arm.model || "모델 미기록"}{#if arm.version}
+            · {arm.version}{/if} · {timeLabel(arm.published_at)} 발행 {arm.brier !=
           null
             ? "· Brier " + arm.brier.toFixed(3)
             : ""}
@@ -93,7 +108,8 @@
           label="선택한 과거 기억"
         />{/if}
       {#if select}<p class="meta">
-          선택 기준 · {basisLabels[select.basis || ""] || "미기록"}{#if select.selected_ticker}
+          선택 기준 · {basisLabels[select.basis || ""] ||
+            "미기록"}{#if select.selected_ticker}
             · <InstrumentLabel
               ticker={select.selected_ticker}
               inline
@@ -172,7 +188,7 @@
 <style>
   .sheet {
     padding: clamp(16px, 2vw, 26px) 0;
-    border-top: 1px solid #d7d1ca;
+    border-top: 1px solid var(--fl-line);
   }
   .sheet h3 {
     margin: 0 0 0.6rem;
@@ -185,7 +201,7 @@
     margin: 0.5rem 0;
   }
   .model {
-    border-bottom: 1px solid #e1dbd4;
+    border-bottom: 1px solid var(--fl-line);
     padding: 10px 0;
   }
   .model > summary {
@@ -197,30 +213,46 @@
   .model > summary:before {
     content: "▸";
     font-size: 0.8rem;
-    color: #852641;
+    color: var(--fl-forecast);
   }
   .model[open] > summary:before {
     content: "▾";
   }
-  .scale { display:flex; width:clamp(35px,13vw,150px); margin-left:auto; align-self:center; height:5px; background:#eee8e4; }
-  .scale i { background:#8a304a; }
-  .model > summary .scale + span { margin-left:0; min-width:3.5em; text-align:right; }
+  .scale {
+    display: flex;
+    width: clamp(35px, 13vw, 150px);
+    margin-left: auto;
+    align-self: center;
+    height: 5px;
+    background: #49464c;
+  }
+  .scale i {
+    background: var(--fl-forecast);
+  }
+  .model > summary .scale + span {
+    margin-left: 0;
+    min-width: 3.5em;
+    text-align: right;
+  }
   .model > summary span {
     margin-left: auto;
     font-weight: bold;
-    color: #75263d;
+    color: var(--fl-forecast);
   }
   .turn {
     margin: 8px 0;
     padding: 8px 12px;
-    border-left: 2px solid #d6c2bc;
+    border-left: 2px solid var(--fl-line);
   }
   .turn summary {
     cursor: pointer;
   }
   .meta {
-    color: #615854;
+    color: var(--fl-muted);
     font-size: 0.82rem;
+  }
+  .narrative :global(a) {
+    color: var(--fl-accent);
   }
   .narrative {
     font-size: 0.94rem;

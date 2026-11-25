@@ -117,7 +117,7 @@
       {:else if error}
         <div class="card error-text" style="padding:16px">{error}</div>
       {:else if items.length === 0}
-        <div class="card" style="padding:16px;color:var(--text-dim)">완료된 회고분석이 없습니다.</div>
+        <div class="card" style="padding:16px;color:var(--text-dim)">완료된 회고분석이 없습니다. {#if isForecastLab}<a href="#/retrospective">회고 분석 목록</a>{/if}</div>
       {:else}
         <div class="form-label"><label for="cycle-select">회차</label>
             <SelectMenu id="cycle-select"

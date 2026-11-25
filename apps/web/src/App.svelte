@@ -99,9 +99,9 @@
     transform: translateX(-50%);
   }
   .workspace {
-    --rail-width: 0px;
-    --content-max: 1280px;
-    --content-gutter: clamp(14px, 2.3vw, 32px);
+    --rail-width: clamp(192px, 15vw, 218px);
+    --content-max: 1440px;
+    --content-gutter: clamp(16px, 2.3vw, 36px);
     --content-top: clamp(18px, 2.3vw, 32px);
     min-height: 100dvh;
     width: 100%;
@@ -114,5 +114,7 @@
   .workspace .main-content { padding: 0; outline: none; }
   .skip { position:fixed; top:-60px; left:8px; background:var(--fl-surface); color:var(--fl-accent); z-index:160; padding:8px 14px; }
   .skip:focus { top:8px; }
-  @media(max-width:900px) { .workspace-body { margin-left:0; } }
+  @media(max-width:900px) {
+    .workspace-body { margin-left:0; padding-bottom:calc(67px + env(safe-area-inset-bottom)); }
+  }
 </style>

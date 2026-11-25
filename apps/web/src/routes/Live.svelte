@@ -153,6 +153,9 @@
           ? "마지막 확인 상태를 표시합니다."
           : "다시 연결하고 있습니다."}
       </p>{/if}
+    {#if queueSeen && !queue.running && !queue.pending.length}
+      <section class="op-panel"><h2>실행 중인 분석 없음</h2><p class="op-hint">최근 확인 {formatStepTime(checkedAt)} · 대기 중인 종목이 없습니다.</p></section>
+    {:else}
     <div class="op-summary">
       <div>
         <span>현재 실행</span>
@@ -166,17 +169,17 @@
       </div>
       <div><span>최근 확인 · 현지 시각</span><strong>{formatStepTime(checkedAt)}</strong></div>
     </div>
+    {/if}
     {#if queue.pending.length}<section class="op-panel">
         <h2>실행 대기열</h2>
         <ol class="op-pending">
           {#each queue.pending as symbol}<li><InstrumentLabel ticker={symbol} /></li>{/each}
         </ol>
       </section>{/if}
-    {#if isPublicViewer}{#if queueSeen && !queue.running && !queue.pending.length}<section class="op-panel folio-empty"><h2>대기 중인 분석 없음</h2><a href="#/schedules">등록 일정 확인 →</a></section>{/if}
-    {:else if queue.running || messages.length}
+    {#if !isPublicViewer && (queue.running || messages.length)}
       {#if !queue.running}<p class="op-hint">가장 최근에 수신한 실행 기록입니다.</p>{/if}
       <LabTimeline groups={phaseGroups} states={stepStates} events={messages} />
-    {:else if queueSeen}<section class="op-panel">
+    {:else if !isPublicViewer && queueSeen && queue.pending.length}<section class="op-panel">
         <h2>단계별 진행</h2>
         <p>분석이 시작되면 단계와 이벤트 시각을 표시합니다.</p>
       </section>{/if}

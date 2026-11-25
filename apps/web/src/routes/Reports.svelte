@@ -1,6 +1,7 @@
 <script lang="ts">
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
+  import ReportRounds from "../components/ReportRounds.svelte";
   import ForecastReportList from "../components/ForecastReportList.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
@@ -26,6 +27,9 @@
 
   let tickers: TickerSummary[] = [];
   let query = "";
+  let kind: "all" | "forecast" | "trade" = "all";
+  let roundsTicker = "";
+  const kinds = [{value:"all",label:"전체"}, {value:"forecast",label:"확률 예측"}, {value:"trade",label:"매매 분석"}] as const;
   let loading = true;
   let error = "";
 
@@ -105,11 +109,18 @@
     {#if !isForecastLab}<AnalysisTabs />{/if}
 
     {#if isForecastLab}
-      <div class="report-filter"><label class="desk-search">
+      <div class="report-filter">
+        <div class="report-kind" aria-label="리포트 유형">
+          {#each kinds as option}
+            <button aria-pressed={kind === option.value} on:click={() => kind = option.value}>{option.label}</button>
+          {/each}
+        </div>
+        <label class="desk-search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
             <input type="search" bind:value={query} aria-label="티커 또는 종목명 검색" placeholder="티커 또는 종목명 검색" />
           </label></div>
-      <ForecastReportList {query} />
+      {#if kind !== "trade"}<ForecastReportList {query} />{/if}
+      {#if kind !== "forecast"}
       <section class="desk-panel report-directory" aria-label="종목별 리포트">
         <header class="desk-toolbar">
           <div class="desk-heading"><h3>매매 분석 리포트</h3>{#if !loading && !error}<span>{published.length}종목</span>{/if}</div>
@@ -130,9 +141,16 @@
               </span>
               <span aria-hidden="true" class="desk-arrow">›</span>
             </a>
+            <div class="round-picker">
+              <button aria-expanded={roundsTicker === item.ticker} on:click={() => roundsTicker = roundsTicker === item.ticker ? "" : item.ticker}>
+                {roundsTicker === item.ticker ? "회차 목록 닫기" : "회차별 조회"}
+              </button>
+            </div>
+            {#if roundsTicker === item.ticker}<ReportRounds ticker={item.ticker} />{/if}
           {/each}
         {/if}
       </section>
+      {/if}
     {:else}
     {#if loading}
       <div class="card" style="padding:16px">불러오는 중...</div>
@@ -169,5 +187,13 @@
 </section>
 
 <style>
-  .report-filter { display: flex; justify-content: flex-end; margin: .75rem 0; }
+  .report-filter {display:flex; justify-content:space-between; flex-wrap:wrap; align-items:end; gap:.75rem; margin:.8rem 0 1rem; border-bottom:1px solid var(--fl-line);}
+  .report-kind {display:flex; align-items:stretch; gap:.2rem;}
+  .report-kind button,.round-picker button {font:inherit; font-size:.86rem; color:var(--fl-muted); border:0; background:transparent; cursor:pointer; padding:.65rem .8rem;}
+  .report-kind button {border-bottom:2px solid transparent;}
+  .report-kind button[aria-pressed="true"] {border-color:var(--fl-accent); color:var(--fl-accent); font-weight:700;}
+  .report-filter label {margin-bottom:.35rem;}
+  .round-picker {display:flex; justify-content:flex-end; padding:0 .6rem .3rem;}
+  .round-picker button {color:var(--fl-accent); text-decoration:underline; text-underline-offset:.2em;}
+  @media(max-width:550px) { .report-filter {align-items:stretch;} .report-filter label {flex-basis:100%; margin-bottom:.6rem;} }
 </style>

@@ -180,6 +180,11 @@
   $: exposure = byCurrency($viewMode === "portfolio"
     ? filteredPortfolioHoldings.map(item => ({ ticker: item.ticker, value: item.current_value_base ?? null, currency: portfolioConfig?.base_currency || "기준 통화" }))
     : filteredPositions.map(item => ({ ticker: item.ticker, value: getTotalAmount(item), currency: tickerCurrency(item.ticker) })));
+  $: quietAccount = isForecastLab && $viewMode === "analysis" && !loading && !error
+    && metrics && metrics.by_currency && !performanceRows.length && !filteredPositions.length
+    && !metrics.analysis_accuracy_count && !metrics.rag_contribution_count
+    && todayRunsTotal === 0 && !queue.running && !queue.pending.length
+    && reportStatus === "ready" && !recentReports.length;
 </script>
 
 <section class="page" id="page-dashboard">
@@ -208,7 +213,42 @@
       <PortfolioSummary config={portfolioConfig} />
     {/if}
 
+    {#if quietAccount}
+      <section class="quiet-account">
+        <header><h3>보유·거래 현황</h3><a href="#/positions">포지션 명세</a></header>
+        <h4>보유 중인 모의 자산이 없습니다</h4>
+        <p>선택한 통화에 체결 기록이 없어 손익률을 집계할 수 없습니다.</p>
+        <div class="quiet-actions"><a href="#/research">발행된 예측 확인</a><a href="#/reports">분석 리포트</a></div>
+        <dl><div><dt>오늘 분석 실행</dt><dd><a href="#/schedules">실행 없음 · 일정 보기</a></dd></div>
+            <div><dt>분석 대기열</dt><dd><a href="#/live">대기 없음 · 실시간 보기</a></dd></div>
+            <div><dt>AI 회고 평가</dt><dd><button on:click={() => accuracyHelp.showModal()}>표본 없음 · 채점 기준</button></dd></div></dl>
+      </section>
+    {:else}
     <div class:folio-overview={isForecastLab}>
+    {#if isForecastLab}
+      <section class="folio-trading-brief">
+        <header><h3>보유 자산 구성</h3><a href="#/positions">보유 명세 →</a></header>
+        {#if loading}<p>보유 내역을 조회하고 있습니다.</p>
+        {:else if error}<p role="alert">{error}</p>
+        {:else if exposure.length}
+          {#each exposure as group}
+            <div class="folio-allocation"><strong>{group.currency} · {group.items.length}종목</strong>
+              {#if group.total !== null && group.total > 0}
+                {#each group.items as item}
+                  <a href={"#/trade/" + item.ticker.toLowerCase()}><InstrumentLabel ticker={item.ticker} inline />
+                    <span class="folio-track"><i style:width={((item.value ?? 0) / group.total * 100) + "%"}></i></span>
+                    <span>{((item.value ?? 0) / group.total * 100).toFixed(1)}%</span>
+                  </a>
+                {/each}
+              {:else}<p>시세가 완비되면 평가액 비중을 표시합니다.</p>{/if}
+            </div>
+          {/each}
+        {:else}<p class="folio-empty-head">보유 자산 없음</p><p>선택한 계좌·통화에 남아 있는 모의 포지션이 없습니다.</p>{/if}
+      </section>
+    {/if}
+    {#if isForecastLab && !loading && !error && todayRunsTotal === 0}
+      <section class="operation-line"><div><h3>오늘의 분석 실행</h3><p>기록된 실행이 없습니다.</p></div><a href="#/schedules">분석 예약 보기</a></section>
+    {:else}
     <button class="card summary-banner" type="button" on:click={goArchive}>
       <div class="summary-header">
         <div>
@@ -252,30 +292,13 @@
         </div>
       </div>
     </button>
-
-    {#if isForecastLab}
-      <section class="folio-trading-brief">
-        <header><h3>보유 자산 구성</h3><a href="#/positions">보유 명세 →</a></header>
-        {#if loading}<p>보유 내역을 조회하고 있습니다.</p>
-        {:else if error}<p role="alert">{error}</p>
-        {:else if exposure.length}
-          {#each exposure as group}
-            <div class="folio-allocation"><strong>{group.currency} · {group.items.length}종목</strong>
-              {#if group.total !== null && group.total > 0}
-                {#each group.items as item}
-                  <a href={"#/trade/" + item.ticker.toLowerCase()}><InstrumentLabel ticker={item.ticker} inline />
-                    <span class="folio-track"><i style:width={((item.value ?? 0) / group.total * 100) + "%"}></i></span>
-                    <span>{((item.value ?? 0) / group.total * 100).toFixed(1)}%</span>
-                  </a>
-                {/each}
-              {:else}<p>시세가 완비되면 평가액 비중을 표시합니다.</p>{/if}
-            </div>
-          {/each}
-        {:else}<p class="folio-empty-head">보유 자산 없음</p><p>선택한 계좌·통화에 남아 있는 모의 포지션이 없습니다.</p>{/if}
-      </section>
     {/if}
+
     </div>
-    {#if !isForecastLab || $viewMode !== "portfolio"}
+    {#if isForecastLab && $viewMode !== "portfolio" && !loading && !error && metrics && !performanceRows.length}
+      <section class="performance-note"><h3>체결 기준 손익</h3><p>선택한 통화의 체결 기록이 없습니다.</p>
+        <a href="#/research">예측 연구 보기</a> · <a href="#/positions">거래 명세 보기</a></section>
+    {:else if !isForecastLab || $viewMode !== "portfolio"}
     <div class="card metric-strip" style="margin-bottom:16px">
       {#if $viewMode === "portfolio"}
         <div class="metric-segment">
@@ -389,23 +412,10 @@
           </div>
         </div>
       </div>
-      <dialog bind:this={accuracyHelp} class="accuracy-help" aria-labelledby="accuracy-help-title">
-        <h2 id="accuracy-help-title">분석 점수 채점 기준</h2>
-        <p>AI가 당시 전망의 방향·시점·근거를 이후 시장 관측과 대조해 매긴 점수입니다.</p>
-        <dl>
-          <dt>90~100점</dt><dd>방향, 시점, 근거가 모두 일치</dd>
-          <dt>70~89점</dt><dd>방향은 맞고 시점이나 근거에 일부 오류</dd>
-          <dt>50~69점</dt><dd>방향은 맞지만 당시 근거가 부실</dd>
-          <dt>30~49점</dt><dd>방향은 틀렸지만 분석 일부가 유효</dd>
-          <dt>0~29점</dt><dd>전망과 근거가 전반적으로 불일치</dd>
-        </dl>
-        <p>전망 기간이 지나지 않았거나 대조할 자료가 부족한 사이클은 제외합니다.
-          평가 가능한 사이클이 없는 회고는 평균에서 빠집니다.</p>
-        <form method="dialog"><button class="btn-secondary">닫기</button></form>
-      </dialog>
+
     {/if}
 
-    {#if isForecastLab}
+    {#if isForecastLab && (reportStatus !== "ready" || recentReports.length)}
       <section class="desk-panel desk-recent">
         <header class="desk-toolbar"><h3>최근 발행 리포트</h3><a href="#/reports">전체 보기 <span aria-hidden="true">→</span></a></header>
         {#if recentReports.length}
@@ -423,6 +433,7 @@
       </section>
     {/if}
     <div class="dashboard-grid">
+      {#if !isForecastLab || loading || error || ($viewMode === "portfolio" ? filteredPortfolioHoldings.length : filteredPositions.length)}
       <div class="card">
         <div class="card-header">
             <h3>{isForecastLab ? "보유 종목 명세" : "내 투자"}</h3>
@@ -488,6 +499,7 @@
         </div>
       </div>
 
+      {/if}
       <div class="card">
         <div class="card-header">
           <h3>대기열</h3>
@@ -519,10 +531,46 @@
         </div>
       </div>
     </div>
+    {/if}
+    {#if $viewMode === "analysis" && metrics}
+      <dialog bind:this={accuracyHelp} class="accuracy-help" aria-labelledby="accuracy-help-title">
+        <h2 id="accuracy-help-title">분석 점수 채점 기준</h2>
+        <p>AI가 당시 전망의 방향·시점·근거를 이후 시장 관측과 대조해 매긴 점수입니다.</p>
+        <dl>
+          <dt>90~100점</dt><dd>방향, 시점, 근거가 모두 일치</dd>
+          <dt>70~89점</dt><dd>방향은 맞고 시점이나 근거에 일부 오류</dd>
+          <dt>50~69점</dt><dd>방향은 맞지만 당시 근거가 부실</dd>
+          <dt>30~49점</dt><dd>방향은 틀렸지만 분석 일부가 유효</dd>
+          <dt>0~29점</dt><dd>전망과 근거가 전반적으로 불일치</dd>
+        </dl>
+        <p>전망 기간이 지나지 않았거나 대조할 자료가 부족한 사이클은 제외합니다.
+          평가 가능한 사이클이 없는 회고는 평균에서 빠집니다.</p>
+        <form method="dialog"><button class="btn-secondary">닫기</button></form>
+      </dialog>
+    {/if}
   </div>
 </section>
 
 <style>
+  .quiet-account {grid-column:1/-1; background:var(--fl-surface, #202124); color:var(--fl-ink, #f4f2e9); border:1px solid var(--fl-line, #3b3d41); border-radius:.7rem; padding:1.1rem 1.25rem;}
+  .quiet-account header,.quiet-account dl div,.quiet-actions {display:flex; justify-content:space-between; align-items:center; gap:.75rem;}
+  .quiet-account header {border-bottom:1px solid var(--fl-line, #3b3d41); padding-bottom:.75rem;}
+  .quiet-account h3 {font-size:1.1rem; margin:0;}
+  .quiet-account h4 {font-size:1.15rem; margin:1rem 0 .25rem;}
+  .quiet-account p,.quiet-account dt {color:var(--fl-muted, #b5b4ad); font-size:.89rem;}
+  .quiet-account p {margin:.2rem 0 .8rem;}
+  .quiet-account a,.quiet-account button {font:inherit; color:var(--fl-accent, #d5f65e); font-weight:600; font-size:.85rem;}
+  .quiet-account button {padding:0; border:0; background:none; cursor:pointer;}
+  .quiet-actions {justify-content:flex-start;}
+  .quiet-account dl {margin:1rem 0 0;} .quiet-account dl div {border-top:1px solid var(--fl-line, #3b3d41); padding:.55rem 0;}
+  .quiet-account dd {margin:0;text-align:right;}
+  .operation-line,.performance-note { padding:1rem 1.15rem; border:1px solid var(--fl-line, #3b3d41); border-radius:.65rem; background:var(--fl-surface, #202124); color:var(--fl-ink, #f4f2e9);}
+  .operation-line {display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.75rem;}
+  .operation-line h3,.performance-note h3 {margin:0; font-size:1rem;}
+  .operation-line p,.performance-note p {margin:.35rem 0; color:var(--fl-muted, #b5b4ad);}
+  .operation-line a,.performance-note a {color:var(--fl-accent, #d5f65e); font-weight:600; font-size:.87rem;}
+  .performance-note {margin-block:1rem;}
+
   .accuracy-label { display: flex; align-items: center; gap: 4px; }
   .help-button {
     display: inline-grid;

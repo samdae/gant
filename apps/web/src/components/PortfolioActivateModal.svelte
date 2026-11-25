@@ -194,6 +194,6 @@
   .btn-primary {
     background: var(--primary);
     border: 1px solid var(--primary);
-    color: #fff;
+    color: var(--fl-on-accent, #fff);
   }
 </style>

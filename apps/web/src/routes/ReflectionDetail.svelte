@@ -83,7 +83,7 @@
     {:else if error}
       <div class="card" style="padding:16px"><span class="error-text">{error}</span></div>
     {:else if !reflection}
-      <div class="card" style="padding:16px">회고 데이터를 찾을 수 없습니다.</div>
+      <div class="card" style="padding:16px">회고 데이터를 찾을 수 없습니다. {#if isForecastLab}<a href="#/reflections">매매 검증 목록</a>{/if}</div>
     {:else}
       <div class="reflection-detail-top card">
         <div class="card-body">

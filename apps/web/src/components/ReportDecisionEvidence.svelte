@@ -46,6 +46,6 @@
   .evidence, .fact, .fill { display: flex; flex-wrap: wrap; align-items: center; }
   .evidence { gap: 8px 16px; text-align: left; min-width: 0; }
   .fact, .fill { gap: 4px 6px; font-size: .8rem; }
-  .label, time { color: #495c73; }
+  .label, time { color: var(--fl-muted, #b5b4ad); }
   .fill { font-variant-numeric: tabular-nums; }
 </style>

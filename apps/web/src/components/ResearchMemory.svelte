@@ -10,7 +10,8 @@
   import InstrumentLabel from "./InstrumentLabel.svelte";
   export let memory: Memory;
   export let label: string;
-  $: currency = memory.market === "kr" ? "KRW" : memory.market === "us" ? "USD" : undefined;
+  $: currency =
+    memory.market === "kr" ? "KRW" : memory.market === "us" ? "USD" : undefined;
 </script>
 
 <details class="memory">
@@ -34,12 +35,12 @@
 <style>
   .memory {
     margin-top: 12px;
-    border-left: 2px solid #ccbfb5;
+    border-left: 2px solid var(--fl-line);
     padding: 5px 12px;
   }
   .memory summary {
     cursor: pointer;
-    color: #653345;
+    color: var(--fl-forecast);
     font-weight: 650;
   }
   .memory dl {
@@ -56,10 +57,13 @@
     font-size: 0.82rem;
   }
   .memory dt {
-    color: #655d56;
+    color: var(--fl-muted);
   }
   .memory dd {
     margin: 0;
+  }
+  .narrative :global(a) {
+    color: var(--fl-accent);
   }
   .narrative {
     max-width: 72ch;

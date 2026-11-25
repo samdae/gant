@@ -32,9 +32,27 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             await visit('#/research/29',()=>document.querySelector('.evidence h2')?.textContent.includes('삼성전자'));
             check(document.querySelector('.headline').textContent.includes('61.0%'),'published probability');
             await wait(()=>document.querySelectorAll('.register a').length===3);
+            const picker=document.querySelector('.research-desk dialog');
+            check(!picker.open,'compact picker initially closed');
+            document.querySelector('.choose').click();check(picker.open && getComputedStyle(picker).backgroundColor==='rgb(32, 33, 36)' && getComputedStyle(picker).colorScheme==='dark','native dark picker opens');
             const [first,partial,unissued]=document.querySelectorAll('.register a');
             check(partial.textContent.includes('일부 방법 발행') && !partial.textContent.includes('발행 대기') &&
               unissued.textContent.includes('발행 대기') && first.textContent.includes('채점 완료'),'partial vs unissued');
+            picker.querySelector('.close').click();check(!picker.open,'picker closes');
+            const slider=document.querySelector('.chart .pointer');
+            slider.value='0';slider.dispatchEvent(new Event('input',{bubbles:true}));await Promise.resolve();
+            check(slider.getAttribute('aria-valuetext').includes('2026-10-28') && slider.getAttribute('aria-valuetext').includes('74,000원'), 'interactive dated close');
+            const chart=document.querySelector('.chart'), candle=[...chart.querySelectorAll('.type button')].find(x=>x.textContent.includes('캔들'));
+            candle.click();await Promise.resolve();
+            check(chart.querySelectorAll('g.candle').length===1 && chart.querySelectorAll('.volume-bar').length===1 &&
+              chart.querySelector('.bar-values').textContent.includes('12,345주'), 'frozen OHLC and actual volume only');
+            check(getComputedStyle(document.querySelector('.analysis-board')).backgroundColor==='rgb(32, 33, 36)' &&
+              getComputedStyle(document.querySelector('.track i')).backgroundColor==='rgb(195, 169, 255)' &&
+              getComputedStyle(chart.querySelector('.candle.rising rect')).fill==='rgb(213, 246, 94)', 'distinct price and model colors');
+            check(document.querySelector('.range-summary')?.textContent.includes('50.0%–61.0%') && document.querySelector('.range-summary')?.textContent.includes('11.0%p'), 'published model range');
+            check(document.querySelector('.comparison').textContent.includes('61.0%') && document.querySelector('.axis').textContent.includes('50%'), 'common probability axis');
+            [...document.querySelectorAll('.compare-row')].find(el=>el.textContent.includes('역할 토론')).click();
+            check(document.querySelector('.model[open] > summary')?.textContent.includes('역할 토론') && document.activeElement===document.querySelector('.model[open] > summary'),'model-specific judgment focus');
             check(document.querySelector('.condition').textContent.includes('75,000원') &&
               document.querySelector('.condition').textContent.includes('충족'),'frozen condition');
             check(document.querySelector('.sources').textContent.includes('당시 확인된 공시') &&
@@ -49,8 +67,10 @@ class IntegratedPublicViewerTests(unittest.TestCase):
               [...document.querySelectorAll('.sources .feed')].some(el=>el.textContent.includes('수집 경로 미확인') && el.textContent.includes('수집 단계 미상')),
               'mixed sources attributed and deduplicated');
             check(document.documentElement.scrollWidth<=innerWidth,'research overflow');
+            await visit('#/research/28',()=>document.querySelector('.compare-row b')?.textContent==='0.0%');
+            check(!document.querySelector('.range-summary'),'single probability has no range');
             await visit('#/research/27',()=>document.querySelector('.sources')?.textContent.includes('당시 수집 기록이 없습니다.'));
-            check(!document.querySelector('.news') && document.querySelector('.chart').textContent.includes('종가'), 'genuine empty source and chart');
+            check(!document.querySelector('.range-summary') && !document.querySelector('.news') && document.querySelector('.chart .type button:disabled') && document.querySelector('.chart').textContent.includes('종가'), 'genuine empty source and chart');
             await visit('#/observe',()=>[...document.querySelectorAll('h2')].some(el=>el.textContent.includes('관찰 종목')));
             await visit('#/results',()=>[...document.querySelectorAll('h2')].some(el=>el.textContent.includes('연구 성과')));
             await visit('#/schedules',()=>document.querySelector('main a[href="#/schedules/spy"]'));
@@ -87,13 +107,23 @@ class IntegratedPublicViewerTests(unittest.TestCase):
                 elif path.startswith("/api/cases"):
                     row=dict(id=29,ticker="005930.KS",market="kr",data_session="2026-11-02",status="matured",forecast_probabilities={"single":0.61})
                     detail={**row,"arms":[{"method":"single","status":"published","probability":.61},{"method":"debate","status":"published","probability":.5,"rationale":"**참고**","audit":{"debate":[{"role":"create_bull_researcher","output":"**근거**"}]}}],
-                            "outcome":{"status":"scored","actual":1},"snapshot":{"currency":"KRW","bars":[{"date":"2026-10-28","close":74000},{"date":"2026-11-02","close":74700}]},
+                            "outcome":{"status":"scored","actual":1},"snapshot":{"currency":"KRW","classification":{"asset_class":"equity"},"bars":[{"date":"2026-10-28","open":73900,"high":74200,"low":73700,"close":74000,"volume":12345},{"date":"2026-11-02","close":74700}]},
                             "hypothesis":{"currency":"KRW","conditions":[{"id":"breakout","metric":"exit_close","operator":"gt","threshold":75000,"status":"met","observed_value":76000}]},
                             "last30days":{"status":"available","source":"last30days agent export","items":[{"title":"커뮤니티 기록","url":"https://example.org/post","publisher":"커뮤니티"}]},
                             "issues":{"status":"available","items":[{"title":"당시 확인된 공시","publisher":"공시 자료","source":"Google News RSS","url":"https://example.org/release","published_precision":"day","published_day":"2026-11-01"},{"title":"커뮤니티 기록","publisher":"커뮤니티","source":"last30days agent export","url":"https://example.org/post"},{"title":"수집 단계 미상","url":"https://example.org/old"}]}}
                     partial={**row,"id":28,"status":"pending","forecast_probabilities":{"single":0.0}}
                     unissued={**row,"id":27,"status":"pending","forecast_probabilities":{}}
-                    raw=json.dumps([row,partial,unissued] if path=="/api/cases" else {**unissued,"arms":[],"snapshot":{}} if path.endswith("/27") else detail).encode()
+                    if path == "/api/cases":
+                        payload = [row, partial, unissued]
+                    elif path.endswith("/27"):
+                        payload = {**unissued, "arms": [], "snapshot": {}}
+                    elif path.endswith("/28"):
+                        payload = {**detail, **partial, "arms": [
+                            {"method": "single", "status": "published", "probability": 0.0}
+                        ]}
+                    else:
+                        payload = detail
+                    raw = json.dumps(payload).encode()
                     content="application/json"
                 elif path.startswith(("/workspace-api/", "/public-api/")):
                     data = {"/workspace-api/schedules":[{"ticker":"SPY","interval_days":1}],
@@ -121,7 +151,7 @@ class IntegratedPublicViewerTests(unittest.TestCase):
         threading.Thread(target=server.serve_forever,daemon=True).start()
         try:
             with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as root:
-                for width in [393,1440]:
+                for width in [360,393,1440]:
                     with self.subTest(width=width):
                         url=f"http://127.0.0.1:{server.server_port}/"
                         dom=subprocess.run([CHROME,"--headless=new","--disable-gpu","--no-first-run","--no-proxy-server",

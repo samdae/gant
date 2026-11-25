@@ -54,7 +54,13 @@ class ReportingBrowserTests(unittest.TestCase):
           try {
             location.hash='#/reports';
             await wait(()=>q('.forecast-reports a[href="#/research/1"]')?.textContent.includes('39.0%'));
-            location.hash='#/reports/nvda';
+            const ledger=q('.forecast-reports'), estimate=q('.forecast-reports .figure strong');
+            if(getComputedStyle(ledger).backgroundColor!=='rgb(32, 33, 36)' ||
+              getComputedStyle(estimate).color!=='rgb(195, 169, 255)') throw Error('forecast ledger theme');
+            await wait(()=>q('.round-picker button'));
+            q('.round-picker button').click();
+            await wait(()=>q('.rounds a[href$="report=8"]'));
+            q('.rounds a[href$="report=8"]').click();
             await wait(()=>q('#cycle-select') && q('.archive') && resolveFirst);
             q('#cycle-select').click(); await wait(()=>q('.select-option:not(.active)'));
             q('.select-option:not(.active)').click(); await wait(()=>q('.archive')?.innerText.includes('회차 자료 7'));

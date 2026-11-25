@@ -263,7 +263,7 @@
         <div class="folio-empty">
           <h3>{schedules.length ? "검색 결과 없음" : "등록된 일정 없음"}</h3>
           {#if schedules.length}<button class="btn btn-secondary" on:click={() => search = ""}>검색어 지우기</button>
-          {:else}<p>종목과 실행 주기가 등록되면 다음 실행 시각을 확인할 수 있습니다.</p>{/if}
+          {:else}<p>종목과 실행 주기가 등록되면 다음 실행 시각을 확인할 수 있습니다.</p><a class="op-link" href="#/observe">연구 관찰 종목 확인</a>{/if}
         </div>
       {:else if filteredSchedules.length}
         <div class="op-schedules" role="list">

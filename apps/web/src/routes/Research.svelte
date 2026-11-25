@@ -12,7 +12,6 @@
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import ResearchReview from "../components/ResearchReview.svelte";
   import ResearchEvidence from "../components/ResearchEvidence.svelte";
-  import { instrumentText, tickerNames } from "../stores/tickerNames";
 
   const initial = new URLSearchParams(
     window.location.hash.split("?")[1] || window.location.search,
@@ -41,6 +40,7 @@
     detailError = "",
     mounted = false;
   let listRequest: AbortController, detailRequest: AbortController;
+  let picker: HTMLDialogElement;
   const size = 8;
   $: archive = ["/results", "/performance", "/observe"].includes($location);
   $: explicit = $location.match(/^\/research\/([1-9]\d*)$/)?.[1];
@@ -145,7 +145,32 @@
     <ResearchReview view={$location === "/observe" ? "observe" : "results"} />
   {:else}
     <div class="workarea">
-      <aside aria-label="연구 사례 목록">
+      {#if !selected}<button
+          class="choose"
+          on:click={() => picker.showModal()}
+          aria-haspopup="dialog"
+          >사례 선택 <svg
+            viewBox="0 0 16 16"
+            width="14"
+            height="14"
+            aria-hidden="true"
+            ><path
+              d="m4 6 4 4 4-4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+            /></svg
+          ></button
+        >{/if}
+      <dialog bind:this={picker} aria-label="사례 선택">
+        <header>
+          <h2>사례 선택</h2>
+          <button
+            class="close"
+            on:click={() => picker.close()}
+            aria-label="사례 선택 닫기">닫기</button
+          >
+        </header>
         <div class="filters">
           <label
             >시장<select
@@ -187,54 +212,30 @@
               : "이 시장에 공개된 연구 사례가 없습니다."}
           </p>{/if}
         {#if rows.length}
-          <label class="mobile-picker"
-            >관측일·종목 선택
-            <select
-              value={selectedId}
-              on:change={(e) =>
-                (window.location.hash =
-                  "#/research/" + e.currentTarget.value + suffix)}
-            >
-              {#if explicit && !rows.some((r) => r.id === selectedId)}<option
-                  value={selectedId}
-                  >{selected
-                    ? instrumentText(selected.ticker, $tickerNames)
-                    : "선택 사례"}</option
-                >{/if}
-              {#each rows as row}<option value={row.id}
-                  >{row.data_session} · {instrumentText(
-                    row.ticker,
-                    $tickerNames,
-                  )}</option
-                >{/each}
-            </select>
-          </label>
-          <details class="archive-list">
-            <summary>사례 목록 · {rows.length}건</summary>
-            <div class="register">
-              {#each rows as row (row.id)}
-                <a
-                  href={"#/research/" + row.id + suffix}
-                  class:selected={selectedId === row.id}
-                  aria-current={selectedId === row.id ? "true" : undefined}
-                >
-                  <div class="row-meta">
-                    <time>{row.data_session}</time><span
-                      >{marketName(row.market)}</span
-                    >
-                  </div>
-                  <InstrumentLabel ticker={row.ticker} />
-                  <div class="row-meta">
-                    <span
-                      >단일 모델 {probability(
-                        row.forecast_probabilities?.single,
-                      )}</span
-                    ><span>{caseListStatus(row)}</span>
-                  </div>
-                </a>
-              {/each}
-            </div>
-          </details>
+          <div class="register">
+            {#each rows as row (row.id)}
+              <a
+                on:click={() => picker.close()}
+                href={"#/research/" + row.id + suffix}
+                class:selected={selectedId === row.id}
+                aria-current={selectedId === row.id ? "true" : undefined}
+              >
+                <div class="row-meta">
+                  <time>{row.data_session}</time><span
+                    >{marketName(row.market)}</span
+                  >
+                </div>
+                <InstrumentLabel ticker={row.ticker} />
+                <div class="row-meta">
+                  <span
+                    >단일 모델 {probability(
+                      row.forecast_probabilities?.single,
+                    )}</span
+                  ><span>{caseListStatus(row)}</span>
+                </div>
+              </a>
+            {/each}
+          </div>
           {#if cursors.length > 1}<button
               class="older"
               on:click={() => {
@@ -251,14 +252,32 @@
               }}>{busy ? "조회 중" : "다음 페이지"}</button
             >{/if}
         {/if}
-      </aside>
+      </dialog>
       <div class="detail-pane">
         {#if detailBusy}<p role="status">사례 근거를 불러오는 중입니다.</p>
         {:else if detailError}<p role="alert">
             {detailError}
             <button on:click={() => loadCase(selectedId)}>다시 조회</button>
           </p>
-        {:else if selected}<ResearchEvidence data={selected} />
+        {:else if selected}<ResearchEvidence data={selected}
+            ><button
+              class="choose"
+              on:click={() => picker.showModal()}
+              aria-haspopup="dialog"
+              >사례 선택 <svg
+                viewBox="0 0 16 16"
+                width="14"
+                height="14"
+                aria-hidden="true"
+                ><path
+                  d="m4 6 4 4 4-4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                /></svg
+              ></button
+            ></ResearchEvidence
+          >
         {:else if !busy && !listError}<section class="blank">
             <h2>아직 관측 사례가 없습니다</h2>
             <p>
@@ -272,116 +291,137 @@
 
 <style>
   .research-desk {
-    width: 100%;
-    max-width: 1380px;
+    max-width: 1440px;
     margin: auto;
-    padding: clamp(14px, 2.2vw, 28px) clamp(16px, 3.4vw, 48px) 48px;
-    color: #282521;
+    padding: 18px clamp(14px, 2.5vw, 36px) 52px;
+    color: var(--fl-ink);
   }
-  aside {
-    display: flex;
-    align-items: baseline;
-    gap: 7px 15px;
-    flex-wrap: wrap;
-    padding: 10px 0 12px;
-  }
-  .filters,
-  .filters form,
-  .filters label,
-  .mobile-picker {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .filters {
-    flex-wrap: wrap;
-  }
-  .filters label,
-  .mobile-picker,
-  .date-filter summary,
-  .archive-list summary,
-  .older {
-    color: #5e574f;
-    font-size: 0.78rem;
-  }
-  .filters select,
-  .filters input,
-  .mobile-picker select,
-  button {
+
+  button,
+  select,
+  input {
     font: inherit;
-    background: #fff;
-    color: #3b342e;
-    border: 1px solid #cfc7bc;
+    color: inherit;
+  }
+  button,
+  select,
+  input,
+  .filters summary {
+    border: 1px solid var(--fl-line);
     border-radius: 4px;
-    padding: 5px 8px;
-    max-width: 100%;
+    background: var(--fl-surface);
+    padding: 8px 12px;
   }
   button,
   summary {
     cursor: pointer;
   }
-  .date-filter[open] form {
-    padding: 6px 0;
+  dialog {
+    color-scheme: dark;
+    background: var(--fl-surface);
+  }
+  dialog option {
+    background: var(--fl-surface);
+    color: var(--fl-ink);
+  }
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible,
+  summary:focus-visible,
+  .register a:focus-visible {
+    outline: 2px solid var(--fl-accent);
+    outline-offset: 2px;
+  }
+  .choose {
+    align-self: flex-start;
+    font-weight: 650;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+  }
+  .choose svg {
+    color: var(--fl-accent);
+  }
+  dialog {
+    width: min(490px, calc(100% - 30px));
+    max-height: 75dvh;
+    padding: 22px;
+    border: 1px solid var(--fl-line);
+    border-radius: 16px;
+    color: var(--fl-ink);
+    box-shadow: 0 16px 55px #0008;
+    overflow: auto;
+  }
+  dialog::backdrop {
+    background: #000a;
+  }
+  dialog header,
+  .filters,
+  .filters form,
+  .row-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     flex-wrap: wrap;
+  }
+  dialog header {
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  dialog h2 {
+    margin: 0;
+    font-size: 1.3rem;
+  }
+  .filters {
+    align-items: flex-start;
+  }
+  .filters form {
+    padding: 8px 0;
+  }
+  .filters label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .register {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 1px;
-    background: #ddd6cb;
-    border: 1px solid #ddd6cb;
+    margin-block: 16px;
   }
   .register a {
-    padding: 10px;
-    background: white;
+    display: grid;
+    gap: 5px;
+    padding: 12px;
+    border: 1px solid var(--fl-line);
+    color: inherit;
+    border-radius: 4px;
   }
   .register a.selected {
-    background: #f6eaf0;
-  }
-  .archive-list[open] {
-    flex: 1 0 100%;
+    background: #303427;
+    border-color: var(--fl-accent);
   }
   .row-meta {
-    display: flex;
     justify-content: space-between;
-    font-size: 0.72rem;
-    color: #655d54;
-    gap: 6px;
+    color: var(--fl-muted);
+    font-size: 0.82rem;
   }
   .detail-pane {
     min-width: 0;
-    background: #fff;
-    padding: 0 clamp(12px, 2.4vw, 30px);
   }
   .blank {
-    padding: 15px;
+    background: var(--fl-surface);
+    padding: 24px;
+    border-radius: 12px;
   }
-  .blank h2,
-  .blank p {
-    margin: 4px 0;
-  }
-  .mobile-picker select {
-    min-width: 0;
-  }
-  @media (max-width: 620px) {
+  @media (max-width: 600px) {
     .research-desk {
-      padding-inline: 14px;
+      padding: 10px 12px 42px;
     }
-    .detail-pane {
-      padding: 0 10px;
-    }
-    .mobile-picker {
-      flex: 1 0 100%;
-      align-items: baseline;
-    }
-    .mobile-picker select {
-      flex: 1;
-    }
-    .filters form {
+    dialog {
+      margin: auto auto 0;
+      width: 100%;
       max-width: 100%;
-    }
-    aside {
-      gap: 6px 10px;
+      border-radius: 16px 16px 0 0;
     }
   }
 </style>

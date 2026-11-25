@@ -1,25 +1,25 @@
-/* The trading ledger and operator pages share the publication's paper and rules. */
+/* Shared surfaces and controls for the integrated trading console. */
 .workspace :is(.page, .modal-overlay, dialog, .retro-modal-overlay) {
-  --bg: #f7f6f2;
-  --bg-subtle: #f0eee8;
-  --surface: #fffefa;
-  --surface-hover: #f4f1e9;
-  --border: #d8d4ca;
-  --border-hover: #b6afa0;
-  --border-strong: #8e887b;
-  --text-secondary: #4f4b44;
-  --text-dim: #69645c;
-  --primary-hover: #64172e;
-  --primary-light: #f5e9eb;
-  --primary-bg: #f5e9eb;
-  --primary-border: #d5afbc;
-  --muted: #686257;
-  --muted-bg: #eeece6;
-  --muted-border: #d8d3c8;
-  --info: #514a40;
-  --info-bg: #f0ede5;
-  --info-light: #f0ede5;
-  --info-border: #d8d1c3;
+  --bg: var(--fl-bg);
+  --bg-subtle: var(--fl-surface-subtle);
+  --surface: var(--fl-surface);
+  --surface-hover: var(--fl-surface-subtle);
+  --border: var(--fl-line);
+  --border-hover: var(--fl-line);
+  --border-strong: #64666a;
+  --text-secondary: var(--fl-ink);
+  --text-dim: var(--fl-muted);
+  --primary-hover: var(--fl-accent-hover);
+  --primary-light: var(--fl-accent-soft);
+  --primary-bg: var(--fl-accent-soft);
+  --primary-border: var(--fl-line);
+  --muted: var(--fl-muted);
+  --muted-bg: var(--fl-surface-subtle);
+  --muted-border: var(--fl-line);
+  --info: var(--fl-forecast);
+  --info-bg: var(--fl-forecast-soft);
+  --info-light: var(--fl-forecast-soft);
+  --info-border: var(--fl-line);
 }
 .workspace :is(.page .page-header h2, .op-page .op-title h1) {
   color: var(--fl-ink);
@@ -29,13 +29,13 @@
   letter-spacing: -0.06em;
 }
 .workspace :is(.page-header, .op-title) {
-  border-bottom: 2px solid var(--fl-ink);
+  border-bottom: 1px solid var(--fl-line);
   padding-bottom: 15px;
 }
 .workspace
   :is(.page .card, .desk-panel, .op-panel, .review-register, .review-empty) {
   box-shadow: none;
-  border-radius: 3px;
+  border-radius: var(--fl-radius);
   background: var(--fl-surface);
   border-color: var(--fl-line);
 }
@@ -44,20 +44,20 @@
   border-color: var(--fl-line);
 }
 .workspace .page .review-switch {
-  background: #eeeae1;
-  border-radius: 3px;
+  background: var(--fl-surface-subtle);
+  border-radius: var(--fl-radius);
 }
 .workspace .page .review-switch button[aria-pressed="true"] {
-  background: #fffefa;
-  color: #702139;
-  box-shadow: inset 0 -2px #852641;
-  border-radius: 0;
+  background: var(--fl-surface);
+  color: var(--fl-accent);
+  box-shadow: inset 0 -2px var(--fl-accent);
+  border-radius: 8px;
 }
 .workspace
   :is(.review-register, .op-schedules, .data-table)
   :is(th, .op-colhead) {
   color: var(--fl-muted);
-  background: #f2efe7;
+  background: var(--fl-surface-subtle);
 }
 .workspace #page-dashboard .folio-overview {
   display: grid;
@@ -68,17 +68,17 @@
 .workspace #page-dashboard .summary-banner,
 .folio-trading-brief,
 .folio-account {
-  background: #fffefa;
+  background: var(--fl-surface);
   color: var(--fl-ink);
   border: 1px solid var(--fl-line);
-  border-top: 3px solid #852641;
-  border-radius: 0;
+  border-top: 1px solid var(--fl-line);
+  border-radius: 8px;
   padding: 22px;
   margin: 0;
   box-shadow: none;
 }
 .workspace #page-dashboard .summary-banner:hover {
-  background: #f8f4ed;
+  background: var(--fl-surface-subtle);
 }
 .workspace #page-dashboard .summary-total {
   font-family: var(--fl-display);
@@ -86,7 +86,7 @@
   color: var(--fl-ink);
 }
 .workspace #page-dashboard .desk-progress {
-  background: #efece4;
+  background: var(--fl-surface-subtle);
 }
 .workspace #page-dashboard .summary-item {
   background: transparent;
@@ -143,7 +143,7 @@
 }
 .folio-track {
   height: 5px;
-  background: #e8e3d8;
+  background: var(--fl-surface-subtle);
 }
 .folio-track i {
   display: block;
@@ -172,15 +172,15 @@
 }
 .workspace .op-page .op-panel,
 .workspace .op-page .op-strip {
-  border-radius: 0;
+  border-radius: 8px;
 }
 .workspace .op-page .op-strip {
-  border-top: 2px solid var(--fl-ink);
+  border-top: 1px solid var(--fl-line);
 }
 .workspace .op-page .op-primary,
 .workspace .op-page .op-title .op-primary {
   background: var(--fl-accent);
-  color: white;
+  color: var(--fl-on-accent);
   border-color: var(--fl-accent);
 }
 .guide-index {
@@ -221,7 +221,7 @@
   margin: 45px auto;
 }
 .workspace #page-auth form {
-  border-top: 3px solid var(--fl-accent);
+  border-top: 1px solid var(--fl-line);
 }
 @media (max-width: 680px) {
   .workspace #page-dashboard .folio-overview,

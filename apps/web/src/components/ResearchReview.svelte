@@ -110,35 +110,52 @@
   });
 </script>
 
-<section class="review">
+<section class="review" class:results-view={view === "results"}>
   <header class="heading">
     <h2>{view === "observe" ? "관찰 종목" : "연구 성과"}</h2>
     <button on:click={() => refresh++}>새로고침</button>
   </header>
-  <div class="filters" aria-label="시장과 관측 기간">
-    <label
-      >시장<select bind:value={market}
-        ><option value="">전체 시장</option><option value="us">미국</option
-        ><option value="kr">한국</option></select
-      ></label
+  <details class="scope-control" open={Boolean(market || from || to)}>
+    <summary
+      >시장·관측 기간 <span
+        >{market ? marketName(market) : "전체 시장"} · {from || to
+          ? (from || "시작일 미지정") + " ~ " + (to || "종료일 미지정")
+          : "전체 기간"}</span
+      ></summary
     >
-    <label>관측 시작일<input type="date" bind:value={from} /></label>
-    <label>관측 종료일<input type="date" bind:value={to} /></label>
-    {#if market || from || to}<button
-        on:click={() => {
-          market = "";
-          from = "";
-          to = "";
-        }}>전체 기간·시장</button
-      >{/if}
-  </div>
+    <div class="filters" aria-label="시장과 관측 기간">
+      <label
+        >시장<select bind:value={market}
+          ><option value="">전체 시장</option><option value="us">미국</option
+          ><option value="kr">한국</option></select
+        ></label
+      >
+      <label>관측 시작일<input type="date" bind:value={from} /></label>
+      <label>관측 종료일<input type="date" bind:value={to} /></label>
+      {#if market || from || to}<button
+          on:click={() => {
+            market = "";
+            from = "";
+            to = "";
+          }}>전체 기간·시장</button
+        >{/if}
+    </div>
+  </details>
   {#if rangeError}<p role="alert">종료일을 시작일 이후로 선택해 주세요.</p>
   {:else if statsError}<p role="alert">{statsError}</p>
   {:else if statsBusy}<p role="status">관측 기간의 성과를 조회하고 있습니다.</p>
   {:else if stats}<dl class="counts">
-      {#each Object.entries(caseStates) as [key, label]}<div>
+      {#each Object.entries(caseStates).filter(([key]) => (stats?.counts?.[key] ?? 0) > 0) as [key, label]}<div
+        >
           <dt>{label}</dt>
-          <dd>{stats.counts?.[key] ?? "—"}</dd>
+          <dd>{stats?.counts?.[key] ?? "—"}</dd>
+        </div>{:else}<div>
+          <dt>관측 사례</dt>
+          <dd>
+            {Object.keys(caseStates).every((key) => stats?.counts?.[key] === 0)
+              ? "0"
+              : "미확인"}
+          </dd>
         </div>{/each}
     </dl>{/if}
   {#if statusError}<p role="alert">{statusError}</p>{/if}
@@ -172,7 +189,7 @@
         </p>
         {#if universe.length}
           <div class="scroll">
-            <table>
+            <table class="watch-table">
               <thead
                 ><tr
                   ><th>종목</th><th>시장</th><th>현재 분류</th><th
@@ -184,7 +201,7 @@
                 >{#each universe as t}<tr
                     ><th><InstrumentLabel ticker={t.ticker} name={t.name} /></th
                     ><td>{marketName(t.market)}</td><td>{group(t)}</td>
-                    <td
+                    <td class:no-hold={!phase.failures?.[t.ticker]}
                       >{phase.failures?.[t.ticker]
                         ? holdReason(phase.failures[t.ticker])
                         : "—"}</td
@@ -198,6 +215,33 @@
     {:else if !statusError}<p role="status">
         관찰 목록을 불러오는 중입니다.
       </p>{/if}
+  {:else if stats && !stats.comparisons?.length && !stats.reference_comparisons?.length && !stats.calibration?.length && !stats.sector_by_basis?.length}
+    <section class="cohort-empty">
+      <h3>비교할 채점 표본이 없습니다</h3>
+      <p>
+        같은 종목·회차의 예측이 만기를 지나면 방법별 점수와 확률 보정을 확인할
+        수 있습니다.
+      </p>
+      <a href="#/research">발행된 예측 확인</a>
+      <details>
+        <summary>비교 기준과 분류 기억 발행 현황</summary>
+        <p>
+          Brier 점수는 낮을수록 정확합니다. 같은 사례의 공통 예측을 비교하고,
+          확률 보정은 구간별 실제 상승률을 사용합니다.
+        </p>
+        <p>
+          {status?.reference_enabled === false
+            ? "기존 운영 리포트 수집이 꺼져 있습니다."
+            : "기존 운영 예측은 같은 기간에 발행하고 채점된 사례만 비교합니다."}
+        </p>
+        <dl class="coverage">
+          {#each Object.entries(coverageLabels) as [key, label]}<div>
+              <dt>{label}</dt>
+              <dd>{stats.sector_coverage?.[key] ?? "—"}</dd>
+            </div>{/each}
+        </dl>
+      </details>
+    </section>
   {:else if stats}
     <section>
       <h3>방법별 공통 채점</h3>
@@ -311,8 +355,52 @@
 </section>
 
 <style>
+  .scope-control {
+    margin-block: 0.8rem;
+    padding: 0.65rem 0.9rem;
+    background: var(--fl-surface, #202124);
+    border: 1px solid var(--fl-line, #3b3d41);
+    border-radius: 0.45rem;
+  }
+  .scope-control summary {
+    cursor: pointer;
+    font-weight: 650;
+    font-size: 0.88rem;
+  }
+  .scope-control summary span {
+    font-weight: 400;
+    color: var(--fl-muted, #b5b4ad);
+    margin-left: 0.5rem;
+  }
+  .counts div {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+  .cohort-empty,
+  .review > section {
+    background: var(--fl-surface, #202124);
+    border: 1px solid var(--fl-line, #3b3d41);
+    border-radius: 0.25rem;
+    padding: 1rem 1.2rem;
+    margin-block: 0.9rem;
+  }
+  .cohort-empty a {
+    display: inline-block;
+    color: var(--fl-accent, #d5f65e);
+    font-weight: 650;
+    margin: 0.4rem 0 0.7rem;
+  }
+  .cohort-empty details {
+    border-top: 1px solid var(--fl-line, #3b3d41);
+    padding-top: 0.7rem;
+  }
+  .cohort-empty summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
   .review {
-    color: #222321;
+    color: var(--fl-ink, #f4f2e9);
     font-variant-numeric: tabular-nums;
   }
   .heading,
@@ -350,8 +438,8 @@
   input {
     font: inherit;
     color: inherit;
-    background: #fff;
-    border: 1px solid #aaa49e;
+    background: var(--fl-surface, #202124);
+    border: 1px solid var(--fl-line, #3b3d41);
     border-radius: 0.25rem;
     padding: 0.38rem 0.6rem;
   }
@@ -359,13 +447,13 @@
     cursor: pointer;
   }
   .review > section {
-    padding: 1.2rem 0;
-    border-top: 1px solid #c7c1ba;
+    padding: 1.15rem;
+    border-top: 1px solid var(--fl-line, #3b3d41);
   }
   p,
   small,
   dt {
-    color: #605b56;
+    color: var(--fl-muted, #b5b4ad);
   }
   p {
     margin: 0.45rem 0;
@@ -376,7 +464,7 @@
     overflow-wrap: anywhere;
   }
   article {
-    border-top: 1px solid #e2ddd6;
+    border-top: 1px solid var(--fl-line, #3b3d41);
     padding: 0.75rem 0;
   }
   article p {
@@ -385,7 +473,7 @@
   button:focus-visible,
   select:focus-visible,
   input:focus-visible {
-    outline: 2px solid #852641;
+    outline: 2px solid var(--fl-accent, #d5f65e);
     outline-offset: 2px;
   }
   .counts,
@@ -420,7 +508,7 @@
   td,
   th {
     padding: 0.65rem 0.45rem;
-    border-bottom: 1px solid #ded9d3;
+    border-bottom: 1px solid var(--fl-line, #3b3d41);
     text-align: right;
   }
   th:first-child {
@@ -428,7 +516,7 @@
   }
   thead th {
     white-space: nowrap;
-    color: #514c47;
+    color: var(--fl-muted, #b5b4ad);
   }
   tbody th {
     font-weight: 550;
@@ -454,5 +542,62 @@
     th {
       padding: 0.55rem 0.3rem;
     }
+  }
+  @media (max-width: 600px) {
+    .watch-table,
+    .watch-table tbody {
+      display: block;
+    }
+    .watch-table thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+    .watch-table tbody tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.3rem 0.65rem;
+      align-items: start;
+      padding: 0.6rem 0;
+      border-top: 1px solid var(--fl-line, #3b3d41);
+    }
+    .watch-table tbody :is(th, td) {
+      padding: 0;
+      border: 0;
+      text-align: left;
+      white-space: normal;
+    }
+    .watch-table tbody th {
+      grid-column: 1;
+      grid-row: 1 / 3;
+    }
+    .watch-table tbody td:nth-child(2),
+    .watch-table tbody td:nth-child(3) {
+      grid-column: 2;
+      text-align: right;
+      font-size: 0.8rem;
+      color: var(--fl-muted, #b5b4ad);
+    }
+    .watch-table tbody td:last-child {
+      grid-column: 1/-1;
+      color: var(--fl-muted, #b5b4ad);
+      font-size: 0.8rem;
+    }
+    .watch-table tbody td:last-child::before {
+      content: "최근 관측 보류 · ";
+    }
+    .watch-table tbody td.no-hold {
+      display: none;
+    }
+  }
+  .results-view article h4,
+  .results-view caption {
+    color: var(--fl-forecast);
+  }
+  .counts dd,
+  .coverage dd {
+    color: var(--fl-ink);
   }
 </style>

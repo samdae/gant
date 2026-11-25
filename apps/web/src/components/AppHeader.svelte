@@ -106,7 +106,7 @@
 <style>
   .work-controls { display:flex; align-items:center; gap:12px; }
   .work-controls label { display:flex; gap:6px; align-items:center; color:var(--fl-muted); font-size:12px; }
-  .work-controls select { max-width:110px; color:var(--fl-ink); background:var(--fl-surface); border:1px solid var(--fl-line); border-radius:8px; padding:6px; min-height:32px; font:600 12px var(--fl-font); }
+  .work-controls select { max-width:110px; color:var(--fl-ink); background:var(--fl-backdrop); border:1px solid var(--fl-line); border-radius:5px; padding:6px; min-height:34px; font:600 13px var(--fl-font); }
   .work-controls select:focus-visible { outline:2px solid var(--fl-accent); outline-offset:2px; }
   @media(max-width:630px) { .work-controls { gap:14px; } }
 

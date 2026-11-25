@@ -260,7 +260,7 @@
         <div>
           <h3>완료된 분석이 없습니다</h3>
           <p>{isPublicViewer ? "완료된 회고가 공개되면 이곳에서 확인할 수 있습니다." : "종목과 포지션 회차를 선택해 당시 판단 근거의 평가를 요청하세요."}</p>
-          {#if !isPublicViewer}<button on:click={openModal}>회고 요청</button>{/if}
+          {#if !isPublicViewer}<button on:click={openModal}>회고 요청</button>{:else}<a href="#/reports">발행 리포트 읽기</a>{/if}
         </div>
       </section>
       {:else}<div class="card" style="padding:16px;color:var(--text-dim)">완료된 회고분석이 없습니다.</div>{/if}
@@ -423,7 +423,7 @@
     padding: 16px;
   }
   .modal-content {
-    background: var(--bg-card, #1a1a2e);
+    background: var(--fl-surface, var(--bg-card, #1a1a2e));
     border-radius: 12px;
     width: 100%;
     max-width: 520px;
@@ -474,8 +474,8 @@
     color: var(--text-dim);
   }
   .modal-tab.active {
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
+    background: var(--fl-accent-soft, rgba(255,255,255,.08));
+    color: var(--fl-accent, #fff);
   }
   .modal-body {
     flex: 1;
@@ -526,7 +526,7 @@
   }
   .tag-chip.active {
     background: var(--accent);
-    color: #fff;
+    color: var(--fl-on-accent, #fff);
     border-color: var(--accent);
   }
   .tag-chip.disabled {
@@ -590,7 +590,7 @@
     width: 12px;
     height: 12px;
     opacity: 0;
-    color: #fff;
+    color: var(--fl-on-accent, #fff);
     transition: opacity 0.1s ease;
   }
   .custom-checkbox.checked {
