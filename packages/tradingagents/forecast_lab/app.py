@@ -256,6 +256,7 @@ def main():
         print(f"Seeded {len(entries)} entries.")
         return
     from .engine import EXPERIMENT_VERSION, ForecastEngine
+    from .scheduled_sources import collect_scheduled_issues
 
     progress = Progress(os.environ.get("FORECAST_LAB_STATE_DIR") or runtime_root())
     reference = None
@@ -265,7 +266,7 @@ def main():
         reference = IncumbentCollector(store)
     worker = Worker(
         store,
-        ForecastEngine(),
+        ForecastEngine(before_observation=collect_scheduled_issues),
         progress,
         reference=reference,
         experiment_version=EXPERIMENT_VERSION,

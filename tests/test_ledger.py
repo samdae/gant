@@ -5,6 +5,7 @@ import secrets
 import socket
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -179,8 +180,26 @@ class LedgerDatabaseTests(unittest.TestCase):
         scheduler.summary_agent.summarize.return_value = {}
         scheduler.portfolio_agent = Mock()
         scheduler.portfolio_agent.decide.return_value = {"action": "HOLD"}
-        with patch("tradingagents.dataflows.macro_collector.collect_macro_context", return_value="") as macro:
-            scheduler._run_analysis_cycle_impl(ticker, job)
+        scheduler._ticker_locks = {ticker: threading.Lock()}
+        scheduler._requeued_job_ids = set()
+        scheduler._on_all_tickers_complete = Mock()
+        scheduler._get_latest_market_date = Mock(return_value=None)
+
+        def before_report(symbol, market):
+            self.assertEqual((symbol, market), (ticker, "us"))
+            self.assertIsNone(ReportRepository(self.db).get_by_job(job))
+            scheduler.graph.propagate.assert_not_called()
+
+        with (
+            patch("tradingagents.dataflows.macro_collector.collect_macro_context", return_value="") as macro,
+            patch("tradingagents.scheduler.ticker_scheduler.collect_scheduled_issues", side_effect=before_report) as collect,
+        ):
+            self.assertFalse(scheduler._run_analysis_cycle(ticker))
+            scheduler._get_latest_market_date.return_value = "2026-01-02"
+            self.assertTrue(scheduler._run_analysis_cycle(ticker, job))
+            self.assertFalse(scheduler._run_analysis_cycle(ticker, job))
+            self.assertFalse(scheduler._run_analysis_cycle(ticker))
+            collect.assert_called_once()
         macro.assert_called_once_with(ticker, "us", "2026-01-02")
         report = ReportRepository(self.db).get_by_job(job)
         self.assertIsNone(report["position_id"])

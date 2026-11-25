@@ -77,10 +77,11 @@ def _posix_group(proc):
             pass
 
 
-def bounded_run(command, payload, timeout, label):
-    env = dict(os.environ, PYTHONUTF8="1")
-    root = str(Path(__file__).resolve().parents[2])
-    env["PYTHONPATH"] = os.pathsep.join(filter(None, (root, env.get("PYTHONPATH"))))
+def bounded_run(command, payload, timeout, label, *, env=None, cwd=None):
+    if env is None:
+        env = dict(os.environ, PYTHONUTF8="1")
+        root = str(Path(__file__).resolve().parents[2])
+        env["PYTHONPATH"] = os.pathsep.join(filter(None, (root, env.get("PYTHONPATH"))))
     windows = os.name == "nt"
     proc = subprocess.Popen(
         command,
@@ -90,6 +91,7 @@ def bounded_run(command, payload, timeout, label):
         text=True,
         encoding="utf-8",
         env=env,
+        cwd=cwd,
         start_new_session=not windows,
         creationflags=subprocess.CREATE_NO_WINDOW if windows else 0,
     )

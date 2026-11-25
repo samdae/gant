@@ -273,7 +273,7 @@ def _calendar_horizon_matches(snapshot):
 
 
 class ForecastEngine:
-    def __init__(self, provider=None, clock=None, llm=None, model=None):
+    def __init__(self, provider=None, clock=None, llm=None, model=None, before_observation=None):
         if provider is None:
             from .market_runner import MarketProvider
 
@@ -281,6 +281,7 @@ class ForecastEngine:
         self.provider = provider
         self.clock = clock or (lambda: datetime.now(UTC))
         self.llm = llm
+        self.before_observation = before_observation
         self.model = model or os.getenv("FORECAST_LAB_MODEL", "gpt-6.2-sol")
 
     def _before_open(self, snapshot):
@@ -379,6 +380,9 @@ class ForecastEngine:
             benchmark_info["reason"] = (
                 "Incomplete, split or uncertain corporate-action window"
             )
+        if self.before_observation:
+            remaining = datetime.fromisoformat(snapshot["entry_open_at"]) - self._before_open(snapshot)
+            self.before_observation(ticker, market, seconds_to_entry=remaining.total_seconds())
         snapshot.update(
             source=meta.get("price_source", SOURCE),
             benchmark=benchmark_info,

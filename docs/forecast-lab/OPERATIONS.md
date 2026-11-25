@@ -17,6 +17,12 @@
 
 ## 평상시 시작과 점검
 
+### 예약 분석의 last30days 수집
+
+운영 `%LOCALAPPDATA%\TradingAgentsForecastLab\lab.env`의 `GANT_LAST30DAYS_COLLECTOR_ROOT=C:/Users/samda/dev/TradingAgents-V3`가 v3 수집기 경로다. v2의 새 예측과 종목별 매매 분석에서 실제 실행이 필요한 경우에만 이 경로의 수집기를 호출한다. 수집 장애 시에도 본래 분석은 계속된다. v3 웹 프로세스에는 분석 예약이 없다. 보호된 설정 파일의 해당 한 줄을 제거하고 8014를 재기동하면 수집 연동만 해제된다.
+
+설정 적용 전 `/api/status`의 progress.phase가 idle이고 `/workspace-api/queue`의 running이 null, total이 0인지 확인한다. 8014의 loopback 리스너가 이 체크아웃의 `lab.env`와 `serve --console`을 사용하는지 식별한 후 그 리스너만 재기동한다. `scripts/start-forecast-lab.ps1`로 시작해 `/ready`, `/api/status`와 원래의 예약 목록을 확인한다. 수집기 설치 및 점검 절차는 v3 브랜치의 [이슈 수집 운영 문서](https://github.com/samdae/gant/blob/codex/gant-v3/docs/v3/ISSUES.md)를 따른다.
+
 로그인 없이 [메인 콘솔](https://daehun.app/) 또는 [기존 공개 주소](https://research.daehun.app/)에서 대시보드, 종목별 분석 리포트, 연구 결과, 가상계좌 잔고·수량·체결, 예약과 회고를 조회한다. [운영 콘솔](https://lab.daehun.app/)은 승인된 이메일로 받은 Cloudflare Access 일회용 코드로 로그인한다. 관리 세션은 12시간이며 가상매매 변경에는 콘솔 자체 관리자 인증도 필요하다.
 
 ### 외부 경로와 복구

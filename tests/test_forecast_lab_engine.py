@@ -65,6 +65,26 @@ class EngineTests(unittest.TestCase):
     def snapshot(self):
         return self.engine.snapshot("XYZ", "us")
 
+    def test_only_eligible_prices_trigger_collection_before_the_snapshot_cutoff(self):
+        collected_at = []
+        def collect(ticker, market, *, seconds_to_entry):
+            self.assertEqual((ticker, market), ("XYZ", "us"))
+            self.assertGreater(seconds_to_entry, 110)
+            self.now += timedelta(seconds=9)
+            collected_at.append(self.now)
+            self.now += timedelta(seconds=1)
+
+        self.engine.before_observation = collect
+        case = self.snapshot()
+        self.assertLess(collected_at[0], at(case["observed_at"]))
+        self.bars.wrong_market = True
+        with self.assertRaises(ForecastUnavailable):
+            self.snapshot()
+        self.now = at(case["entry_open_at"])
+        with self.assertRaisesRegex(ForecastUnavailable, "opened"):
+            self.snapshot()
+        self.assertEqual(len(collected_at), 1)
+
     def test_holiday_early_close_and_provider_delay(self):
         case = self.snapshot()
         self.assertEqual(case["data_session"], "2026-11-25")

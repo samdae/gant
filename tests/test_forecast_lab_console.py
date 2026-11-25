@@ -87,7 +87,8 @@ class ConsoleIsolationTests(unittest.TestCase):
                     encoding="ascii",
                 )
                 (root / "lab.env").write_text(
-                    "FORECAST_LAB_DSN=" + header + "forecast_lab_research\n",
+                    "FORECAST_LAB_DSN=" + header + "forecast_lab_research\n"
+                    "GANT_LAST30DAYS_COLLECTOR_ROOT=local-fixture\n",
                     encoding="ascii",
                 )
                 subprocess.run(
@@ -97,6 +98,7 @@ class ConsoleIsolationTests(unittest.TestCase):
                     env={
                         **os.environ,
                         "CONSOLE_TEST_ROOT": temp,
+                        "GANT_LAST30DAYS_COLLECTOR_ROOT": "wrong-inherited-path",
                         "CONSOLE_TEST_PORT": str(port),
                         "DATABASE_URL": "invalid-production-source",
                         "SUPABASE_DB_URL": "invalid-production-source",
@@ -136,6 +138,7 @@ def fixture():
 
     with patch.object(psycopg, "connect", side_effect=private_connect):
         console = configure_runtime(root, root / "lab.env")
+        assert os.environ["GANT_LAST30DAYS_COLLECTOR_ROOT"] == "local-fixture"
         from tradingagents.api import app as original
         from tradingagents.default_config import DEFAULT_CONFIG
 
@@ -171,6 +174,7 @@ def fixture():
             assert client.get("/lab.js").status_code == 200
             assert client.get("/api/status").status_code == 200
             assert client.get("/workspace-api/health").json()["scheduler_running"]
+            assert os.environ["GANT_LAST30DAYS_COLLECTOR_ROOT"] == "local-fixture"
             assert client.get("/ready").json() == {"ready": True, "console": True}
             ready.side_effect = None
             ready.return_value = False

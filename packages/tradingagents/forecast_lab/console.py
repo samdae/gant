@@ -10,6 +10,8 @@ from psycopg import Error
 from psycopg.conninfo import conninfo_to_dict
 from starlette.staticfiles import StaticFiles
 
+from .scheduled_sources import COLLECTOR_ROOT
+
 
 def checked_dsn(raw, database, user=None):
     try:
@@ -64,10 +66,10 @@ def configure_runtime(root, lab_env):
                 "LANGCHAIN_",
                 "LANGSMITH_",
             )
-        ) or key in {"DATABASE_URL", "LLM_PROVIDER", "CODEX_MODEL", "RAG_TOP_K"}:
+        ) or key in {"DATABASE_URL", "LLM_PROVIDER", "CODEX_MODEL", "RAG_TOP_K", COLLECTOR_ROOT}:
             os.environ.pop(key)
     for key, value in lab.items():
-        if key.startswith("FORECAST_LAB_") and value is not None:
+        if (key.startswith("FORECAST_LAB_") or key == COLLECTOR_ROOT) and value is not None:
             os.environ[key] = value
     work = root / "console"
     work.mkdir(exist_ok=True)

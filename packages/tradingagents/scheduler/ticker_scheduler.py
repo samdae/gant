@@ -34,6 +34,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from tradingagents.errors import DataVendorError, DecisionParseError, AgentExecutionError
+from tradingagents.forecast_lab.scheduled_sources import collect_scheduled_issues
 from tradingagents.runtime_context import set_schedule_context, reset_schedule_context
 from tradingagents.scheduler.portfolio_pipeline import PortfolioPipeline
 
@@ -621,6 +622,8 @@ class TickerScheduler:
         raw_price, data_date = self._get_latest_close(ticker, schedule_job_id)
         current_price = round(raw_price, 2)
         trade_date = data_date
+
+        collect_scheduled_issues(ticker, cfg.get("market", "us"))
 
         active_position = position_repo.get_active(ticker)
         position_id = active_position["id"] if active_position else None
