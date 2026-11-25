@@ -17,6 +17,7 @@ EXPORT = "last30days agent export"
 MAX_FEED_BYTES = 1_048_576
 MAX_ITEMS = 40
 ENGLISH = {
+    "BTC-USD": "Bitcoin",
     "DLR": "Digital Realty",
     "FSLR": "First Solar",
     "GLD": "SPDR Gold Shares",
@@ -355,6 +356,23 @@ def parse_feed(payload, observed):
     ]
 
 
+def record_observation(conn, ticker, source, query, observed, status, rows):
+    """Insert the run and its newly seen URLs in the caller's transaction."""
+    run = conn.execute(
+        """INSERT INTO v3_issue_runs(ticker,source,query,collected_at,status,item_count)
+        VALUES (%s,%s,%s,%s,%s,%s) RETURNING id,status,item_count,collected_at""",
+        (ticker, source, query, observed, status, len(rows)),
+    ).fetchone()
+    if rows:
+        with conn.cursor() as cursor:
+            cursor.executemany(
+                """INSERT INTO v3_issues(ticker,url,title,publisher,published_at,published_day,first_seen_at,run_id)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                [(ticker, *row, observed, run["id"]) for row in rows],
+            )
+    return run
+
+
 def collect_one(store, entry, fetch=fetch_feed, export_path=None):
     ticker = entry["ticker"]
     source = EXPORT if export_path else SOURCE
@@ -374,24 +392,8 @@ def collect_one(store, entry, fetch=fetch_feed, export_path=None):
                 else parse_feed(payload, observed)
             )
             status = "available" if rows else "empty"
-            run = conn.execute(
-                """INSERT INTO v3_issue_runs(ticker,source,query,collected_at,status,item_count)
-                VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
-                (
-                    ticker,
-                    source,
-                    json.loads(payload)["query"] if export_path else query[0],
-                    observed,
-                    status,
-                    len(rows),
-                ),
-            ).fetchone()
-            with conn.cursor() as cursor:
-                cursor.executemany(
-                    """INSERT INTO v3_issues(ticker,url,title,publisher,published_at,published_day,first_seen_at,run_id)
-                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
-                    [(ticker, *row, observed, run["id"]) for row in rows],
-                )
+            stored_query = json.loads(payload)["query"] if export_path else query[0]
+            record_observation(conn, ticker, source, stored_query, observed, status, rows)
         return status
     except Exception:  # noqa: BLE001 -- isolate each instrument and redact transport errors
         try:

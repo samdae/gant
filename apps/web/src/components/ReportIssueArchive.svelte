@@ -44,7 +44,7 @@
   const notices: Record<string, string> = {
     uncollected: "이 회차 발행 전 수집 기록이 없습니다.",
     empty: "수집했지만 기간과 시점 조건을 충족한 자료가 없습니다.",
-    failed: "당시 최근 수집이 실패했습니다. 앞서 확보한 자료만 표시합니다.",
+    failed: "확인하지 못한 출처가 있습니다. 발행 시점까지 확보한 자료를 표시합니다.",
   };
 </script>
 

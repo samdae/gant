@@ -1,13 +1,17 @@
 import json
 import os
 import tempfile
+import threading
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from pathlib import Path
 from unittest.mock import Mock
 
 import test_forecast_lab_store as store_fixture
+from tradingagents.forecast_lab.scheduled_issues import collect_scheduled
 from tradingagents.forecast_lab.issue_collector import (
     EXPORT,
     SOURCE,
@@ -194,6 +198,109 @@ class IssueStorageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         store_fixture.ForecastStoreTests.setUpClass.__func__(cls)
+
+    def test_scheduled_run_precedes_cutoff_and_coalesces_concurrent_schedules(self):
+        connect = self.store._connect
+        ticker = "ADD-ON"  # A valid scheduled ticker absent from the V3 watchlist.
+        release = threading.Event()
+        collecting = threading.Event()
+        calls = []
+
+        def engine(symbol, market):
+            calls.append((symbol, market))
+            collecting.set()
+            if not release.wait(10):
+                raise TimeoutError
+            raw = bundle((datetime.now(UTC) - timedelta(days=2)).isoformat())
+            raw["query"] = f"{symbol} market developments"
+            raw["source_status"] = {"hackernews": "no-results", "youtube": "ok"}
+            raw["results"][0].update(source="youtube", url="https://www.youtube.com/watch?v=abcdefghijk")
+            return raw
+
+        with connect() as conn:
+            old_cutoff = conn.execute("SELECT clock_timestamp() AS t").fetchone()["t"]
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            leader = pool.submit(collect_scheduled, connect, ticker, "us", engine)
+            self.assertTrue(collecting.wait(5))
+            peer = pool.submit(collect_scheduled, connect, ticker, "us", engine)
+            try:
+                with connect() as conn:
+                    conn.autocommit = True
+                    deadline = time.monotonic() + 5
+                    while not conn.execute(
+                        "SELECT EXISTS (SELECT FROM pg_locks WHERE locktype='advisory' AND NOT granted) AS waiting"
+                    ).fetchone()["waiting"]:
+                        if time.monotonic() >= deadline:
+                            self.fail("Concurrent schedule did not wait for the active collection")
+                        time.sleep(.025)
+            finally:
+                release.set()
+            first, reused = leader.result(), peer.result()
+        self.assertEqual(calls, [(ticker, "us")])
+        self.assertEqual((first["status"], first["disposition"]), ("available", "collected"))
+        self.assertEqual((first["id"], "reused"), (reused["id"], reused["disposition"]))
+        with connect() as conn:
+            after = conn.execute("SELECT clock_timestamp() AS t").fetchone()["t"]
+            self.assertEqual(case_issues(conn, ticker, old_cutoff, source=EXPORT)["status"], "uncollected")
+            visible = case_issues(conn, ticker, after, source=EXPORT)
+            self.assertEqual(len(visible["items"]), 1)
+            self.assertEqual(visible["collected_at"], first["collected_at"].isoformat())
+
+    def test_scheduled_failure_backoff_empty_and_future_retries(self):
+        connect = self.store._connect
+        ticker = "035420.KS"
+        def collect(engine):
+            return collect_scheduled(connect, ticker, "kr", engine)
+
+        def age(run, interval):
+            with connect() as conn:
+                conn.execute("UPDATE v3_issue_runs SET collected_at=clock_timestamp()-%s WHERE id=%s",
+                             (interval, run["id"]))
+
+        wrong = bundle((datetime.now(UTC) - timedelta(days=2)).isoformat())  # NVDA query.
+        failed = collect(Mock(return_value=wrong))
+        self.assertEqual(failed["status"], "failed")
+        engine = Mock(side_effect=RuntimeError("all providers unavailable"))
+        self.assertEqual(collect(engine)["id"], failed["id"])
+        engine.assert_not_called()
+        age(failed, timedelta(minutes=16))
+        failed = collect(engine)
+        self.assertEqual((failed["status"], failed["disposition"]), ("failed", "collected"))
+        engine.assert_called_once_with(ticker, "kr")
+        age(failed, timedelta(minutes=16))
+        empty = dict(wrong, query=ticker, results=[],
+                     source_status={"hackernews": "no-results", "youtube": "no-results"})
+        engine = Mock(return_value=empty)
+        first = collect(engine)
+        self.assertEqual(first["status"], "empty")
+        self.assertEqual(collect(engine)["id"], first["id"])
+        age(first, timedelta(hours=7))
+        # Simulate the earlier failures ageing on the same timeline too.
+        with connect() as conn:
+            conn.execute("UPDATE v3_issue_runs SET collected_at=collected_at-interval '1 day' WHERE ticker=%s AND status='failed'", (ticker,))
+        self.assertNotEqual(collect(engine)["id"], first["id"])
+        self.assertEqual(engine.call_count, 2)
+
+    def test_partial_source_failure_retains_in_time_items_and_retries(self):
+        ticker = "PART"
+        connect = self.store._connect
+        export = bundle((datetime.now(UTC) - timedelta(days=3)).isoformat())
+        export.update(query=ticker, source_status={"youtube": "timeout", "hackernews": "ok"})
+        export["results"][0].update(source="hackernews", url="https://news.ycombinator.com/item?id=123")
+        engine = Mock(return_value=export)
+        run = collect_scheduled(connect, ticker, "us", engine)
+        self.assertEqual((run["status"], run["item_count"]), ("failed", 1))
+        with connect() as conn:
+            cutoff = conn.execute("SELECT clock_timestamp() AS t").fetchone()["t"]
+            group = case_issues(conn, ticker, cutoff, source=EXPORT)
+            self.assertEqual(group["status"], "failed")
+            self.assertEqual([r["url"] for r in group["items"]], [export["results"][0]["url"]])
+            conn.execute("UPDATE v3_issue_runs SET collected_at=collected_at-interval '16 minutes' WHERE id=%s",
+                         (run["id"],))
+        export.update(results=[], source_status={"youtube": "timeout", "hackernews": "unreachable"})
+        failed = collect_scheduled(connect, ticker, "us", engine)
+        self.assertEqual((failed["status"], failed["item_count"]), ("failed", 0))
+        self.assertEqual(engine.call_count, 2)
 
     def test_retries_import_and_failed_collection_as_of(self):
         store = self.store
