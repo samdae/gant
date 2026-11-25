@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import { onDestroy } from "svelte";
   import { location } from "svelte-spa-router";
@@ -55,7 +56,7 @@
     <div class="page-container">
       <div class="page-header"><h2>포트폴리오</h2></div>
       {#if state === "loading"}
-        <p role="status">계좌 설정을 확인하고 있습니다.</p>
+        <p><PendingState label="계좌 설정을 확인하고 있습니다."/></p>
       {:else if state === "error"}
         <div class="card card-body">
           <p role="alert">{error}</p>

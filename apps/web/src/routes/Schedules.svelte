@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import "../components/labOperations.css";
   import { operationTime, operationState } from "../lib/utils/operations";
@@ -258,7 +259,7 @@
           /></label
         >
       </header>
-      {#if loading}<p class="op-hint" role="status">예약을 불러오는 중입니다.</p>
+      {#if loading}<p class="op-hint"><PendingState label="예약을 불러오는 중입니다."/></p>
       {:else if !error && !filteredSchedules.length}
         <div class="folio-empty">
           <h3>{schedules.length ? "검색 결과 없음" : "등록된 일정 없음"}</h3>
@@ -322,7 +323,7 @@
     {/if}
 
     {#if loading}
-      <div class="card" style="padding:16px">불러오는 중...</div>
+      <div class="card" style="padding:16px"><PendingState label="분석 예약 조회 중"/></div>
     {:else if error}
       <div class="card error-text" style="padding:16px">{error}</div>
     {:else if schedules.length === 0}
@@ -454,7 +455,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" on:click={() => (showAdd = false)} disabled={submitting}>취소</button>
-        <button class="btn btn-primary" on:click={submitAdd} disabled={submitting}>생성</button>
+        <button class="btn btn-primary" on:click={submitAdd} disabled={submitting}>{#if submitting}<PendingState label="분석 예약 생성 중" />{:else}생성{/if}</button>
       </div>
     </div>
   </div>
@@ -475,7 +476,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" on:click={() => (showDelete = false)} disabled={submitting}>취소</button>
-      <button class="btn btn-danger" on:click={submitDelete} disabled={submitting}>삭제</button>
+      <button class="btn btn-danger" on:click={submitDelete} disabled={submitting}>{#if submitting}<PendingState label="분석 예약 삭제 중" />{:else}삭제{/if}</button>
     </div>
     </div>
   </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
   import ReportRounds from "../components/ReportRounds.svelte";
@@ -127,7 +128,7 @@
 
         </header>
         {#if loading || error || !visibleTickers.length}
-          <div class="desk-state" role="status">{loading ? "리포트를 불러오는 중입니다." : error || (query ? "검색 결과가 없습니다." : "발행된 분석 리포트가 없습니다.")}</div>
+          <div class="desk-state" role="status">{#if loading}<PendingState label="분석 리포트 조회 중"/>{:else}{error || (query ? "검색 결과가 없습니다." : "발행된 분석 리포트가 없습니다.")}{/if}</div>
         {:else}
           <div class="desk-report-row desk-report-head" aria-hidden="true"><span>종목</span><span>최근 판단</span><span>리포트 수</span><span>최근 발행</span><span></span></div>
           {#each visibleTickers as item}
@@ -153,7 +154,7 @@
       {/if}
     {:else}
     {#if loading}
-      <div class="card" style="padding:16px">불러오는 중...</div>
+      <div class="card" style="padding:16px"><PendingState label="분석 리포트 조회 중"/></div>
     {:else if error}
       <div class="card error-text" style="padding:16px">{error}</div>
     {:else if filteredTickers.length === 0}

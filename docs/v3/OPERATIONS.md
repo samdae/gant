@@ -4,12 +4,12 @@
 |---|---|
 | 소스 | C:\Users\samda\dev\TradingAgents-V3 · codex/gant-v3 |
 | 런타임 | %LOCALAPPDATA%\TradingAgentsV3 |
-| PostgreSQL | 127.0.0.1:55436, 독립 pgdata, SCRAM 인증 |
-| 연구·콘솔·검증 | forecast_lab_research, forecast_lab_console, forecast_lab_acceptance · 각 DB의 별도 로그인 |
-| 운영자·조회용 로컬 화면 | http://127.0.0.1:8024/ · http://127.0.0.1:8025/ |
+| 운영 데이터 | v2 PostgreSQL 55434의 연구·매매 데이터와 v2 콘솔 8014의 공개 조회 API |
+| 보조 출처·검증 | v3 PostgreSQL 55436, 독립 pgdata · v3 실험 기록과 아카이브 보존 · 별도 acceptance DB |
+| v3 읽기 전용 서버 | 127.0.0.1:8024 내부 조회 · 127.0.0.1:8025 공개 뷰어 |
 | 외부 운영 | [v3 읽기 전용 프리뷰](https://v3.daehun.app/) · [v2 메인](https://daehun.app/) · [v2 기존 공개 주소](https://research.daehun.app/) · [v2 관리자](https://lab.daehun.app/) |
 
-v3 개발 DB는 빈 상태에서 시작한다. 포트와 클러스터 디렉터리를 함께 확인한다. 보호된 런타임 안의 lab.env, console.env, acceptance.env가 각 자격증명을 담고 있다. 초기 연구 스케줄은 꺼 두고, 등록된 가상매매 예약도 빈 상태에서 시작한다. 같은 DB명이 있는 v2 클러스터는 55434에서 운영된다.
+예측·모의매매·학습·채점의 실행 주체는 v2다. v3의 두 웹 서버는 읽기 전용이다. 관측 현황에 표시되는 스케줄러 상태와 분석 예약 목록도 v2의 것이다. v3 설치 앱과 좌측 상단 GANT 로고는 분석 리포트 홈을 연다.
 
 ## 개발 도구
 
@@ -43,21 +43,38 @@ try {
 } finally { Pop-Location }
 ~~~
 
-처음 설치하는 PC에서만 아래 명령으로 클러스터와 세 DB를 만든다. 런타임 디렉터리나 포트가 이미 사용 중이면 명령이 중단된다. 중간 실패는 보호된 logs에서 원인을 확인한 뒤 복구한다.
+기존 PC는 아래 **공유 뷰어 기동**으로 진행한다. 새 PC에 빈 v3 실험 클러스터와 검증 DB가 필요할 때만 아래 초기화 명령을 사용한다. 기존 기록은 해당 버전의 백업으로 복원한다. v2 운영 서비스와 PostgreSQL은 v2 런치패드를 따른다.
 
 ~~~powershell
 .\.venv\Scripts\python.exe scripts/initialize-v3-runtime.py
 ~~~
 
-기존 Windows 설치에서는 다음 명령부터 시작한다. loopback 읽기 전용 서버가 v3 운영자 서버만 조회하며 공유 Cloudflare 터널의 v3 호스트는 8025를 향한다. TradingAgents V3 Preview 예약 작업은 Windows 사용자 로그온 시와 15분 간격으로 웹 서비스를 기동한다. 공유 커넥터는 v2 체크아웃의 TradingAgents Public Tunnel 작업이 기동한다. 예측 자동 실행은 별도 lab.env 설정을 따른다.
+## 공유 뷰어 기동
+
+v2의 `TradingAgents Forecast Lab` 예약 작업이 8014 운영 콘솔과 8015 공개 뷰어를 관리한다. `TradingAgents V3 Preview`는 사용자 로그온 시와 15분 간격으로 v3의 웹 프로세스와 보조 아카이브 DB를 확인한다. Cloudflare의 `TradingAgents Public Tunnel`은 v2 체크아웃에서 관리하며 v3 호스트는 8025로 연결된다.
+
+공유 모드를 처음 설정할 때 두 클러스터가 기동된 상태에서 아래 명령으로 제한된 조회 역할과 로컬 설정을 만든다. 이미 설정된 PC에서 같은 명령을 다시 실행할 수 있다. 비밀번호는 보호된 런타임 내부에만 보관한다. 8024만 이 읽기 전용 설정을 사용한다. 8025는 허용된 조회 경로만 제공한다.
+
+~~~powershell
+.\.venv\Scripts\python.exe scripts/provision-v3-shared-reader.py
+$marker = Join-Path $env:LOCALAPPDATA 'TradingAgentsV3/shared-viewer.enabled'
+if (!(Test-Path -LiteralPath $marker)) { New-Item -ItemType File -Path $marker }
+~~~
+
+이전 독립 모드가 실행 중인 PC의 최초 전환에서는 v3 연구 상태가 유휴 상태이고 매매 대기열이 비어 있는지 먼저 확인한다. 8024의 v3 `lab.env … serve --console`, 8025의 v3 `public_app:app`을 명령줄·loopback 주소로 식별한 후 각 이전 리스너를 종료하고 아래 명령을 실행한다. 이후 재기동은 같은 명령만 사용한다.
 
 ~~~powershell
 .\scripts\start-forecast-lab-services.ps1
-Invoke-RestMethod 'http://127.0.0.1:8024/ready'
+Invoke-RestMethod 'http://127.0.0.1:8024/healthz'
 Invoke-RestMethod 'http://127.0.0.1:8025/healthz'
+Invoke-RestMethod 'http://127.0.0.1:8025/ready'
 ~~~
 
-연구 목록은 seed 명령으로 등록한다. 현재 인스턴스에는 v2 관찰 목록 23개(한국 10, 미국 13)를 가져왔다. 예측, 가상거래, 기억은 v3에서 새로 생성한다.
+`/healthz`의 source는 v2, role은 각각 core와 edge여야 한다. `/ready`는 v2 연구 상태를 조회한다. 공개 원본이 중단되면 v2 서비스와 8014를 확인한다. 출처만 실패하면 v3 55436과 `logs/shared-core.err.log`를 확인한다. 8024·8025를 재기동해도 예약이나 모델 실행이 생성되지 않는다. 원본 DB 백업은 v2 체크아웃에서 관리하고, v3 아카이브는 v3 체크아웃의 `scripts/backup-forecast-lab.py`로 백업한다.
+
+### 격리된 개발 실험
+
+아래는 별도 실험 DB에서 모델과 수집기를 검증하는 예시다. 운영 뷰어 배포 명령은 위의 공유 뷰어 기동으로 끝난다.
 
 ~~~powershell
 $labEnv = Join-Path $env:LOCALAPPDATA 'TradingAgentsV3/lab.env'
@@ -66,9 +83,19 @@ $labEnv = Join-Path $env:LOCALAPPDATA 'TradingAgentsV3/lab.env'
 .\.venv\Scripts\python.exe -m tradingagents.forecast_lab.app --env-file $labEnv run-once --limit 1
 ~~~
 
-run-once는 적격 종목에서 실제 모델을 사용해 예측을 발행한다. 채점에는 실제 다섯 번째 거래일의 관측이 필요하다. 자동 발행을 시작하려면 v3 lab.env의 FORECAST_LAB_SCHEDULER_ENABLED를 1로 설정하고 v3 운영자 서버를 재시작한다. 이슈 수집을 예약하는 방법은 [수집 운영 문서](ISSUES.md)에 있다. 재시작은 v3 포트를 소유하고 v3 체크아웃 또는 런타임을 참조하는 프로세스만 대상으로 한다. DB 백업은 v3 체크아웃의 scripts/backup-forecast-lab.py를 프로젝트 가상환경에서 실행한다.
+run-once는 실험 DB에 실제 모델 예측을 발행한다. 채점에는 다섯 번째 거래일의 관측이 필요하다. 별도 아카이브 수집 방법은 [수집 운영 문서](ISSUES.md)에 있다.
 
 ## 검증
+
+### 공유 뷰어 · gant-v3-preview.5
+
+2026-11-26 KST에 두 공개 주소를 대조했다. 예측 사례 52건, 24개 종목의 매매 분석 리포트 48건, 분석 예약 24개가 일치했다. 사례 #52 SK이노베이션의 단일 모델 29.0%와 토론 모델 40.0%는 목록·상세·v2 발행값이 동일했고, 리포트 #1286 우리금융지주의 3회차 본문을 모바일과 데스크톱에서 열었다. 이 수치는 전환 시점의 기록으로 이후에는 최신 v2 응답과 대조한다.
+
+외부 Chrome에서 320·393·768·1440px로 홈 진입, 로딩 표시, 공개 열람등, 새로고침 중 중복 입력 방지, 설치 매니페스트와 아이콘을 검증했다. 모바일 메뉴는 오른쪽 스와이프와 바깥 탭으로 닫히고 세로 스크롤 중에는 열려 있었다. 대표 화면 14개를 모바일·데스크톱에서 열어 콘솔 오류·HTTP 오류·가로 넘침을 확인했다. Windows 기동 작업을 반복해도 두 버전의 리스너 PID가 유지됐고 v3의 이전 실행 콘솔 프로세스는 0개였다.
+
+이번 릴리스에서 Windows 자동 테스트 155건과 프런트엔드 단위 테스트 2건이 통과했고 Svelte 검사에서 오류와 경고는 0건이었다.
+
+### 자동 검사
 
 ~~~powershell
 $env:PG_TEST_BINDIR = Join-Path $env:LOCALAPPDATA 'TradingAgentsDeploy/pgsql/bin'
@@ -87,7 +114,7 @@ finally { Remove-Item Env:FORECAST_LAB_ACCEPTANCE_DSN -ErrorAction SilentlyConti
 
 첫 실제 사례는 NVDA #1이다. 11월 24일 미국 거래일 자료로 기준선·단일 모델·토론 확률을 발행했다. 첫 토론 시도는 시간 제한으로 실패했다. 같은 사례의 동결된 근거로 재시도해 토론 결과를 저장했고 기존 단일 모델 결과를 유지했다. 만기 전에는 두 가격 조건이 대기이고, 사용할 수 있는 성숙 기억이 없어 기억 실험 두 가지는 건너뛰었다. 최신순 이슈 40건을 보관했다. 만기 예정은 12월 3일 06:00 KST다.
 
-[외부 조회용 사례](https://v3.daehun.app/#/research/1) · [로컬 조회용 사례](http://127.0.0.1:8025/#/research/1) · [로컬 운영자 사례](http://127.0.0.1:8024/#/research/1)
+앞 문단의 #1은 최초 실험 클러스터의 번호다. 공유 뷰어에서 #1은 v2의 SK하이닉스이며, v2의 [엔비디아 사례는 #35](https://v3.daehun.app/#/research/35)다.
 
 이 프리뷰는 gant-v3-preview.1 태그로 재현한다. Windows PostgreSQL과 Chrome을 사용한 전체 테스트 142건, 프런트엔드 단위 테스트 2건이 통과했고 Svelte 검사에서 오류·경고가 0건이었다. 아래 두 가지 동작도 실행 중인 인스턴스에서 확인했다. 8024·8025에서 같은 NVDA 사례의 기준선·단일 모델·토론 결과를 읽을 수 있고, 8025의 쓰기 요청은 HTTP 405로 차단된다.
 
@@ -95,9 +122,9 @@ finally { Remove-Item Env:FORECAST_LAB_ACCEPTANCE_DSN -ErrorAction SilentlyConti
 
 연구 사례와 분석 리포트는 같은 Svelte 앱에서 읽는다. 예측은 `/#/research/{id}`, 매매 분석은 `/#/reports/{ticker}`에서 열며, 리포트 목록은 `/#/reports`다. 기존 `/research/?case=1`, `/research/#results`, `/research/#observe` 북마크도 각각 해당 화면으로 연결된다.
 
-운영 중에 업데이트할 때는 위와 같은 두 Vite 환경 변수로 배포 후보를 별도 폴더에 빌드하고, 전체 테스트의 `FORECAST_PUBLIC_UI_DIST`를 그 폴더로 지정한다. 서버 변경이 있으면 v3의 `/api/status`가 유휴 상태이고 `/workspace-api/queue`가 비었는지 확인한다. 8024 리스너의 명령줄에서 v3의 lab.env와 `serve --console`을, 8025에서는 v3 packages와 `public_app:app`을 대조한다. 해당 리스너만 하나씩 재시작하고 각 포트에서 연구 사례가 조회되는지 확인한다. 8024는 `scripts/start-forecast-lab.ps1`, 8025는 `scripts/start-forecast-lab-public.ps1`로 기동한다.
+운영 중에는 두 Vite 환경 변수로 후보를 별도 폴더에 빌드하고 전체 테스트의 `FORECAST_PUBLIC_UI_DIST`를 그 폴더로 지정한다. 백엔드 변경은 각 리스너가 v3 packages에서 `shared_view:build_shared_core`(8024) 또는 `shared_view:build_shared_edge`(8025)로 기동됐는지 확인한 뒤 해당 프로세스만 재시작한다. 위 공유 뷰어 기동 명령은 이미 실행 중인 정상 프로세스를 재사용한다.
 
-기존 v3 dist의 index.html을 보관하고, 후보의 해시가 붙은 JS와 CSS를 먼저 복사한 뒤 index.html을 원자적으로 교체한다. 직전 정적 파일을 남겨 두면 보관한 index.html로 화면을 복구할 수 있다. 서버 코드까지 복구해야 하면 직전 릴리스 태그와 호환되는 번들을 함께 기동한다. 이 배포에는 PostgreSQL 초기화·재시작이나 Cloudflare 설정 변경이 필요하지 않다.
+기존 v3 dist의 index.html과 변경할 공개 파일을 보관한다. 후보의 해시가 붙은 JS·CSS, 매니페스트, 아이콘, 서비스 워커를 반영한 뒤 index.html을 원자적으로 교체한다. 직전 자산을 보관하면 화면만 이전 버전으로 복구할 수 있다. 공유 모드와 v2 단독 실행을 유지한 채 운영 주소에서 홈, 설치 가능 여부, 최신 사례·리포트·예약의 일치를 확인한다.
 
 최초 통합 확인용 기록은 엔비디아 #1이다. 공개 사례 API와 PC·모바일 화면에서 시세 65거래일, 역할 토론 8개, 동결 RSS 40건, 같은 시각 기준 last30days 3건을 대조할 수 있다. 마지막 3건은 최초 동결 40건 밖에 있던 자료다. 가상매매 리포트가 없는 초기 DB에서는 두 회차의 테스트 데이터를 사용해 출처의 시간 경계, 회차 변경 및 이전 응답 처리를 검증한다.
 

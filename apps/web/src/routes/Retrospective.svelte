@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import { onMount, onDestroy } from "svelte";
@@ -56,6 +57,7 @@
   let modalPositionsLoading = false;
   let modalSelectedPositions: Set<number> = new Set();
   let analyzing = false;
+  let requestMode: "selected" | "all" = "selected";
   let analyzeMessage = "";
 
   onMount(async () => {
@@ -185,6 +187,7 @@
     const ids = [...modalSelectedPositions];
     if (mode === "selected" && !ids.every(id => modalPositions.some(row =>
       row.position_id === id && row.ticker.toUpperCase() === ticker.toUpperCase() && getAnalysisStatus(row).canAnalyze))) return;
+    requestMode = mode;
     analyzing = true;
     analyzeMessage = "";
     try {
@@ -251,7 +254,7 @@
     {/if}
 
     {#if loading}
-      <div class="card" style="padding:16px">불러오는 중...</div>
+      <div class="card" style="padding:16px"><PendingState label="회고 분석 조회 중"/></div>
     {:else if error}
       <div class="card error-text" style="padding:16px">{error} <button class="btn btn-secondary" on:click={loadSummary}>다시 조회</button></div>
     {:else if filteredTickers.length === 0}
@@ -317,7 +320,7 @@
 
       <div class="modal-body">
         {#if modalTickersLoading}
-          <div style="padding:12px;color:var(--text-dim)">불러오는 중...</div>
+          <div style="padding:12px;color:var(--text-dim)"><PendingState label="회고 분석 조회 중"/></div>
         {:else}
           <div class="modal-tickers">
             {#each modalTickers as t}
@@ -335,7 +338,7 @@
 
           {#if modalActiveTicker}
             {#if modalPositionsLoading}
-              <div style="padding:8px;color:var(--text-dim);font-size:0.8125rem">포지션 로딩 중...</div>
+              <div style="padding:8px;color:var(--text-dim);font-size:0.8125rem"><PendingState label="포지션 로딩 중..."/></div>
             {:else if modalPositions.length === 0}
               <div style="padding:8px;color:var(--text-dim);font-size:0.8125rem">포지션이 없습니다.</div>
             {:else}
@@ -373,10 +376,10 @@
 
       <div class="modal-footer">
         <button class="btn btn-primary" on:click={() => runAnalysis("selected")} disabled={analyzing || !canRunSelected}>
-          {analyzing ? "요청 중..." : "선택 종목 요청"}
+          {#if analyzing && requestMode === "selected"}<PendingState label="회고 요청 전송 중" />{:else}선택 종목 요청{/if}
         </button>
         <button class="btn btn-primary" on:click={() => runAnalysis("all")} disabled={analyzing}>
-          {analyzing ? "요청 중..." : "전체 종목 요청"}
+          {#if analyzing && requestMode === "all"}<PendingState label="회고 요청 전송 중" />{:else}전체 종목 요청{/if}
         </button>
       </div>
     </div>

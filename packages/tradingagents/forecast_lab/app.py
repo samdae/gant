@@ -251,6 +251,10 @@ def main():
     run = sub.add_parser("run-once")
     run.add_argument("--limit", type=int)
     args = parser.parse_args()
+    runtime = runtime_root()
+    if ((runtime / "shared-viewer.enabled").is_file()
+            and (getattr(args, "console", False) or args.env_file.resolve() == (runtime / "lab.env").resolve())):
+        parser.error("Shared viewer mode is active. Use the shared Windows launchers; V2 owns execution.")
     console = None
     readiness = None
     dist = None

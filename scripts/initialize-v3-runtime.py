@@ -156,13 +156,13 @@ def initialize(runtime, pg_bin, port=PORT):
     clean = {k: v for k, v in os.environ.items() if not k.upper().startswith("PG")}
     with (logs / "initialize.log").open("ab") as log:
 
-        def pg(command):
+        def pg(command, output=log):
             subprocess.run(
                 command,
                 env=clean,
                 stdin=subprocess.DEVNULL,
-                stdout=log,
-                stderr=log,
+                stdout=output,
+                stderr=output,
                 timeout=100,
                 check=True,
             )
@@ -185,7 +185,11 @@ def initialize(runtime, pg_bin, port=PORT):
             conf.write(
                 f"\nlisten_addresses='127.0.0.1'\nport={port}\ntimezone='UTC'\nlog_timezone='UTC'\npassword_encryption='scram-sha-256'\n"
             )
-        pg([pgctl, "start", "-w", "-t", "45", "-D", data, "-l", logs / "postgres.log"])
+        # On Windows the detached postgres descendants can inherit pg_ctl's standard
+        # handles. Its server already has postgres.log, so keep the setup log private
+        # to short-lived setup commands.
+        pg([pgctl, "start", "-w", "-t", "45", "-D", data, "-l", logs / "postgres.log"],
+           output=subprocess.DEVNULL)
         try:
             passwords = {role: secrets.token_urlsafe(36) for role in DATABASES.values()}
             with isolated_libpq():

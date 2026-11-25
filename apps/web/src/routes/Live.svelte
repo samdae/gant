@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import LabTimeline from "../components/LabTimeline.svelte";
   import { isForecastLab, isPublicViewer } from "../lib/workspace";
@@ -153,19 +154,21 @@
           ? "마지막 확인 상태를 표시합니다."
           : "다시 연결하고 있습니다."}
       </p>{/if}
-    {#if queueSeen && !queue.running && !queue.pending.length}
+    {#if !queueSeen && !queueFailed}
+      <PendingState label="실행 대기열 조회 중" />
+    {:else if queueSeen && !queue.running && !queue.pending.length}
       <section class="op-panel"><h2>실행 중인 분석 없음</h2><p class="op-hint">최근 확인 {formatStepTime(checkedAt)} · 대기 중인 종목이 없습니다.</p></section>
-    {:else}
+    {:else if queueSeen}
     <div class="op-summary">
       <div>
         <span>현재 실행</span>
         {#if queue.running}<InstrumentLabel ticker={queue.running} />
-        {:else}<strong>{queueSeen ? "실행 없음" : "확인 중"}</strong>{/if}
+        {:else}<strong>실행 없음</strong>{/if}
       </div>
       <div>
         <span>다음 대기 종목</span>
         {#if queue.pending[0]}<InstrumentLabel ticker={queue.pending[0]} />
-        {:else}<strong>{queueSeen ? "대기 없음" : "확인 중"}</strong>{/if}
+        {:else}<strong>대기 없음</strong>{/if}
       </div>
       <div><span>최근 확인 · 현지 시각</span><strong>{formatStepTime(checkedAt)}</strong></div>
     </div>

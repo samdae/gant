@@ -26,7 +26,7 @@
   {#each expanded ? items : items.slice(0, 1) as item}
     <article class="news">
       <small
-        >{item.publisher || "매체 미기록"}{#if item.in_frozen_list}
+        >{item.publisher || "매체 미기록"}{#if item.in_frozen_list && feed?.provenance !== "v3_archive_as_of"}
           · 동결 목록에 포함{/if}</small
       >
       <strong

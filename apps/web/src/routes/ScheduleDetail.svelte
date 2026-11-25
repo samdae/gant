@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import LabTimeline from "../components/LabTimeline.svelte";
@@ -189,7 +190,7 @@
       </div>
 
     </header>
-    {#if loading}<p class="op-panel" role="status">회차를 불러오는 중입니다.</p>
+    {#if loading}<p class="op-panel"><PendingState label="회차를 불러오는 중입니다."/></p>
     {:else if cycleError}<p class="op-error" role="alert">{cycleError}</p>
     {:else if !cycles.length}<section class="op-panel folio-empty"><h2>실행 회차 없음</h2><p>예약이 실행되면 여기에 회차별 시작 시각과 결과가 표시됩니다.</p><a href="#/live">실시간 실행 →</a></section>
     {:else}
@@ -212,7 +213,7 @@
         {#if !isPublicViewer && cycle?.error_message}<p class="op-error">{cycle.error_message}</p>{/if}
       </section>
       {#if isPublicViewer}<p class="op-hint">세부 실행 로그는 관리자 화면에서 확인할 수 있습니다.</p>
-      {:else if loadingEvents}<p class="op-panel" role="status">이벤트를 불러오는 중입니다.</p>
+      {:else if loadingEvents}<p class="op-panel"><PendingState label="이벤트를 불러오는 중입니다."/></p>
       {:else if eventsError}<p class="op-error" role="alert">{eventsError}</p>
       {:else}<LabTimeline groups={phaseGroups} states={stepStates} {events} />{/if}
     {/if}
@@ -232,7 +233,7 @@
         </div>
         <div class="card-body">
           {#if loading}
-            <div class="empty-state">회차 불러오는 중...</div>
+            <div class="empty-state"><PendingState label="회차 불러오는 중" /></div>
           {:else if cycleError}
             <div class="empty-state error-text">{cycleError}</div>
           {:else if cycles.length === 0}
@@ -272,7 +273,7 @@
         </div>
         <div class="card-body">
           {#if loadingEvents}
-            <div class="empty-state" style="margin-bottom:12px">이벤트 불러오는 중...</div>
+            <div class="empty-state" style="margin-bottom:12px"><PendingState label="이벤트 불러오는 중" /></div>
           {:else if eventsError}
             <div class="empty-state error-text" style="margin-bottom:12px">{eventsError}</div>
           {:else if events.length === 0}

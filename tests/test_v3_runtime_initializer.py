@@ -35,6 +35,11 @@ class WindowsInitializeV3Tests(unittest.TestCase):
             self.assertFalse(runtime.exists())
             init.initialize(runtime, bindir, port)
             try:
+                # The finished setup log must be rotatable while PostgreSQL is still live.
+                setup_log = runtime / "logs/initialize.log"
+                rotated = setup_log.with_suffix(".rotated")
+                setup_log.rename(rotated)
+                rotated.rename(setup_log)
                 with self.assertRaises(init.SetupError):
                     init.initialize(runtime, bindir, port)
                 strings = []
@@ -68,16 +73,26 @@ class WindowsInitializeV3Tests(unittest.TestCase):
                     "0",
                 )
             finally:
-                subprocess.run(
-                    [
-                        bindir / "pg_ctl.exe",
-                        "-D",
-                        runtime / "pgdata",
-                        "stop",
-                        "-m",
-                        "fast",
-                        "-w",
-                    ],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                )
+                import _winapi
+
+                # pg_ctl -w observes postmaster.pid removal. The actual Windows
+                # process can still be closing inherited filesystem handles.
+                pid = int((runtime / "pgdata/postmaster.pid").read_text().splitlines()[0])
+                handle = _winapi.OpenProcess(_winapi.SYNCHRONIZE, False, pid)
+                try:
+                    subprocess.run(
+                        [
+                            bindir / "pg_ctl.exe",
+                            "-D",
+                            runtime / "pgdata",
+                            "stop",
+                            "-m",
+                            "fast",
+                            "-w",
+                        ],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                    )
+                    self.assertEqual(_winapi.WaitForSingleObject(handle, 15_000), _winapi.WAIT_OBJECT_0)
+                finally:
+                    _winapi.CloseHandle(handle)

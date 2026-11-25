@@ -78,6 +78,7 @@ export type Hypothesis = {
   conditions: Condition[];
 };
 export type Issues = {
+  provenance?: "v3_archive_as_of";
   as_of: string;
   status: string;
   collected_at: string | null;
@@ -103,7 +104,7 @@ export function caseSources(frozen?: Issues | null, collected?: Issues | null) {
   const available = new Map<string, Issues["items"][number]>();
   for (const item of [...(collected?.items || []), ...tagged]) {
     if (available.has(item.url)) continue;
-    available.set(item.url, { ...item, in_frozen_list: known.has(item.url) });
+    available.set(item.url, { ...item, in_frozen_list: frozen?.provenance !== "v3_archive_as_of" && known.has(item.url) });
   }
   const exports = collected || (tagged.length ? frozen : undefined);
   const unmatched = rows.filter(item => item.source !== rssSource && item.source !== exportSource && !available.has(item.url));
@@ -240,7 +241,7 @@ export async function researchGet<T>(
   if (!r.ok)
     throw new Error(
       r.status === 404
-        ? "이 사례를 찾을 수 없습니다."
+        ? (path.startsWith("report-sources/") ? "이 리포트를 찾을 수 없습니다." : "이 사례를 찾을 수 없습니다.")
         : "연구 자료를 불러오지 못했습니다.",
     );
   return r.json();

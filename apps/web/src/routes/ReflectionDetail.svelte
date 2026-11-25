@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { params } from "svelte-spa-router";
@@ -74,12 +75,12 @@
   <div class="page-container">
     <div class="page-header reflection-page-header">
       <a href="#/reflections" class="back-link" aria-label="뒤로">&larr;</a>
-      <h2>{isForecastLab ? "매매 검증 상세" : "AI분석"}</h2>
+      <h2>{#if isForecastLab && !loading && reflection?.ticker}<InstrumentLabel ticker={reflection.ticker}/><small>매매 검증 상세</small>{:else}{isForecastLab ? "매매 검증 상세" : "AI분석"}{/if}</h2>
     </div>
     {#if !isForecastLab}<AnalysisTabs />{/if}
 
     {#if loading}
-      <div class="card" style="padding:16px">불러오는 중...</div>
+      <div class="card" style="padding:16px"><PendingState label="매매 검증 조회 중"/></div>
     {:else if error}
       <div class="card" style="padding:16px"><span class="error-text">{error}</span></div>
     {:else if !reflection}
@@ -89,11 +90,11 @@
         <div class="card-body">
           <div class="reflection-top-row">
             <div class="reflection-top-left">
-              {#if reflection.ticker}
-                {#if isForecastLab}<InstrumentLabel ticker={reflection.ticker} />{:else}<span class="ticker-badge">{reflection.ticker}</span>
+              {#if !isForecastLab && reflection.ticker}
+                <span class="ticker-badge">{reflection.ticker}</span>
                 {#if displayName(reflection.ticker)}
                   <span class="ticker-tag">{displayName(reflection.ticker)}</span>
-                {/if}{/if}
+                {/if}
               {/if}
             </div>
             <span class={`badge ${reflection.outcome === "win" ? "badge-gain" : reflection.outcome === "loss" ? "badge-loss" : ""}`}>

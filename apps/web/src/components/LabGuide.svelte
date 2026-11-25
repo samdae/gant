@@ -25,10 +25,11 @@
 <section class="op-page guide-page">
   <header class="op-title">
     <div>
-      <h1>GANT 연구 안내</h1>
+      <h1>서비스 소개</h1>
       <p>
         개장 전 발행한 상승 확률을 다섯 거래일 뒤의 시세와 대조합니다. 각
         사례에서 당시 가격, 검증 조건과 최근 30일 이슈를 함께 읽을 수 있습니다.
+        예측과 매매 분석 예약은 v2에서 실행하고, 이 v3 화면에서 기록을 조회합니다.
       </p>
     </div>
     <a class="op-primary" href="#/research">예측 사례 보기 →</a>
@@ -39,7 +40,7 @@
       <li>
         <small>관측일 마감 후</small><strong>근거 동결</strong>
         <p>
-          마감 시세와 가격 조건을 저장하고, 당시 수집된 30일 출처를 보관합니다.
+          마감 시세를 기준으로 예측할 시점의 근거를 저장합니다. 당시 별도로 수집된 뉴스는 참고 자료로 함께 표시합니다.
         </p>
       </li>
       <li>
@@ -66,7 +67,7 @@
     </ol>
     <nav aria-label="관련 연구 자료">
       <a href="#/results">방법별 채점 성과</a><a href="#/observe"
-        >관찰 종목·수집 현황</a
+        >관측 현황</a
       >
     </nav>
   </section>

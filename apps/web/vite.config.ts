@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { defineConfig, loadEnv } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { VitePWA } from "vite-plugin-pwa";
@@ -16,11 +17,26 @@ export default defineConfig(({ mode }) => ({
       name: "forecast-lab-document",
       enforce: "pre",
       apply: () => loadEnv(mode, ".", "VITE_").VITE_FORECAST_LAB === "1",
+      generateBundle() {
+        const folder = new URL("./lab-pwa/", import.meta.url);
+        const files = [
+          "favicon.svg", "gant.webmanifest", "gant-sw.js", "apple-touch-icon.png",
+          "gant-192.png", "gant-512.png", "gant-maskable-192.png", "gant-maskable-512.png",
+        ];
+        for (const fileName of files) {
+          this.emitFile({
+            type: "asset",
+            fileName,
+            source: readFileSync(new URL(fileName, folder)),
+          });
+        }
+      },
       transformIndexHtml(html) {
         return html
           .replace('<html lang="en">', '<html lang="ko" class="gant-workspace">')
           .replace(/(<meta name="viewport"\s+content=")[^"]*/, '$1width=device-width, initial-scale=1, viewport-fit=cover')
           .replace('<meta name="theme-color" content="#0d0f13" />', '<meta name="theme-color" content="#18191b" />\n  <meta name="color-scheme" content="dark" />')
+          .replace("</head>", '<link rel="manifest" href="/gant.webmanifest" crossorigin="use-credentials" />\n<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />\n</head>')
           .replace("<title>GANT</title>", "<title>GANT &middot; Forecast Lab</title>")
           .replace(/<link\b[^>]*https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*>\s*/g, "");
       },

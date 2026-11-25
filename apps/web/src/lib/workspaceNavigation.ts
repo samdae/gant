@@ -1,3 +1,4 @@
+export const homeRoute = "/reports";
 export const sections = [
   {
     name: "예측 연구",
@@ -42,7 +43,7 @@ export const sections = [
 export function currentPage(location: string) {
   const [, base = "", detail] = location.split("?")[0].split("/");
   const aliases: Record<string, string> = {
-    "": "/research",
+    "": homeRoute,
     performance: "/results",
     trade: "/positions",
   };

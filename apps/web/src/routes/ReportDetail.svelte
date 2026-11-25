@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import ReportIssueArchive from "../components/ReportIssueArchive.svelte";
   import ReportDecisionEvidence from "../components/ReportDecisionEvidence.svelte";
@@ -241,7 +242,7 @@
     </div>
 
     {#if loading}
-      <div class="card" style="padding:16px">불러오는 중...</div>
+      <div class="card" style="padding:16px"><PendingState label="분석 리포트 조회 중"/></div>
     {:else if error}
       <div class="card error-text" style="padding:16px">{error}</div>
     {:else if !report}

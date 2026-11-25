@@ -1,12 +1,12 @@
 # G-ANT
 
-[v3 공개 프리뷰](https://v3.daehun.app/) · [엔비디아 예측 사례](https://v3.daehun.app/#/research/1) · [v2 메인](https://daehun.app/)
+[v3 분석 리포트](https://v3.daehun.app/#/reports) · [엔비디아 예측 사례](https://v3.daehun.app/#/research/35) · [v2 메인](https://daehun.app/)
 
 ## GANT v3 · 개발 브랜치
 
 이 체크아웃은 Research v2에서 분기한 **v3**다. 연구 화면에서는 개별 예측의 당시 근거와 사후 결과를 연결한다. 버전별 기준 커밋, 제품 기획, 측정 계약은 [v3 기획·설계](docs/v3/README.md), 새 Windows 인스턴스의 기동과 검증은 [v3 운영 문서](docs/v3/OPERATIONS.md)를 따른다.
 
-[연구 사례](https://v3.daehun.app/#/research/1)에서 한 회사의 발행 전 가격 차트, 당시 수집한 last30days 원문과 뉴스, 모델별 확률·토론, 만기 판정과 기억을 함께 읽을 수 있다. [분석 리포트](https://v3.daehun.app/#/reports)에서는 확률 예측과 모의매매 분석 기록을 찾아볼 수 있다. [예측 성과](https://v3.daehun.app/#/results)에서는 같은 사례에서 평가한 방법들을 비교한다.
+홈과 GANT 로고는 분석 리포트로 연결된다. 확률 예측과 매매 분석의 원본은 v2에 있고 v3는 같은 기록을 읽는다. 예약 실행과 채점은 v2가 담당한다. [연구 사례](https://v3.daehun.app/#/research)에서는 발행 전 시세, 모델별 확률·토론, 만기 판정과 기억을 확인한다. v3가 당시 별도로 확보한 뉴스와 last30days 원문은 종목과 수집 시각을 확인해 보조자료로 표시한다. [예측 성과](https://v3.daehun.app/#/results)에서는 같은 사례에서 평가한 방법들을 비교한다.
 
 흑연색 연구 화면에서 라임색 가격선은 실제 거래 기록을, 연보라색 점은 각 모델이 발표한 상승 확률을 나타낸다. 날짜를 선택해 시세와 거래량을 읽거나 모델을 선택해 판단 원문을 연다. 차트는 라인·캔들과 5거래일·20거래일·전체 기간을 지원한다. 휴대폰 하단에서는 연구, 리포트, 모의계좌와 전체 메뉴를 연다.
 

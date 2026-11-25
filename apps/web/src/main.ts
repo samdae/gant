@@ -7,8 +7,10 @@ import App from "./App.svelte";
 
 import { isForecastLab } from "./lib/workspace";
 
-if (isForecastLab && !window.location.hash) {
-  history.replaceState(history.state, "", "#/research");
+import { homeRoute } from "./lib/workspaceNavigation";
+
+if (isForecastLab && (!window.location.hash || window.location.hash === "#/")) {
+  history.replaceState(history.state, "", "#" + homeRoute);
 }
 
 const target = document.getElementById("app");
@@ -17,7 +19,11 @@ if (target) {
   new App({ target });
 }
 
-if (!isForecastLab && import.meta.env.PROD && "serviceWorker" in navigator) {
+if (isForecastLab && import.meta.env.PROD && "serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/gant-sw.js", { scope: "/", updateViaCache: "none" }).catch((error) => {
+    console.warn("GANT 설치 등록 실패", error);
+  });
+} else if (!isForecastLab && import.meta.env.PROD && "serviceWorker" in navigator) {
   // The bundle filename changes per build. Older CDN entries for /sw.js
   // must not precache the previous dashboard on a fresh visit.
   const worker = new URL("/sw.js", location.origin);

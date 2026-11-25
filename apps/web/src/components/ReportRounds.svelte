@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "./PendingState.svelte";
   import { onMount } from "svelte";
   import { fetchReportsByTicker } from "../lib/api/endpoints";
   import { formatDateTime } from "../lib/utils/format";
@@ -32,7 +33,7 @@
 </script>
 
 <div class="rounds">
-  {#if loading}<p role="status">회차 조회 중</p>
+  {#if loading}<p><PendingState label="회차 조회 중"/></p>
   {:else if failed}<p role="alert">
       회차를 불러오지 못했습니다. <button on:click={load}>다시 조회</button>
     </p>

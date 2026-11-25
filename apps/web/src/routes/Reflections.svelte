@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import { onMount } from "svelte";
@@ -170,7 +171,7 @@
         <button class="btn btn-secondary" on:click={loadCandidates}>재검증 대상 다시 조회</button>
       </div>
     {:else if candidateLoading}
-      <div class="card" style="padding:12px;margin-bottom:14px;color:var(--text-dim)">반성 상태 확인 중...</div>
+      <div class="card" style="padding:12px;margin-bottom:14px;color:var(--text-dim)"><PendingState label="매매 검증 대상 조회 중" /></div>
     {/if}
 
     {#if isForecastLab}
@@ -193,7 +194,7 @@
     {/if}
 
     {#if loading}
-      <div class="card" style="padding:16px">불러오는 중...</div>
+      <div class="card" style="padding:16px"><PendingState label="매매 검증 조회 중"/></div>
     {:else if error}
       <div class="card" style="padding:16px"><span class="error-text">{error}</span> <button class="btn btn-secondary" on:click={() => loadData()}>다시 조회</button></div>
     {:else if reflections.length === 0}
@@ -264,7 +265,7 @@
       {#if hasMore}
         <div style="text-align:center;margin-top:16px">
           <button class="btn btn-secondary" on:click={() => loadData(true)} disabled={loadingMore}>
-            {loadingMore ? "불러오는 중..." : "더 보기"}
+            {#if loadingMore}<PendingState label="검증 기록 조회 중"/>{:else}더 보기{/if}
           </button>
         </div>
       {/if}

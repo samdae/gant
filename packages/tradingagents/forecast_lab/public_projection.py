@@ -84,6 +84,8 @@ def case_evidence(raw):
     card = public_hypothesis(raw.get("hypothesis"))
     cutoff = instant(snapshot.get("observed_at"))
     issues = public_issues(raw.get("issues"))
+    if issues and raw["issues"].get("provenance") == "v3_archive_as_of":
+        issues["provenance"] = "v3_archive_as_of"
     if issues and instant(issues["as_of"]) != cutoff:
         # Compare instants, allowing different explicit UTC offsets.
         if not cutoff or datetime.fromisoformat(
@@ -116,6 +118,8 @@ def archive_projection(raw, cutoff, source):
         return None
     if datetime.fromisoformat(group["as_of"]) != datetime.fromisoformat(cutoff):
         return None
+    if raw.get("provenance") == "v3_archive_as_of":
+        group["provenance"] = "v3_archive_as_of"
     group["items"] = [item for item in group["items"] if item["source"] == source]
     return group
 

@@ -127,7 +127,7 @@
         <button class="sources-link" on:click={() => sourcesHeading.focus()}>
           당시 출처 보기 · last30days {sources.archives
             ? sources.archives.items.length + "건"
-            : "기록 없음"} · 동결 목록 {news
+            : "기록 없음"} · {news?.provenance === "v3_archive_as_of" ? "뉴스" : "동결 목록"} {news
             ? news.items.length + "건"
             : "기록 없음"}
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"
@@ -239,8 +239,11 @@
     <header class="journal-heading">
       <h3 bind:this={sourcesHeading} tabindex="-1">당시 확인된 30일 출처</h3>
       <p class="muted">
-        예측 근거를 동결하기 전에 확인한 자료입니다. 모델 확률 입력에는 포함되지
-        않았습니다.
+        {#if news?.provenance === "v3_archive_as_of" || data.last30days?.provenance === "v3_archive_as_of"}
+          같은 종목에 대해 당시 별도로 수집된 참고 자료입니다. 원래 예측의 입력으로 사용됐다는 기록은 없습니다.
+        {:else}
+          예측 근거를 동결하기 전에 확인한 자료입니다. 모델 확률 입력에는 포함되지 않았습니다.
+        {/if}
       </p>
     </header>
     {#key data.id}
@@ -249,9 +252,9 @@
         feed={sources.archives}
         lead
       />
-      <ResearchIssueFeed title="RSS · 동결 이슈" feed={sources.rss} />
+      <ResearchIssueFeed title={news?.provenance === "v3_archive_as_of" ? "뉴스" : "RSS · 동결 이슈"} feed={sources.rss} />
       {#if sources.unmatched}<ResearchIssueFeed
-          title="수집 경로 미확인 · 동결 이슈"
+          title={news?.provenance === "v3_archive_as_of" ? "기타 참고 자료" : "수집 경로 미확인 · 동결 이슈"}
           feed={sources.unmatched}
         />{/if}
     {/key}

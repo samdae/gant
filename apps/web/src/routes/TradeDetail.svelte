@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import ReportDecisionEvidence from "../components/ReportDecisionEvidence.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
@@ -123,6 +124,7 @@
     count: 0, isToday: false,
   };
   let chartLoading = false;
+  let chartError = false;
 
   /* ── derived chart data (recomputed on zoom or data change) ── */
   let svgWidth = 0;
@@ -535,6 +537,7 @@
 
   const loadChart = async (id: number) => {
     chartLoading = true;
+    chartError = false;
     try {
       const res = (await fetchPositionGraph(id, 30)) as { points: OHLCPoint[] };
       if (id !== positionId) return;
@@ -543,7 +546,7 @@
       requestAnimationFrame(() => {
         if (scrollContainerEl) scrollContainerEl.scrollLeft = scrollContainerEl.scrollWidth;
       });
-    } catch { if (id === positionId) resetChart(); }
+    } catch { if (id === positionId) { resetChart(); chartError = true; } }
     finally { if (id === positionId) chartLoading = false; }
   };
 
@@ -806,9 +809,11 @@
         {/if}
       </div>
 
-      {#if chartLoading}
-        <div class="empty-state">차트 불러오는 중...</div>
-      {:else if rawPoints.length === 0 && !chartLoading}
+      {#if chartLoading || loading}
+        <div class="empty-state"><PendingState label="차트 불러오는 중..."/></div>
+      {:else if chartError}
+        <div class="empty-state" role="alert">가격 차트를 불러오지 못했습니다.</div>
+      {:else if rawPoints.length === 0}
         <div class="empty-state">차트 데이터가 없습니다.</div>
       {:else}
         <!-- Chart container: fixed Y-axis + scrollable chart -->
@@ -1015,7 +1020,7 @@
 
     {/if}
     {#if loading}
-      <div class="card" style="padding:16px">불러오는 중...</div>
+      <div class="card" style="padding:16px"><PendingState label="거래 기록 조회 중"/></div>
     {:else if error}
       <div class="card error-text" style="padding:16px">{error}</div>
     {:else if isForecastLab && $viewMode === "portfolio" && tab === "trades"}

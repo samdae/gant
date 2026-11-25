@@ -23,6 +23,7 @@ from fastapi.responses import (
     Response,
 )
 
+from .pwa import REVALIDATE_PATHS, mount_install_assets
 from .public_projection import public_case, public_detail, public_report, public_stats
 from .public_research import (
     case_summary,
@@ -78,7 +79,7 @@ def research_filters(path, query, *, internal=False):
     return params
 
 
-def read_upstream(path):
+def read_upstream(path, origin=ORIGIN):
     parts = urlsplit(path)
     if parts.path in ("/api/cases", "/api/stats") and not (
         parts.scheme or parts.netloc or parts.fragment
@@ -90,7 +91,7 @@ def read_upstream(path):
         raise ValueError("Invalid internal route")
     opener = build_opener(ProxyHandler({}), NoRedirect())
     try:
-        with opener.open(ORIGIN + path, timeout=4) as response:
+        with opener.open(origin + path, timeout=4) as response:
             body = response.read(MAX_BYTES + 1)
             if len(body) > MAX_BYTES:
                 raise ValueError("Invalid response")
@@ -158,7 +159,7 @@ class ProjectionCache:
             self.slots.release()
 
 
-def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None):
+def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None, workspace_origin=ORIGIN, shared_role=None):
     from .console_public_reads import install_console_reads
 
     dist = Path(dist).resolve()
@@ -208,6 +209,7 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None):
             or request.url.query
             and not (
                 request.url.path.startswith("/workspace-api/")
+                or (shared_role == "core" and request.url.path == "/_shared/probabilities")
                 or request.url.path in ("/api/cases", "/api/stats")
                 or (
                     request.url.path == "/"
@@ -233,23 +235,26 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None):
             response = JSONResponse({"detail": "Unsupported query"}, 400)
         else:
             response = await call_next(request)
+        cache_policy = "no-store"
+        if response.status_code == 200:
+            if request.url.path in REVALIDATE_PATHS:
+                cache_policy = "no-cache"
+            elif request.url.path not in ("/", "/research/", "/healthz", "/ready"):
+                cache_policy = "public, max-age=30"
         response.headers.update(
             {
                 "X-Content-Type-Options": "nosniff",
                 "Referrer-Policy": "no-referrer",
                 "X-Frame-Options": "SAMEORIGIN",
-                "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'none'; base-uri 'none'",
-                "Cache-Control": "public, max-age=30"
-                if response.status_code == 200
-                and request.url.path not in ("/", "/research/", "/healthz", "/ready")
-                else "no-store",
+                "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'none'; base-uri 'none'",
+                "Cache-Control": cache_policy,
             }
         )
         return response
 
     @app.get("/healthz")
     def health():
-        return {"service": "forecast-lab-public", "ok": True}
+        return {"service": "forecast-lab-public", "ok": True, **({"source": "v2", "role": shared_role} if shared_role else {})}
 
     def shell_html():
         try:
@@ -273,12 +278,17 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None):
             raise HTTPException(404)
         return FileResponse(candidate)
 
+    mount_install_assets(app, dist)
+
     @app.get("/favicon.svg")
     def icon():
         return FileResponse(dist / "favicon.svg", media_type="image/svg+xml")
 
     @app.get("/ready")
     def ready():
+        if shared_role:
+            cached("research-status", lambda: research_status(reader("/api/status")))
+            return {"ready": True, "console": True, "source": "v2"}
         return {"ready": True, "console": True}
 
     @app.get("/research/")
@@ -384,7 +394,7 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None):
             return Response(status_code=304, headers=headers)
         return Response(body, media_type="application/json", headers=headers)
 
-    install_console_reads(app, reader=workspace_reader)
+    install_console_reads(app, reader=workspace_reader, origin=workspace_origin)
 
     @app.get("/public.css")
     def styles():

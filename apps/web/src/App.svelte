@@ -20,6 +20,7 @@
   import NotFoundRedirect from "./routes/NotFoundRedirect.svelte";
   import { loadTickerNames } from "./stores/tickerNames";
 
+  import { homeRoute } from "./lib/workspaceNavigation";
   import Research from "./routes/Research.svelte";
   import Portfolio from "./routes/Portfolio.svelte";
   import WorkspaceNav from "./components/WorkspaceNav.svelte";
@@ -27,7 +28,7 @@
 
   const routes = {
     ...(isForecastLab ? { "/research": Research, "/research/:id": Research, "/results": Research, "/performance": Research, "/observe": Research, "/dashboard": Dashboard, "/portfolio": Portfolio } : {}),
-    "/": isForecastLab ? Research : Dashboard,
+    "/": isForecastLab ? NotFoundRedirect : Dashboard,
     "/positions": Positions,
     "/schedules": Schedules,
     "/schedules/:ticker": ScheduleDetail,
@@ -46,7 +47,7 @@
 
   onMount(() => {
     if (!window.location.hash) {
-      window.location.hash = isForecastLab ? "#/research" : "#/";
+      window.location.hash = isForecastLab ? "#" + homeRoute : "#/";
     }
     loadTickerNames();
   });

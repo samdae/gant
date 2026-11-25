@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "./PendingState.svelte";
   import { onMount, onDestroy } from "svelte";
   import {
     articleUrl,
@@ -16,14 +17,14 @@
     last30days?: Issues;
   };
   let archive: Archive | null = null;
-  let error = false;
+  let error = "";
   let expanded: Record<string, boolean> = {};
   let controller: AbortController;
   async function load() {
     controller?.abort();
     const req = new AbortController();
     controller = req;
-    error = false;
+    error = "";
     try {
       const data = await researchGet<Archive>(
         "report-sources/" + id,
@@ -32,8 +33,8 @@
       if (data.id !== id || data.ticker.toUpperCase() !== ticker.toUpperCase())
         throw Error();
       if (!req.signal.aborted) archive = data;
-    } catch {
-      if (!req.signal.aborted) error = true;
+    } catch (e) {
+      if (!req.signal.aborted) error = e instanceof Error ? e.message : "당시 자료를 확인하지 못했습니다.";
     }
   }
   onMount(() => {
@@ -50,13 +51,13 @@
 <section class="archive" aria-label="리포트 발행 시점의 30일 자료">
   <h3>발행 전 30일 자료</h3>
   {#if error}<p role="alert">
-      당시 자료를 확인하지 못했습니다. <button on:click={load}>다시 조회</button
+      {error} <button on:click={load}>다시 조회</button
       >
     </p>
-  {:else if !archive}<p role="status">수집 기록을 확인하는 중입니다.</p>
+  {:else if !archive}<p><PendingState label="수집 기록을 확인하는 중입니다."/></p>
   {:else}
     <p>
-      {timeLabel(archive.as_of)} 발행 시점까지 보관된 자료입니다. 이 자료가 매매
+      {timeLabel(archive.as_of)} 발행 시점까지 {archive.issues?.provenance === "v3_archive_as_of" || archive.last30days?.provenance === "v3_archive_as_of" ? "같은 종목에 대해 별도로 수집된 참고 자료입니다." : "보관된 자료입니다."} 이 자료가 매매
       판단에 사용됐는지는 기록되지 않았습니다.
     </p>
     {#each [{ label: "last30days 조사 자료", data: archive.last30days }, { label: "뉴스", data: archive.issues }] as group}

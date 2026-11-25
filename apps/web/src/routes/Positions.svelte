@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import "../styles/review-register.css";
   import { isForecastLab } from "../lib/workspace";
@@ -113,7 +114,7 @@
 <section class="page" id="page-positions">
   <div class="page-container">
     <div class="page-header">
-      <h2>{isForecastLab ? "보유 포지션" : "투자"}</h2>
+      <h2>{isForecastLab ? "보유·종료 종목" : "투자"}</h2>
       {#if $viewMode === "analysis" && $showAmount && !loading && !error && currencyPnl != null}
         <span class={`pnl-banner ${currencyPnl >= 0 ? "pnl-pos" : "pnl-neg"}`}>
           평가손익 {formatSignedAmount(currencyPnl, $currencyFilter === "KRW" ? ".KS" : "USD")}
@@ -140,7 +141,7 @@
         >
       </div>
       </div>
-      {#if loading}<div class="review-state" role="status">포지션 조회 중…</div>
+      {#if loading}<div class="review-state"><PendingState label="포지션 조회 중…"/></div>
       {:else if error}<div class="review-state" role="alert">
           {error} <button class="btn btn-secondary" on:click={loadData}>다시 조회</button>
         </div>
@@ -261,7 +262,7 @@
       {#if $viewMode === "portfolio"}
         <div class="pos-card-list list-grid">
           {#if loading}
-            <div class="pos-card list-row"><div class="pos-card-details">불러오는 중...</div></div>
+            <div class="pos-card list-row"><div class="pos-card-details"><PendingState label="포지션 조회 중"/></div></div>
           {:else if error}
             <div class="pos-card list-row"><div class="pos-card-details error-text">{error}</div></div>
           {:else if filteredPortfolioHoldings.length === 0}
@@ -308,7 +309,7 @@
           </thead>
           <tbody>
             {#if loading}
-              <tr><td colspan="5">불러오는 중...</td></tr>
+              <tr><td colspan="5"><PendingState label="포지션 조회 중"/></td></tr>
             {:else if error}
               <tr><td colspan="5" class="error-text">{error}</td></tr>
             {:else if filteredPositions.length === 0}
@@ -344,7 +345,7 @@
       </div>
       <div class="pos-card-list list-grid">
         {#if loading}
-          <div class="pos-card list-row"><div class="pos-card-details">불러오는 중...</div></div>
+          <div class="pos-card list-row"><div class="pos-card-details"><PendingState label="포지션 조회 중"/></div></div>
         {:else if error}
           <div class="pos-card list-row"><div class="pos-card-details error-text">{error}</div></div>
         {:else if filteredPositions.length === 0}
@@ -381,7 +382,7 @@
     {:else}
       <div class="pos-card-list list-grid">
         {#if loading}
-          <div class="pos-card list-row"><div class="pos-card-details">불러오는 중...</div></div>
+          <div class="pos-card list-row"><div class="pos-card-details"><PendingState label="포지션 조회 중"/></div></div>
         {:else if error}
           <div class="pos-card list-row"><div class="pos-card-details error-text">{error}</div></div>
         {:else if $viewMode === "portfolio"}

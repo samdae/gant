@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "./PendingState.svelte";
   import { tokenStore } from "../stores/auth";
   import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
@@ -104,7 +105,7 @@
     <div class="modal-actions">
       <button class="btn-secondary" on:click={onClose} disabled={loading}>취소</button>
       <button class="btn-primary" on:click={handleActivate} disabled={loading}>
-        {loading ? "처리 중..." : isForecastLab && !$tokenStore ? "관리자 인증 후 활성화" : "활성화"}
+        {#if loading}<PendingState label="처리 중"/>{:else}{isForecastLab && !$tokenStore ? "관리자 인증 후 활성화" : "활성화"}{/if}
       </button>
     </div>
 </dialog>

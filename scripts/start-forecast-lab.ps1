@@ -4,6 +4,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'TradingAgentsV3/shared-viewer.enabled') -PathType Leaf) {
+    & (Join-Path $PSScriptRoot 'start-v3-shared-view.ps1') -Role core
+    return
+}
+
 $project = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runtime = Join-Path $env:LOCALAPPDATA 'TradingAgentsV3'
 $pgData = Join-Path $runtime 'pgdata'

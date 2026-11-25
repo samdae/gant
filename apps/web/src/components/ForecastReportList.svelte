@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "./PendingState.svelte";
   import { onDestroy, onMount } from "svelte";
   import { isPublicViewer } from "../lib/workspace";
   import {
@@ -89,16 +90,14 @@
       >
     </p>
   {:else if !visible.length}<p role="status">
-      {busy
-        ? "예측을 불러오는 중입니다."
-        : needle
+      {#if busy}<PendingState label="확률 예측 조회 중"/>{:else}{needle
           ? "조회한 예측에서 일치하는 종목이 없습니다."
-          : "발행된 확률 예측이 없습니다."}
+          : "발행된 확률 예측이 없습니다."}{/if}
     </p>{/if}
   {#if more && !error}<button
       disabled={busy}
       on:click={() => load(market, rows[rows.length - 1].id)}
-      >이전 예측 더 보기</button
+      >{#if busy}<PendingState label="이전 예측 조회 중" />{:else}이전 예측 더 보기{/if}</button
     >{/if}
 </section>
 

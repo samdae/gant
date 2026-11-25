@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "GANT 분석 리포트",
+  "short_name": "GANT",
+  "lang": "ko",
+  "start_url": "/#/reports",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#18191b",
+  "background_color": "#18191b",
+  "icons": [
+    {"src": "/gant-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/gant-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/gant-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+    {"src": "/gant-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

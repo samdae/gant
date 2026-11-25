@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import PortfolioSummary from "../components/PortfolioSummary.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
@@ -190,8 +191,10 @@
 <section class="page" id="page-dashboard">
   <div class="page-container">
     <div class="page-header">
-      <h2>{isForecastLab ? ($viewMode === "portfolio" ? "포트폴리오 현황" : "운영 대시보드") : "홈"}</h2>
-      {#if error}
+      <h2>{isForecastLab ? ($viewMode === "portfolio" ? "포트폴리오" : "대시보드") : "홈"}</h2>
+      {#if isForecastLab && loading}
+        <PendingState label="대시보드 조회 중" />
+      {:else if error}
         <span class="badge badge-loss">
           <span class="status-dot status-error" style="width:6px;height:6px;margin-right:4px"></span>
           오프라인
@@ -228,7 +231,7 @@
     {#if isForecastLab}
       <section class="folio-trading-brief">
         <header><h3>보유 자산 구성</h3><a href="#/positions">보유 명세 →</a></header>
-        {#if loading}<p>보유 내역을 조회하고 있습니다.</p>
+        {#if loading}<p><PendingState label="보유 내역을 조회하고 있습니다."/></p>
         {:else if error}<p role="alert">{error}</p>
         {:else if exposure.length}
           {#each exposure as group}
@@ -428,7 +431,7 @@
             </a>
           {/each}
         {:else}
-          <div class="desk-state">{reportStatus === "loading" ? "리포트를 불러오는 중입니다." : reportStatus === "error" ? "최근 리포트를 조회할 수 없습니다." : "발행된 리포트가 없습니다."}</div>
+          <div class="desk-state">{#if reportStatus === "loading"}<PendingState label="최근 리포트 조회 중"/>{:else}{reportStatus === "error" ? "최근 리포트를 조회할 수 없습니다." : "발행된 리포트가 없습니다."}{/if}</div>
         {/if}
       </section>
     {/if}
@@ -444,7 +447,7 @@
             <tbody>
               {#if loading}
                 <tr>
-                  <td colspan="2">불러오는 중...</td>
+                  <td colspan="2"><PendingState label="보유 내역 조회 중"/></td>
                 </tr>
               {:else if $viewMode === "portfolio"}
                 {#if filteredPortfolioHoldings.length === 0}
@@ -513,7 +516,9 @@
               <span class="badge badge-info">실행중</span>
             </div>
           {/if}
-          {#if queue.pending.length === 0 && !queue.running}
+          {#if isForecastLab && loading}<PendingState label="분석 대기열 조회 중" />
+          {:else if isForecastLab && error}<span>대기열 확인 불가</span>
+          {:else if queue.pending.length === 0 && !queue.running}
             <div class="queue-item queue-pending">
               <span class="queue-indicator"></span>
               <span class="queue-ticker">대기 없음</span>

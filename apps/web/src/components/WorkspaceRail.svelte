@@ -1,7 +1,7 @@
 <script lang="ts">
   import { location } from "svelte-spa-router";
   import { isPublicViewer } from "../lib/workspace";
-  import { sections, currentPage } from "../lib/workspaceNavigation";
+  import { sections, currentPage, homeRoute } from "../lib/workspaceNavigation";
   import GantMark from "./GantMark.svelte";
   import WorkspaceIcon from "./WorkspaceIcon.svelte";
   export let drawer = false;
@@ -12,8 +12,10 @@
 
 <div class="rail-body" class:as-drawer={drawer}>
   <header class="rail-brand">
-    <a href="#/research" on:click={onNavigate} aria-label="GANT 연구 홈"
-      ><GantMark size={31} /><b>GANT</b></a
+    <a
+      href={"#" + homeRoute}
+      on:click={onNavigate}
+      aria-label="GANT 분석 리포트 홈"><GantMark size={31} /><b>GANT</b></a
     >
     {#if drawer}<button aria-label="메뉴 닫기" type="button" on:click={dismiss}
         ><WorkspaceIcon name="close" /></button
@@ -114,6 +116,10 @@
   .rail-brand :is(a, button):focus-visible {
     outline: 2px solid var(--fl-accent);
     outline-offset: -2px;
+  }
+  .as-drawer nav {
+    touch-action: pan-y;
+    overscroll-behavior: contain;
   }
   .as-drawer nav a {
     min-height: 44px;

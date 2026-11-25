@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { params } from "svelte-spa-router";
@@ -100,20 +101,20 @@
   <div class="page-container">
     <div class="page-header" style="display:flex;align-items:center;gap:8px">
       <a href="#/retrospective" class="back-link" aria-label="뒤로">&larr;</a>
-      <h2>{isForecastLab ? "회고 분석 상세" : "AI분석"}</h2>
+      <h2>{#if isForecastLab}<InstrumentLabel {ticker} /><small>회고 분석 상세</small>{:else}AI분석{/if}</h2>
     </div>
     {#if !isForecastLab}<AnalysisTabs />{/if}
 
     <div class="retro-detail-shell">
-      <div class="retro-detail-header">
-        {#if isForecastLab}<InstrumentLabel {ticker} />{:else}<span class="ticker-badge">{ticker}</span>
+      {#if !isForecastLab}<div class="retro-detail-header">
+        <span class="ticker-badge">{ticker}</span>
         {#if displayName()}
           <span class="ticker-tag">{displayName()}</span>
-        {/if}{/if}
-      </div>
+        {/if}
+      </div>{/if}
 
       {#if loading}
-        <div class="card" style="padding:16px">불러오는 중...</div>
+        <div class="card" style="padding:16px"><PendingState label="회고 분석 조회 중"/></div>
       {:else if error}
         <div class="card error-text" style="padding:16px">{error}</div>
       {:else if items.length === 0}

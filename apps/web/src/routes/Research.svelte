@@ -5,6 +5,7 @@
 </script>
 
 <script lang="ts">
+  import PendingState from "../components/PendingState.svelte";
   import { onDestroy, onMount, tick } from "svelte";
   import { location, querystring } from "svelte-spa-router";
   import {
@@ -154,6 +155,7 @@
   {#if archive}
     <ResearchReview view={$location === "/observe" ? "observe" : "results"} />
   {:else}
+    <h1 class="visually-hidden">연구 사례</h1>
     <div class="workarea">
       {#if !selected}<button
           class="choose"
@@ -201,9 +203,7 @@
             >
           </p>
         {:else if !rows.length}<p role="status">
-            {busy
-              ? "사례를 불러오는 중입니다."
-              : "이 시장에 공개된 연구 사례가 없습니다."}
+            {#if busy}<PendingState label="연구 사례 조회 중"/>{:else}이 시장에 공개된 연구 사례가 없습니다.{/if}
           </p>{/if}
         {#if rows.length}
           <div class="register">
@@ -249,12 +249,12 @@
                   cursors: [...cursors, rows[rows.length - 1].id],
                 };
                 window.location.hash = "#/research" + suffix;
-              }}>{busy ? "조회 중" : "다음 페이지"}</button
+              }}>{#if busy}<PendingState label="조회 중"/>{:else}다음 페이지{/if}</button
             >{/if}
         {/if}
       </dialog>
       <div class="detail-pane">
-        {#if detailBusy}<p role="status">사례 근거를 불러오는 중입니다.</p>
+        {#if detailBusy}<p><PendingState label="사례 근거를 불러오는 중입니다."/></p>
         {:else if detailError}<p role="alert">
             {detailError}
             <button on:click={() => loadCase(selectedId)}>다시 조회</button>
@@ -290,6 +290,7 @@
 </div>
 
 <style>
+  .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
   .research-desk {
     max-width: 1440px;
     margin: auto;

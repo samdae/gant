@@ -136,4 +136,7 @@ def mount_frontend(app, dist):
             "Build apps/web/dist before starting the integrated workspace"
         )
     # The workspace router uses hash URLs. Only files in the build root are public.
+    from .pwa import mount_install_assets
+
+    mount_install_assets(app, dist)
     app.mount("/", StaticFiles(directory=dist, html=True), name="workspace-shell")

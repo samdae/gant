@@ -47,6 +47,12 @@ class ReportingBrowserTests(unittest.TestCase):
           if(p==='/api/status')return json({tickers:[{ticker:'NVDA',market:'us',classification:{asset_class:'equity',sector:'technology'}}],progress:{phase:'idle'}});
           if(p==='/api/stats'){
             window.statsQueries.push(Object.fromEntries(u.searchParams));
+            if(window.holdStats){
+              window.holdStats=false;
+              const ok=await new Promise(resolve=>window.respondStats=resolve);
+              window.respondStats=null;
+              if(!ok)return new Response('',{status:503});
+            }
             const r={control:'baseline',treated:'single',method:'single',n:3,control_brier:.24,treated_brier:.2,improvement:.04,lower:.4,upper:.6,mean_probability:.51,observed_rate:.67};
             return json({comparisons:[r],reference_comparisons:[],calibration:[r],sector_by_basis:[],counts:{matured:u.searchParams.has('from_date')?2:3},sector_coverage:{}});
           }
@@ -82,7 +88,23 @@ class ReportingBrowserTests(unittest.TestCase):
             q('.archive button[aria-expanded=false]').click(); await wait(()=>q('.archive').innerText.includes('추가 자료 7'));
             releaseFirst(); await new Promise(r=>setTimeout(r,100));
             if(q('.archive').innerText.includes('회차 자료 8'))throw Error('stale archive');
-            location.hash='#/results'; await wait(()=>q('.review')?.innerText.includes('0.240 → 0.200'));
+            window.holdStats=true;
+            location.hash='#/results';
+            await wait(()=>window.respondStats && q('.review .pending[role=status]') && q('.refresh:disabled'));
+            if(q('.review .counts') || q('.refresh').getAttribute('aria-busy')!=='true')throw Error('false initial results');
+            window.respondStats(true);
+            await wait(()=>q('.review')?.innerText.includes('0.240 → 0.200') && !q('.refresh').disabled);
+            const refreshBox=q('.refresh').getBoundingClientRect();
+            window.holdStats=true;
+            q('.refresh').click();
+            await wait(()=>window.respondStats && q('.refresh:disabled'));
+            if(!q('.review').innerText.includes('0.240 → 0.200') ||
+                q('.refresh').getBoundingClientRect().width!==refreshBox.width)throw Error('refresh layout/data changed');
+            window.respondStats(false);
+            await wait(()=>q('.review [role=alert]')?.innerText.includes('마지막 조회') && !q('.refresh').disabled);
+            if(!q('.review').innerText.includes('0.240 → 0.200'))throw Error('discarded previous stats');
+            q('.refresh').click();
+            await wait(()=>!q('.review [role=alert]') && !q('.refresh').disabled);
             const before=statsQueries.length, trigger=q('.review .range-trigger');
             trigger.click();
             await wait(()=>q('.range-dialog[open] .navigation'));

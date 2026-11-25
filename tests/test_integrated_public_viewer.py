@@ -28,6 +28,11 @@ class IntegratedPublicViewerTests(unittest.TestCase):
           function check(ok,label){if(!ok)errors.push(label);}
           try {
             await wait(()=>document.querySelector('.workspace'));
+            check(location.hash==='#/reports' &&
+              [...document.querySelectorAll('.rail-brand a,.mobile-brand')].every(link=>link.hash==='#/reports'), 'consistent report home');
+            check(document.querySelector('.public-lamp') && getComputedStyle(document.querySelector('.access')).display!=='none' &&
+              document.querySelector('.access').textContent.trim()==='공개 열람', 'visible public access status');
+            check(document.querySelector('.phone-tabs a[href="#/research"]'), 'research tab retained');
             check(!document.querySelector('.desktop-rail a[href="#/auth"]'),'admin menu');
             await visit('#/research/29',()=>document.querySelector('.evidence h2')?.textContent.includes('삼성전자'));
             check(document.querySelector('.headline').textContent.includes('61.0%'),'published probability');
@@ -84,8 +89,8 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             check(!document.querySelector('.range-summary'),'single probability has no range');
             await visit('#/research/27',()=>document.querySelector('.sources')?.textContent.includes('당시 수집 기록이 없습니다.'));
             check(!document.querySelector('.range-summary') && !document.querySelector('.news') && document.querySelector('.chart .type button:disabled') && document.querySelector('.chart').textContent.includes('종가'), 'genuine empty source and chart');
-            await visit('#/observe',()=>[...document.querySelectorAll('h2')].some(el=>el.textContent.includes('관찰 종목')));
-            await visit('#/results',()=>[...document.querySelectorAll('h2')].some(el=>el.textContent.includes('연구 성과')));
+            await visit('#/observe',()=>[...document.querySelectorAll('h2')].some(el=>el.textContent.includes('관측 현황')));
+            await visit('#/results',()=>[...document.querySelectorAll('h2')].some(el=>el.textContent.includes('예측 성과')));
             await visit('#/schedules',()=>document.querySelector('main a[href="#/schedules/spy"]'));
             check(!document.querySelector('#addScheduleBtn, .op-cancel'),'schedule actions');
             await visit('#/schedules/SPY',()=>document.querySelector('main')?.innerText.includes('세부 실행 로그'));
@@ -102,7 +107,7 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             check(!document.querySelector('dialog[open], .modal-overlay'),'account setup');
             await visit('#/reports/7',()=>document.querySelector('.report-meta'));
             check(document.querySelector('main h2').textContent.includes('SPY'),'legacy numeric report');
-            await visit('#/auth',()=>location.hash==='#/');
+            await visit('#/auth',()=>location.hash==='#/reports');
             check(!document.querySelector('#tokenInput'),'auth');
             check(!window.socketCalls,'websocket');
             check(localStorage.getItem('gant_admin_token')==='stale-test-only','stale token modified');

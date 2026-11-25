@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PendingState from "./PendingState.svelte";
   import { onDestroy, onMount } from "svelte";
   import { querystring } from "svelte-spa-router";
   import ResearchFilters from "./ResearchFilters.svelte";
@@ -45,7 +46,20 @@
     stats: Stats | null = null;
   let statusError = "",
     statsError = "",
-    statsBusy = false;
+    statsBusy = false,
+    statusBusy = false;
+  let statsKey = "", manual = false, announcement = "";
+  $: if (manual && !statsBusy && !statusBusy) {
+    announcement = statsError || statusError ? "일부 자료를 갱신하지 못했습니다." : "자료를 갱신했습니다.";
+    manual = false;
+  }
+  function refreshNow() {
+    if (statsBusy || statusBusy) return;
+    announcement = "";
+    statusBusy = true;
+    manual = true;
+    refresh++;
+  }
   let statRequest: AbortController, statusRequest: AbortController;
   let timer: ReturnType<typeof setInterval>;
   $: rangeError = Boolean(from && to && from > to);
@@ -70,7 +84,9 @@
     statRequest?.abort();
     const request = new AbortController();
     statRequest = request;
-    stats = null;
+    const key = [region,start,end].join("|");
+    if (key !== statsKey) stats = null;
+    statsKey = key;
     statsError = "";
     statsBusy = false;
     if (start && end && start > end) return;
@@ -87,7 +103,7 @@
       if (!request.signal.aborted) stats = value;
     } catch {
       if (!request.signal.aborted)
-        statsError = "성과 기록을 불러오지 못했습니다.";
+        statsError = stats ? "성과 갱신에 실패했습니다. 마지막 조회 결과입니다." : "성과 기록을 불러오지 못했습니다.";
     } finally {
       if (!request.signal.aborted) statsBusy = false;
     }
@@ -96,21 +112,23 @@
     statusRequest?.abort();
     const request = new AbortController();
     statusRequest = request;
+    statusBusy = true;
     statusError = "";
     try {
       const value = await researchGet<Status>("status", request.signal);
       if (!request.signal.aborted) status = value;
     } catch {
       if (!request.signal.aborted) {
-        status = null;
-        statusError = "관측 상태를 불러오지 못했습니다.";
+        statusError = status ? "관측 상태 갱신에 실패했습니다. 마지막 조회 결과입니다." : "관측 상태를 불러오지 못했습니다.";
       }
+    } finally {
+      if (!request.signal.aborted) statusBusy = false;
     }
   }
   onMount(() => {
     mounted = true;
     timer = setInterval(() => {
-      if (!document.hidden) refresh++;
+      if (!document.hidden && !statsBusy && !statusBusy) refresh++;
     }, 60000);
   });
   onDestroy(() => {
@@ -122,8 +140,13 @@
 
 <section class="review" class:results-view={view === "results"}>
   <header class="heading">
-    <h2>{view === "observe" ? "관찰 종목" : "연구 성과"}</h2>
-    <button on:click={() => refresh++}>새로고침</button>
+    <h2>{view === "observe" ? "관측 현황" : "예측 성과"}</h2>
+    <button class="refresh" type="button" disabled={statsBusy || statusBusy} aria-busy={statsBusy || statusBusy} on:click={refreshNow}>
+      <svg class:working={statsBusy || statusBusy} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 7v5h-5"/><path d="M19.4 11a7.5 7.5 0 1 0-1.9 6.2"/>
+      </svg>새로고침
+    </button>
+    <span class="refresh-announcement" role="status">{announcement}</span>
   </header>
   <ResearchFilters
     {market}
@@ -134,8 +157,9 @@
   />
   {#if rangeError}<p role="alert">종료일을 시작일 이후로 선택해 주세요.</p>
   {:else if statsError}<p role="alert">{statsError}</p>
-  {:else if statsBusy}<p role="status">관측 기간의 성과를 조회하고 있습니다.</p>
-  {:else if stats}<dl class="counts">
+  {:else if statsBusy && !stats}<p><PendingState label="관측 기간의 성과 조회 중" /></p>
+  {/if}
+  {#if stats}<dl class="counts">
       {#each Object.entries(caseStates).filter(([key]) => (stats?.counts?.[key] ?? 0) > 0) as [key, label]}<div
         >
           <dt>{label}</dt>
@@ -203,9 +227,7 @@
           </div>
         {:else}<p>등록된 관찰 종목이 없습니다.</p>{/if}
       </section>
-    {:else if !statusError}<p role="status">
-        관찰 목록을 불러오는 중입니다.
-      </p>{/if}
+    {:else if statusBusy}<p><PendingState label="관찰 목록 조회 중" /></p>{/if}
   {:else if stats && !stats.comparisons?.length && !stats.reference_comparisons?.length && !stats.calibration?.length && !stats.sector_by_basis?.length}
     <section class="cohort-empty">
       <h3>비교할 채점 표본이 없습니다</h3>
@@ -346,6 +368,14 @@
 </section>
 
 <style>
+  .refresh {display:inline-flex; align-items:center; justify-content:center; gap:var(--fl-control-gap,8px); min-block-size:var(--fl-control-height,40px);}
+  .refresh svg {flex:none;}
+  .refresh:disabled {cursor:wait;}
+  .refresh-announcement {position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%);}
+  .working {animation:refresh-turn .9s linear infinite;}
+  @keyframes refresh-turn {to {transform:rotate(360deg);}}
+  @media(prefers-reduced-motion:reduce){.working{animation:none;}}
+
   .counts div {
     display: flex;
     align-items: baseline;
