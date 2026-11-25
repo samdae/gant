@@ -373,7 +373,7 @@
     overflow-wrap: anywhere;
   }
   .op-grid-row {
-    grid-template-columns: minmax(0,1fr) minmax(0,1fr) 34px;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr) var(--fl-control-height, 44px);
     grid-template-areas: "ticker state action" "next recent recent";
     gap: 7px;
   }

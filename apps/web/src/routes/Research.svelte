@@ -1,5 +1,11 @@
+<script context="module" lang="ts">
+  // The router remounts this view when a filtered detail URL becomes the list URL.
+  let reopenForFilter: { hash: string; control: "market" | "date" } | null =
+    null;
+</script>
+
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import { location, querystring } from "svelte-spa-router";
   import {
     marketName,
@@ -10,18 +16,19 @@
     type ResearchCase,
   } from "../lib/researchEvidence";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
+  import ResearchFilters from "../components/ResearchFilters.svelte";
   import ResearchReview from "../components/ResearchReview.svelte";
   import ResearchEvidence from "../components/ResearchEvidence.svelte";
 
-  const initial = new URLSearchParams(
-    window.location.hash.split("?")[1] || window.location.search,
-  );
-  let from = initial.get("from_date") || "",
-    to = initial.get("to_date") || "";
-  let draftFrom = from,
-    draftTo = to,
-    filterError = "";
-  let cursors: (number | undefined)[] = [undefined];
+  import { readResearchFilters } from "../lib/researchDates";
+  let market = "",
+    from = "",
+    to = "";
+  let pagination: { query: string; cursors: (number | undefined)[] } = {
+    query: "",
+    cursors: [undefined],
+  };
+  $: ({ market, from, to } = readResearchFilters($querystring || ""));
   $: filterQuery = new URLSearchParams(
     Object.fromEntries(
       Object.entries({ market, from_date: from, to_date: to }).filter(
@@ -29,10 +36,11 @@
       ),
     ),
   ).toString();
+  $: cursors =
+    pagination.query === filterQuery ? pagination.cursors : [undefined];
   $: suffix = filterQuery ? "?" + filterQuery : "";
   let rows: CaseRow[] = [],
     selected: ResearchCase | null = null,
-    market = initial.get("market") || "",
     busy = true,
     detailBusy = true,
     more = false;
@@ -41,11 +49,12 @@
     mounted = false;
   let listRequest: AbortController, detailRequest: AbortController;
   let picker: HTMLDialogElement;
+  let leavingDetail = false;
   const size = 8;
   $: archive = ["/results", "/performance", "/observe"].includes($location);
   $: explicit = $location.match(/^\/research\/([1-9]\d*)$/)?.[1];
   $: selectedId = explicit ? Number(explicit) : rows[0]?.id;
-  $: if (mounted && !archive)
+  $: if (mounted && !archive && !leavingDetail)
     loadList(market, from, to, cursors[cursors.length - 1]);
   $: if (mounted && !archive) loadCase(selectedId);
 
@@ -98,42 +107,43 @@
       if (!req.signal.aborted) detailBusy = false;
     }
   }
-  function restoreFilter(query: string) {
-    const params = new URLSearchParams(query);
-    const region = params.get("market") || "";
-    const start = params.get("from_date") || "";
-    const end = params.get("to_date") || "";
-    if (market === region && from === start && to === end) return;
-    market = region;
-    draftFrom = from = start;
-    draftTo = to = end;
-    cursors = [undefined];
-    filterError = "";
-  }
-  $: if (mounted && !archive) restoreFilter($querystring || "");
-
-  function filter(region: string) {
-    if (draftFrom && draftTo && draftFrom > draftTo) {
-      filterError = "시작일을 종료일보다 앞서 선택하세요.";
-      return;
+  function filter(
+    control: "market" | "date",
+    region: string,
+    start = from,
+    end = to,
+  ) {
+    const params = new URLSearchParams();
+    if (region) params.set("market", region);
+    if (start) params.set("from_date", start);
+    if (end) params.set("to_date", end);
+    const hash = "#/research" + (params.size ? "?" + params : "");
+    if (explicit && picker.open) {
+      leavingDetail = true;
+      reopenForFilter = { hash, control };
     }
-    filterError = "";
-    from = draftFrom;
-    to = draftTo;
-    market = region;
-    cursors = [undefined];
-    const params = new URLSearchParams(
-      Object.fromEntries(
-        Object.entries({ market, from_date: from, to_date: to }).filter(
-          ([, v]) => v,
-        ),
-      ),
-    );
-    window.location.hash = "#/research" + (params.size ? "?" + params : "");
+    window.location.hash = hash;
   }
   onMount(() => {
     mounted = true;
+    const pending = reopenForFilter;
+    reopenForFilter = null;
+    if (pending?.hash === window.location.hash) {
+      tick().then(() => {
+        if (!picker?.isConnected || window.location.hash !== pending.hash)
+          return;
+        picker.showModal();
+        const selector =
+          pending.control === "date" ? ".range-trigger" : "[role=combobox]";
+        picker.querySelector<HTMLButtonElement>(selector)?.focus();
+      });
+    }
   });
+  function returnToCaseTrigger() {
+    picker?.parentElement
+      ?.querySelector<HTMLButtonElement>(".choose")
+      ?.focus({ preventScroll: true });
+  }
   onDestroy(() => {
     listRequest?.abort();
     detailRequest?.abort();
@@ -162,7 +172,11 @@
             /></svg
           ></button
         >{/if}
-      <dialog bind:this={picker} aria-label="사례 선택">
+      <dialog
+        bind:this={picker}
+        aria-label="사례 선택"
+        on:close={returnToCaseTrigger}
+      >
         <header>
           <h2>사례 선택</h2>
           <button
@@ -171,33 +185,13 @@
             aria-label="사례 선택 닫기">닫기</button
           >
         </header>
-        <div class="filters">
-          <label
-            >시장<select
-              value={market}
-              on:change={(e) => filter(e.currentTarget.value)}
-              ><option value="">전체 시장</option><option value="kr"
-                >한국</option
-              ><option value="us">미국</option></select
-            ></label
-          >
-          <details class="date-filter">
-            <summary>관측일 범위</summary>
-            <form on:submit|preventDefault={() => filter(market)}>
-              <label>시작일<input type="date" bind:value={draftFrom} /></label
-              ><label>종료일<input type="date" bind:value={draftTo} /></label>
-              <button>적용</button><button
-                type="button"
-                on:click={() => {
-                  draftFrom = "";
-                  draftTo = "";
-                  filter(market);
-                }}>초기화</button
-              >
-              {#if filterError}<span role="alert">{filterError}</span>{/if}
-            </form>
-          </details>
-        </div>
+        <ResearchFilters
+          {market}
+          {from}
+          {to}
+          on:market={(e) => filter("market", e.detail)}
+          on:range={(e) => filter("date", market, e.detail.from, e.detail.to)}
+        />
         {#if listError}<p role="alert">
             {listError}
             <button
@@ -239,7 +233,10 @@
           {#if cursors.length > 1}<button
               class="older"
               on:click={() => {
-                cursors = cursors.slice(0, -1);
+                pagination = {
+                  query: filterQuery,
+                  cursors: cursors.slice(0, -1),
+                };
                 window.location.hash = "#/research" + suffix;
               }}>이전 페이지</button
             >{/if}
@@ -247,7 +244,10 @@
               class="older"
               disabled={busy}
               on:click={() => {
-                cursors = [...cursors, rows[rows.length - 1].id];
+                pagination = {
+                  query: filterQuery,
+                  cursors: [...cursors, rows[rows.length - 1].id],
+                };
                 window.location.hash = "#/research" + suffix;
               }}>{busy ? "조회 중" : "다음 페이지"}</button
             >{/if}
@@ -297,37 +297,24 @@
     color: var(--fl-ink);
   }
 
-  button,
-  select,
-  input {
+  button {
     font: inherit;
     color: inherit;
   }
-  button,
-  select,
-  input,
-  .filters summary {
+  button {
     border: 1px solid var(--fl-line);
     border-radius: 4px;
     background: var(--fl-surface);
     padding: 8px 12px;
   }
-  button,
-  summary {
+  button {
     cursor: pointer;
   }
   dialog {
     color-scheme: dark;
     background: var(--fl-surface);
   }
-  dialog option {
-    background: var(--fl-surface);
-    color: var(--fl-ink);
-  }
   button:focus-visible,
-  select:focus-visible,
-  input:focus-visible,
-  summary:focus-visible,
   .register a:focus-visible {
     outline: 2px solid var(--fl-accent);
     outline-offset: 2px;
@@ -356,8 +343,6 @@
     background: #000a;
   }
   dialog header,
-  .filters,
-  .filters form,
   .row-meta {
     display: flex;
     align-items: center;
@@ -371,17 +356,6 @@
   dialog h2 {
     margin: 0;
     font-size: 1.3rem;
-  }
-  .filters {
-    align-items: flex-start;
-  }
-  .filters form {
-    padding: 8px 0;
-  }
-  .filters label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
   }
   .register {
     display: grid;

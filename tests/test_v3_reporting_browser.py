@@ -21,13 +21,19 @@ class ReportingBrowserTests(unittest.TestCase):
         setup = """
         const getAsset=window.fetch.bind(window);
         let resolveFirst;
+        window.statsQueries=[];
+        window.caseQueries=[];
         window.releaseFirst=()=>resolveFirst?.();
         const json=(value)=>new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});
         const row={ticker:'NVDA',market:'us',id:1,data_session:'2026-11-24',status:'pending',forecast_probabilities:{single:.39}};
         const report=id=>({ticker:'NVDA',id,created_at:'2026-11-24T03:00:00Z',scheduled_cycle:id,final_trade_decision:'회차 판단 '+id});
         window.fetch=async (url, options)=>{
           const u=new URL(url,location.href),p=u.pathname;
-          if(p==='/api/cases')return json([row]);
+          if(p==='/api/cases') {
+            window.caseQueries.push(Object.fromEntries(u.searchParams));
+            return json(u.searchParams.get('from_date')==='2026-11-05' ? [] : [row]);
+          }
+          if(p==='/api/cases/1')return json({...row,arms:[],snapshot:{}});
           if(p==='/api/report-sources/8') await new Promise(r=>resolveFirst=r);
           if(p.startsWith('/api/report-sources/')) {
             const id=Number(p.split('/').at(-1)), date='2026-11-24T03:00:00Z';
@@ -40,6 +46,7 @@ class ReportingBrowserTests(unittest.TestCase):
           if(p==='/workspace-api/reports')return json([report(8),report(7)]);
           if(p==='/api/status')return json({tickers:[{ticker:'NVDA',market:'us',classification:{asset_class:'equity',sector:'technology'}}],progress:{phase:'idle'}});
           if(p==='/api/stats'){
+            window.statsQueries.push(Object.fromEntries(u.searchParams));
             const r={control:'baseline',treated:'single',method:'single',n:3,control_brier:.24,treated_brier:.2,improvement:.04,lower:.4,upper:.6,mean_probability:.51,observed_rate:.67};
             return json({comparisons:[r],reference_comparisons:[],calibration:[r],sector_by_basis:[],counts:{matured:u.searchParams.has('from_date')?2:3},sector_coverage:{}});
           }
@@ -58,21 +65,56 @@ class ReportingBrowserTests(unittest.TestCase):
             if(getComputedStyle(ledger).backgroundColor!=='rgb(32, 33, 36)' ||
               getComputedStyle(estimate).color!=='rgb(195, 169, 255)') throw Error('forecast ledger theme');
             await wait(()=>q('.round-picker button'));
+            const expectedControlHeight = matchMedia('(max-width: 767px)').matches ? 44 : 40;
+            for (const selector of ['.desk-search','.report-kind button','.round-picker button']) {
+              const element=q(selector), box=element.getBoundingClientRect();
+              if (Math.abs(box.height-expectedControlHeight)>1 || getComputedStyle(element).borderRadius!=='7px')
+                throw Error(selector+' control '+box.height+' / '+getComputedStyle(element).borderRadius);
+            }
             q('.round-picker button').click();
             await wait(()=>q('.rounds a[href$="report=8"]'));
             q('.rounds a[href$="report=8"]').click();
             await wait(()=>q('#cycle-select') && q('.archive') && resolveFirst);
-            q('#cycle-select').click(); await wait(()=>q('.select-option:not(.active)'));
-            q('.select-option:not(.active)').click(); await wait(()=>q('.archive')?.innerText.includes('회차 자료 7'));
+            q('#cycle-select').click(); await wait(()=>q('[role=option][aria-selected=false]'));
+            q('[role=option][aria-selected=false]').click(); await wait(()=>q('.archive')?.innerText.includes('회차 자료 7'));
             if(!q('.archive .source h4')?.textContent.includes('last30days') || q('.archive').innerText.includes('추가 자료 7'))throw Error('archive preview order');
             if(!(q('.desk-conclusion').compareDocumentPosition(q('.archive')) & Node.DOCUMENT_POSITION_FOLLOWING))throw Error('conclusion not first');
             q('.archive button[aria-expanded=false]').click(); await wait(()=>q('.archive').innerText.includes('추가 자료 7'));
             releaseFirst(); await new Promise(r=>setTimeout(r,100));
             if(q('.archive').innerText.includes('회차 자료 8'))throw Error('stale archive');
             location.hash='#/results'; await wait(()=>q('.review')?.innerText.includes('0.240 → 0.200'));
-            const start=q('.review input[type=date]');start.value='2026-11-01';start.dispatchEvent(new Event('input',{bubbles:true}));
-            await wait(()=>q('.counts')?.innerText.includes('2'));
+            const before=statsQueries.length, trigger=q('.review .range-trigger');
+            trigger.click();
+            await wait(()=>q('.range-dialog[open] .navigation'));
+            q('.range-dialog [aria-label="연도와 월 선택"]').click();
+            await wait(()=>q('.range-dialog input'));
+            const year=q('.range-dialog input');
+            year.value='2026'; year.dispatchEvent(new Event('input',{bubbles:true}));
+            [...document.querySelectorAll('.range-dialog .months button')].find(b=>b.textContent==='11월').click();
+            await wait(()=>q('[data-day="2026-11-23"]'));
+            q('[data-day="2026-11-23"]').click(); await Promise.resolve();
+            if(statsQueries.length!==before || !q('.range-dialog[open]'))throw Error('draft committed');
+            q('[data-day="2026-11-01"]').click();
+            await wait(()=>q('.counts')?.innerText.includes('2') && statsQueries.at(-1)?.from_date==='2026-11-01');
+            if(statsQueries.at(-1).to_date!=='2026-11-23' || q('.range-dialog[open]') ||
+              !location.hash.includes('to_date=2026-11-23'))throw Error('reversed range');
+            trigger.click(); q('[data-day="2026-11-01"]').click(); q('[data-day="2026-11-01"]').click();
+            await wait(()=>statsQueries.at(-1)?.to_date==='2026-11-01');
             location.hash='#/observe'; await wait(()=>q('.review tbody')?.innerText.includes('정보기술'));
+            location.hash='#/research/1?market=us&from_date=2026-11-01';
+            await wait(()=>q('.evidence h2')?.textContent.includes('엔비디아'));
+            q('.choose').click();
+            const openCalendar=()=>q('dialog[open] .range-trigger').click();
+            const day=value=>q('.range-dialog[open] [data-day="'+value+'"]');
+            openCalendar();await wait(()=>day('2026-11-03'));
+            const listBefore=caseQueries.length;
+            day('2026-11-03').click();day('2026-11-01').click();
+            await wait(()=>document.activeElement.matches('dialog[open] .range-trigger') && caseQueries.at(-1)?.to_date==='2026-11-03');
+            if(caseQueries.length!==listBefore+1)throw Error('duplicate detail-to-list request');
+            openCalendar();await wait(()=>day('2026-11-05'));
+            day('2026-11-05').click();day('2026-11-05').click();
+            await wait(()=>caseQueries.at(-1)?.from_date==='2026-11-05' && q('dialog[open]')?.innerText.includes('공개된 연구 사례가 없습니다'));
+            if(caseQueries.length!==listBefore+2 || caseQueries.at(-1)?.to_date!=='2026-11-05')throw Error('same-path range did not refetch once');
             if(document.documentElement.scrollWidth>innerWidth)throw Error('horizontal overflow');
             document.body.innerHTML='<output id="pass">verified</output>';
           }catch(e){document.body.innerText='report-test '+e;}
@@ -106,7 +148,7 @@ class ReportingBrowserTests(unittest.TestCase):
         )
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
-            for width in (390, 1440):
+            for width in (360, 393, 1440):
                 with (
                     self.subTest(width=width),
                     tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile,

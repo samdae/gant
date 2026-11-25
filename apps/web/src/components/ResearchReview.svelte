@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { querystring } from "svelte-spa-router";
+  import ResearchFilters from "./ResearchFilters.svelte";
+  import { readResearchFilters } from "../lib/researchDates";
   import InstrumentLabel from "./InstrumentLabel.svelte";
   import { marketName, researchGet, timeLabel } from "../lib/researchEvidence";
   import {
@@ -19,18 +22,25 @@
   } from "../lib/researchReview";
 
   export let view: "results" | "observe";
-  const incoming = new URLSearchParams(location.hash.split("?")[1] || "");
-  const initialDate = (key: string) =>
-    /^\d{4}-\d{2}-\d{2}$/.test(incoming.get(key) || "")
-      ? incoming.get(key) || ""
-      : "";
-  let market = ["us", "kr"].includes(incoming.get("market") || "")
-      ? incoming.get("market") || ""
-      : "",
-    from = initialDate("from_date"),
-    to = initialDate("to_date"),
+  let market = "",
+    from = "",
+    to = "",
     refresh = 0,
     mounted = false;
+  $: ({ market, from, to } = readResearchFilters($querystring || ""));
+  function filter(region: string, start: string, end: string) {
+    const params = new URLSearchParams($querystring || "");
+    for (const [key, value] of [
+      ["market", region],
+      ["from_date", start],
+      ["to_date", end],
+    ]) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    window.location.hash =
+      window.location.hash.split("?")[0] + (params.size ? "?" + params : "");
+  }
   let status: Status | null = null,
     stats: Stats | null = null;
   let statusError = "",
@@ -115,32 +125,13 @@
     <h2>{view === "observe" ? "관찰 종목" : "연구 성과"}</h2>
     <button on:click={() => refresh++}>새로고침</button>
   </header>
-  <details class="scope-control" open={Boolean(market || from || to)}>
-    <summary
-      >시장·관측 기간 <span
-        >{market ? marketName(market) : "전체 시장"} · {from || to
-          ? (from || "시작일 미지정") + " ~ " + (to || "종료일 미지정")
-          : "전체 기간"}</span
-      ></summary
-    >
-    <div class="filters" aria-label="시장과 관측 기간">
-      <label
-        >시장<select bind:value={market}
-          ><option value="">전체 시장</option><option value="us">미국</option
-          ><option value="kr">한국</option></select
-        ></label
-      >
-      <label>관측 시작일<input type="date" bind:value={from} /></label>
-      <label>관측 종료일<input type="date" bind:value={to} /></label>
-      {#if market || from || to}<button
-          on:click={() => {
-            market = "";
-            from = "";
-            to = "";
-          }}>전체 기간·시장</button
-        >{/if}
-    </div>
-  </details>
+  <ResearchFilters
+    {market}
+    {from}
+    {to}
+    on:market={(e) => filter(e.detail, from, to)}
+    on:range={(e) => filter(market, e.detail.from, e.detail.to)}
+  />
   {#if rangeError}<p role="alert">종료일을 시작일 이후로 선택해 주세요.</p>
   {:else if statsError}<p role="alert">{statsError}</p>
   {:else if statsBusy}<p role="status">관측 기간의 성과를 조회하고 있습니다.</p>
@@ -355,23 +346,6 @@
 </section>
 
 <style>
-  .scope-control {
-    margin-block: 0.8rem;
-    padding: 0.65rem 0.9rem;
-    background: var(--fl-surface, #202124);
-    border: 1px solid var(--fl-line, #3b3d41);
-    border-radius: 0.45rem;
-  }
-  .scope-control summary {
-    cursor: pointer;
-    font-weight: 650;
-    font-size: 0.88rem;
-  }
-  .scope-control summary span {
-    font-weight: 400;
-    color: var(--fl-muted, #b5b4ad);
-    margin-left: 0.5rem;
-  }
   .counts div {
     display: flex;
     align-items: baseline;
@@ -403,8 +377,7 @@
     color: var(--fl-ink, #f4f2e9);
     font-variant-numeric: tabular-nums;
   }
-  .heading,
-  .filters {
+  .heading {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -423,25 +396,6 @@
   }
   h3 {
     font-size: 1.18rem;
-  }
-  .filters {
-    margin-block: 1rem;
-    align-items: flex-end;
-  }
-  label {
-    display: grid;
-    gap: 0.25rem;
-    font-size: 0.85rem;
-  }
-  button,
-  select,
-  input {
-    font: inherit;
-    color: inherit;
-    background: var(--fl-surface, #202124);
-    border: 1px solid var(--fl-line, #3b3d41);
-    border-radius: 0.25rem;
-    padding: 0.38rem 0.6rem;
   }
   button {
     cursor: pointer;
@@ -470,9 +424,7 @@
   article p {
     font-size: 0.91rem;
   }
-  button:focus-visible,
-  select:focus-visible,
-  input:focus-visible {
+  button:focus-visible {
     outline: 2px solid var(--fl-accent, #d5f65e);
     outline-offset: 2px;
   }
@@ -532,12 +484,6 @@
     padding-block: 0.4rem;
   }
   @media (max-width: 480px) {
-    label {
-      min-width: 0;
-    }
-    input {
-      max-width: 9.25rem;
-    }
     td,
     th {
       padding: 0.55rem 0.3rem;

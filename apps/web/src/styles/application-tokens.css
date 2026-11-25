@@ -1,5 +1,10 @@
 /* Bundle with the application so a deployment switches layout and tokens together. */
 html.gant-workspace {
+  --fl-control-height: 40px;
+  --fl-control-radius: 7px;
+  --fl-control-padding-inline: 12px;
+  --fl-control-gap: 8px;
+  --fl-tap-highlight: rgb(213 246 94 / 15%);
   --fl-bg: #18191b;
   --fl-backdrop: #131415;
   --fl-surface: #202124;
@@ -48,6 +53,12 @@ html.gant-workspace {
   background: var(--fl-bg);
   scroll-padding-bottom: max(76px, env(safe-area-inset-bottom));
 }
+@media (max-width: 767px) {
+  html.gant-workspace {
+    --fl-control-height: 44px;
+  }
+}
+
 /* Navigation should reveal the destination immediately, especially under the fixed mobile tabs. */
 .gant-workspace .workspace .page {
   animation: none;

@@ -35,6 +35,19 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             const picker=document.querySelector('.research-desk dialog');
             check(!picker.open,'compact picker initially closed');
             document.querySelector('.choose').click();check(picker.open && getComputedStyle(picker).backgroundColor==='rgb(32, 33, 36)' && getComputedStyle(picker).colorScheme==='dark','native dark picker opens');
+            const marketPicker=picker.querySelector('[role="combobox"]');
+            const press=async (control,key)=>{
+              control.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
+              await Promise.resolve();
+            };
+            marketPicker.focus();
+            await press(marketPicker,'Enter');
+            const marketList=picker.querySelector('[role="listbox"]');
+            check(marketList?.matches(':popover-open') && marketList.querySelector('[aria-selected="true"]'), 'market selection visible inside dialog');
+            await press(marketPicker,'End');
+            check(marketPicker.getAttribute('aria-activedescendant')===marketList.lastElementChild.id,'End focuses last market');
+            await press(marketPicker,'Escape');
+            check(picker.open && marketPicker.getAttribute('aria-expanded')==='false' && document.activeElement===marketPicker, 'Escape dismisses list and retains dialog focus');
             const [first,partial,unissued]=document.querySelectorAll('.register a');
             check(partial.textContent.includes('일부 방법 발행') && !partial.textContent.includes('발행 대기') &&
               unissued.textContent.includes('발행 대기') && first.textContent.includes('채점 완료'),'partial vs unissued');
@@ -76,6 +89,12 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             await visit('#/schedules',()=>document.querySelector('main a[href="#/schedules/spy"]'));
             check(!document.querySelector('#addScheduleBtn, .op-cancel'),'schedule actions');
             await visit('#/schedules/SPY',()=>document.querySelector('main')?.innerText.includes('세부 실행 로그'));
+            const round=document.getElementById('schedule-round');
+            round.focus();
+            await press(round,'ArrowDown');
+            await press(round,'End');
+            await press(round,'Enter');
+            check(round.textContent.includes('2회') && round.getAttribute('aria-expanded')==='false','round selection commits');
             await visit('#/live',()=>document.querySelector('main')?.innerText.includes('현재 실행 종목과 대기열'));
             await visit('#/retrospective',()=>document.querySelector('.review-empty'));
             check(!document.querySelector('.review-empty button'),'retrospective actions');
@@ -127,7 +146,7 @@ class IntegratedPublicViewerTests(unittest.TestCase):
                     content="application/json"
                 elif path.startswith(("/workspace-api/", "/public-api/")):
                     data = {"/workspace-api/schedules":[{"ticker":"SPY","interval_days":1}],
-                            "/workspace-api/schedules/SPY/cycles":[{"id":2,"scheduled_cycle":3,"status":"done","created_at":"2026-11-01T00:00:00Z"}],
+                            "/workspace-api/schedules/SPY/cycles":[{"id":2,"scheduled_cycle":3,"status":"done","created_at":"2026-11-01T00:00:00Z"},{"id":1,"scheduled_cycle":2,"status":"done","created_at":"2026-10-31T00:00:00Z"}],
                             "/workspace-api/portfolio/config":{"config":None},
                             "/workspace-api/reports":[{"ticker":"SPY","id":7,"final_trade_decision":"QA","created_at":"2026-11-01T00:00:00Z"}],
                             "/public-api/reports/7":{"ticker":"SPY","id":7},

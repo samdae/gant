@@ -1,0 +1,121 @@
+html.gant-workspace
+  :is(
+    a[href],
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    label,
+    [role="option"],
+    [role="button"],
+    [role="combobox"]
+  ) {
+  -webkit-tap-highlight-color: var(--fl-tap-highlight);
+}
+
+/* Single-line form controls and ordinary actions, including mounted dialogs.
+   Content rows, navigation, disclosure controls and picker options own their geometry. */
+html.gant-workspace
+  .workspace
+  :is(
+    .fl-control,
+    .btn,
+    .btn-primary,
+    .btn-secondary,
+    .btn-danger,
+    .btn-ghost,
+    .op-primary,
+    .op-secondary,
+    .select-trigger,
+    .currency-opt,
+    button.tag-chip,
+    .op-cancel,
+    .review-switch button,
+    .report-kind button,
+    .round-picker button,
+    .quiet-account button,
+    .error-text button,
+    .op-error button,
+    .accuracy-help button,
+    .op-toolbar input,
+    .review .heading button,
+    .review .filters > button,
+    .forecast-reports button,
+    .rounds button,
+    .archive button,
+    .review-state button,
+    .review-empty button,
+    .modal-close,
+    .research-desk .choose,
+    .research-desk .older,
+    .research-desk dialog > header > button,
+    .feed > button,
+    .sources-link,
+    input:not([type]),
+    input[type="text"],
+    input[type="search"],
+    input[type="number"],
+    input[type="password"],
+    input[type="date"],
+    input[type="email"],
+    select:not([multiple]):not([size])
+  ) {
+  box-sizing: border-box;
+  min-block-size: var(--fl-control-height);
+  block-size: auto;
+  padding-block: 0;
+  padding-inline: var(--fl-control-padding-inline);
+  border-radius: var(--fl-control-radius);
+  font-size: 0.875rem;
+  line-height: 1.25;
+
+  &:is(button, a):not(.select-trigger) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--fl-control-gap);
+  }
+}
+
+html.gant-workspace .workspace .desk-search {
+  box-sizing: border-box;
+  min-block-size: var(--fl-control-height);
+  padding: 0 var(--fl-control-padding-inline);
+  gap: var(--fl-control-gap);
+  border-radius: var(--fl-control-radius);
+}
+
+/* The outlined label is the control. Let its input fill the space inside the border. */
+html.gant-workspace .workspace .desk-search input[type="search"] {
+  min-block-size: calc(var(--fl-control-height) - 2px);
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+html.gant-workspace .workspace :is(.modal-close, .op-cancel) {
+  min-inline-size: var(--fl-control-height);
+  padding: 0;
+  font-size: 1.25rem;
+}
+
+html.gant-workspace .workspace :is(.modal-actions, .modal-footer) {
+  align-items: center;
+  gap: var(--fl-control-gap);
+}
+
+html.gant-workspace .workspace .report-filter {
+  align-items: center;
+}
+
+html.gant-workspace .workspace .report-filter .desk-search {
+  margin-block: 0;
+}
+
+/* Legacy full-width selects belong in forms. Toolbar selectors size to their column. */
+html.gant-workspace .workspace .filters > .select-menu {
+  inline-size: auto;
+}

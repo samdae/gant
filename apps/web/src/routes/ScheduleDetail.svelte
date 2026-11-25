@@ -197,15 +197,12 @@
       <section class="op-panel">
         <div class="op-toolbar">
           <h2>실행 회차</h2>
-          <label
-            >회차 선택 <select
-              value={selectedCycleId}
-              on:change={(e) => handleCycleChange(e.currentTarget.value)}
-              >{#each cycles as item}<option value={String(item.id)}
-                  >{item.scheduled_cycle}회 · {operationTime(item.created_at)}</option
-                >{/each}</select
-            ></label
-          >
+          <div class="cycle-control">
+            <label for="schedule-round">회차 선택</label>
+            <SelectMenu id="schedule-round" ariaLabel="회차 선택" value={selectedCycleId}
+              options={cycles.map(item => ({ value: String(item.id), label: item.scheduled_cycle + "회 · " + operationTime(item.created_at) }))}
+              on:change={event => handleCycleChange(event.detail)} />
+          </div>
         </div>
         <div class="op-summary">
           <div><span>선택 회차</span><strong>{cycle?.scheduled_cycle}회</strong></div>

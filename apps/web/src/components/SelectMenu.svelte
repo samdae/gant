@@ -1,166 +1,180 @@
-<script lang="ts">
-  import { createEventDispatcher, onDestroy, onMount } from "svelte";
+<script context="module" lang="ts">
+  let instanceCount = 0;
+</script>
 
-  type Option = {
-    value: string;
-    label: string;
-  };
+<script lang="ts">
+  import { createEventDispatcher, tick } from "svelte";
 
   export let id: string | undefined = undefined;
   export let value = "";
-  export let options: Option[] = [];
+  export let options: { value: string; label: string }[] = [];
+  export let ariaLabel: string | undefined = undefined;
   export let placeholder = "선택";
-  export let disabled = false;
   export let compact = false;
   export let minimal = false;
+  export let disabled = false;
   export let panelAlign: "start" | "end" = "start";
 
+  const listId = "gant-options-" + ++instanceCount;
   const dispatch = createEventDispatcher<{ change: string }>();
+  let trigger: HTMLButtonElement;
+  let panel: HTMLDivElement;
   let open = false;
-  let container: HTMLDivElement;
+  let active = 0;
+  let search = "";
+  let lastTyped = 0;
+  $: selected = options.find(option => option.value === value);
+  $: if (open && (disabled || options.length === 0)) open = false;
 
-  const toggle = () => {
-    if (disabled) return;
-    open = !open;
-  };
+  function place() {
+    if (!open || !panel || !trigger) return;
+    const bounds = trigger.getBoundingClientRect();
+    const gap = 5, margin = 8;
+    const view = window.visualViewport;
+    const top = view?.offsetTop ?? 0, left = view?.offsetLeft ?? 0;
+    const width = view?.width ?? document.documentElement.clientWidth;
+    const height = view?.height ?? window.innerHeight;
+    const below = height + top - bounds.bottom - margin - gap;
+    const above = bounds.top - top - margin - gap;
+    const flip = below < Math.min(288, panel.scrollHeight + 2) && above > below;
+    panel.style.maxHeight = Math.max(24, Math.min(288, flip ? above : below)) + "px";
+    panel.style.minWidth = Math.min(width - margin * 2, bounds.width) + "px";
+    panel.style.maxWidth = width - margin * 2 + "px";
+    const x = panelAlign === "end" ? bounds.right - panel.offsetWidth : bounds.left;
+    panel.style.left = Math.max(left + margin, Math.min(x, left + width - margin - panel.offsetWidth)) + "px";
+    panel.style.top = (flip ? bounds.top - gap - panel.offsetHeight : bounds.bottom + gap) + "px";
+  }
 
-  const selectOption = (nextValue: string) => {
-    if (disabled) return;
-    value = nextValue;
-    open = false;
-    dispatch("change", nextValue);
-  };
-
-  const handleClickOutside = (event: PointerEvent) => {
-    if (!container?.contains(event.target as Node)) {
-      open = false;
+  function attach(node: HTMLDivElement) {
+    // Top-layer placement preserves the owning dialog and escapes overflow clipping.
+    node.setAttribute("popover", "manual");
+    node.showPopover?.();
+    function outside(event: Event) {
+      if (!node.contains(event.target as Node) && !trigger.contains(event.target as Node)) open = false;
     }
-  };
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("focusin", outside);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    window.visualViewport?.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("scroll", place);
+    return { destroy() {
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("focusin", outside);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+      window.visualViewport?.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("scroll", place);
+    }};
+  }
 
-  onMount(() => {
-    window.addEventListener("pointerdown", handleClickOutside);
-  });
+  function reveal() {
+    const row = panel?.children[active] as HTMLElement | undefined;
+    if (!row) return;
+    if (row.offsetTop < panel.scrollTop) panel.scrollTop = row.offsetTop;
+    if (row.offsetTop + row.offsetHeight > panel.scrollTop + panel.clientHeight)
+      panel.scrollTop = row.offsetTop + row.offsetHeight - panel.clientHeight;
+  }
 
-  onDestroy(() => {
-    window.removeEventListener("pointerdown", handleClickOutside);
-  });
+  async function show() {
+    if (disabled || !options.length || open) return;
+    active = Math.max(0, options.findIndex(option => option.value === value));
+    open = true;
+    await tick();
+    place();
+    reveal();
+  }
 
-  $: selectedLabel = options.find((item) => item.value === value)?.label ?? placeholder;
+  function choose(index: number) {
+    const option = options[index];
+    if (!option) return;
+    open = false;
+    trigger.focus({ preventScroll: true });
+    value = option.value;
+    dispatch("change", value);
+  }
+
+  function keyboard(event: KeyboardEvent) {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
+    const key = event.key;
+    if (key === "Tab") { open = false; return; }
+    if (key === "Escape" && !open) return;
+    if (!["ArrowDown", "ArrowUp", "Home", "End", "Enter", " ", "Escape"].includes(key) && key.length !== 1) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (key === "Escape") { open = false; return; }
+    if (key === "Enter" || key === " ") {
+      if (open) choose(active); else show();
+      return;
+    }
+    const previouslyOpen = open;
+    show();
+    if (key === "Home") active = 0;
+    else if (key === "End") active = options.length - 1;
+    else if (key === "ArrowUp" || key === "ArrowDown") {
+      if (previouslyOpen) active = Math.min(options.length - 1, Math.max(0, active + (key === "ArrowDown" ? 1 : -1)));
+    } else {
+      const now = performance.now();
+      search = (now - lastTyped < 650 ? search : "") + key.toLocaleLowerCase();
+      lastTyped = now;
+      const prefix = [...search].every(letter => letter === search[0]) ? search[0] : search;
+      for (let offset = 1; offset <= options.length; offset++) {
+        const i = (active + offset) % options.length;
+        if (options[i].label.toLocaleLowerCase().startsWith(prefix)) { active = i; break; }
+      }
+    }
+    tick().then(reveal);
+  }
 </script>
 
-<div class="select-menu" class:compact class:minimal class:end={panelAlign === "end"} bind:this={container}>
-  <button
-    {id}
-    type="button"
-    class={`select-trigger ${open ? "open" : ""}`}
-    on:click={toggle}
-    disabled={disabled}
-    aria-expanded={open}
-  >
-    <span class="select-label">{selectedLabel}</span>
-    <svg class="select-caret" viewBox="0 0 20 20" aria-hidden="true">
-      <path d="M5 7l5 6 5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-    </svg>
+<div class="select-menu" class:compact class:minimal>
+  <button {id} type="button" role="combobox" class="select-trigger"
+    aria-label={ariaLabel} aria-expanded={open} aria-controls={listId} aria-haspopup="listbox"
+    aria-activedescendant={open ? listId + "-" + active : undefined}
+    disabled={disabled || !options.length} bind:this={trigger}
+    on:keydown={keyboard} on:click={() => open ? open = false : show()}>
+    <span>{selected?.label ?? placeholder}</span>
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
   </button>
-
   {#if open}
-    <div class="select-panel">
-      {#each options as option}
-        <button
-          type="button"
-          class={`select-option ${option.value === value ? "active" : ""}`}
-          on:click|stopPropagation={() => selectOption(option.value)}
-        >
+    <div class="choice-list" id={listId} role="listbox" aria-label={ariaLabel ?? placeholder}
+      use:attach bind:this={panel}>
+      {#each options as option, i}
+        <div class="select-option" role="option" tabindex="-1" id={listId + "-" + i} aria-selected={option.value === value}
+          class:highlight={i === active} on:pointermove={() => active = i}
+          on:mousedown|preventDefault on:click={() => choose(i)} on:keydown={keyboard}>
           <span>{option.label}</span>
-          {#if option.value === value}
-            <svg class="select-check" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M4 10l4 4 8-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          {/if}
-        </button>
+          {#if option.value === value}<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" /></svg>{/if}
+        </div>
       {/each}
     </div>
   {/if}
 </div>
 
 <style>
-  .select-menu.compact {
-    width: auto;
-    min-width: 0;
+  .select-menu { min-width:0; max-width:100%; }
+  .select-menu .select-trigger {
+    box-sizing:border-box; display:inline-flex; align-items:center; justify-content:space-between;
+    gap:var(--fl-control-gap,8px); width:100%; min-width:0; height:var(--fl-control-height,40px);
+    padding:0 var(--fl-control-padding-inline,12px); border:1px solid var(--fl-line,var(--border)); border-radius:var(--fl-control-radius,7px);
+    background:var(--fl-backdrop,var(--bg-header)); color:var(--fl-ink,var(--text));
+    font:inherit; font-size:14px; cursor:pointer;
   }
-  .select-menu.compact :global(.select-trigger) {
-    padding: 6px 10px 6px 12px;
-    font-size: 0.8125rem;
-    font-weight: 600;
+  .select-trigger span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .select-menu svg { flex:none; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+  .select-trigger:focus-visible { outline:2px solid var(--fl-accent,var(--primary)); outline-offset:2px; }
+  .select-trigger:disabled { opacity:.55; cursor:default; }
+  .select-trigger[aria-expanded=true] svg { transform:rotate(180deg); }
+  .choice-list {
+    position:fixed; inset:auto; z-index:11000; margin:0; padding:4px; box-sizing:border-box;
+    width:max-content; overflow:auto; overscroll-behavior:contain;
+    background:var(--fl-surface,var(--bg-header)); color:var(--fl-ink,var(--text));
+    border:1px solid var(--fl-line,var(--border)); border-radius:var(--fl-control-radius,7px);
+    box-shadow:0 8px 22px #0006; font-size:14px;
   }
-  .select-menu.compact :global(.select-caret) {
-    width: 14px;
-    height: 14px;
-    margin-left: 4px;
-  }
-  .select-menu.compact :global(.select-panel) {
-    padding: 4px;
-  }
-  .select-menu.compact :global(.select-option) {
-    padding: 6px 10px;
-    font-size: 0.8125rem;
-  }
-
-  /* minimal: 셀렉트박스처럼 보이지 않음, 터치 타겟 44px, 포커스 앱 테마 */
-  .select-menu.minimal {
-    min-width: 72px;
-  }
-  .select-menu.minimal :global(.select-trigger) {
-    min-height: 44px;
-    padding: 0 12px;
-    background: transparent;
-    border: none;
-    border-radius: 8px;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--text);
-    outline: none;
-    -webkit-tap-highlight-color: transparent;
-  }
-  .select-menu.minimal :global(.select-trigger:hover) {
-    background: rgba(255, 255, 255, 0.06);
-  }
-  .select-menu.minimal :global(.select-trigger:focus) {
-    outline: none;
-  }
-  .select-menu.minimal :global(.select-trigger.open) {
-    background: rgba(255, 255, 255, 0.08);
-    border: none;
-    box-shadow: 0 0 0 2px var(--primary-border);
-  }
-  .select-menu.minimal :global(.select-caret) {
-    width: 12px;
-    height: 12px;
-    margin-left: 6px;
-    opacity: 0.6;
-  }
-  .select-menu.minimal :global(.select-panel) {
-    top: calc(100% + 4px);
-    left: 0;
-    right: auto;
-    min-width: 120px;
-    width: max-content;
-    max-width: min(180px, calc(100vw - 24px));
-    background: var(--bg-header);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    box-shadow: var(--shadow-md);
-    padding: 6px;
-  }
-
-  .select-menu.end :global(.select-panel) {
-    left: auto;
-    right: 0;
-  }
-  .select-menu.minimal :global(.select-option) {
-    min-height: 40px;
-    padding: 8px 12px;
-    font-size: 0.875rem;
-    white-space: nowrap;
-  }
+  .choice-list [role=option] { display:flex; align-items:center; justify-content:space-between; gap:16px;
+    min-height:var(--fl-control-height,40px); box-sizing:border-box; padding:6px 10px; border-radius:4px; cursor:pointer; }
+  .choice-list .highlight { background:var(--fl-surface-subtle,var(--bg-card)); outline:1px solid var(--fl-muted,var(--border)); outline-offset:-1px; }
+  .choice-list [aria-selected=true] svg { color:var(--fl-accent,var(--primary)); }
+  @media(max-width:767px){ .select-menu .select-trigger,.choice-list [role=option] { min-height:44px; } }
 </style>

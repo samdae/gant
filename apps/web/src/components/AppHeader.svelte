@@ -57,12 +57,12 @@
 
 {#if isForecastLab}
   <div class="work-controls" aria-label="콘솔 보기 설정">
-    {#if showMode}<label><span>모드</span><select aria-label="콘솔 모드" value={$viewMode} on:change={(e) => onModeChange(e.currentTarget.value)}>
-      {#each modeOptions as option}<option value={option.value}>{option.label}</option>{/each}
-    </select></label>{/if}
-    {#if showCurrency}<label><span>통화</span><select aria-label="표시 통화" value={$currencyFilter} on:change={(e) => onCurrencyChange(e.currentTarget.value)}>
-      {#each currencyOptions as option}<option value={option.value}>{option.label}</option>{/each}
-    </select></label>{/if}
+    {#if showMode}
+      <div class="control-field"><span>모드</span><SelectMenu ariaLabel="콘솔 모드" value={$viewMode} options={modeOptions} on:change={(e) => onModeChange(e.detail)} /></div>
+    {/if}
+    {#if showCurrency}
+      <div class="control-field"><span>통화</span><SelectMenu ariaLabel="표시 통화" panelAlign="end" value={$currencyFilter} options={currencyOptions} on:change={(e) => onCurrencyChange(e.detail)} /></div>
+    {/if}
   </div>
 {:else}
 <header class="app-header control-header">
@@ -105,11 +105,12 @@
 
 <style>
   .work-controls { display:flex; align-items:center; gap:12px; }
-  .work-controls label { display:flex; gap:6px; align-items:center; color:var(--fl-muted); font-size:12px; }
-  .work-controls select { max-width:110px; color:var(--fl-ink); background:var(--fl-backdrop); border:1px solid var(--fl-line); border-radius:5px; padding:6px; min-height:34px; font:600 13px var(--fl-font); }
-  .work-controls select:focus-visible { outline:2px solid var(--fl-accent); outline-offset:2px; }
-  @media(max-width:630px) { .work-controls { gap:14px; } }
-
+  .control-field { display:flex; gap:6px; align-items:center; min-width:0; font-size:13px; }
+  .control-field > span { color:var(--fl-muted); }
+  @media(max-width:600px) {
+    .work-controls { gap:5px; }
+    .control-field > span { display:none; }
+  }
   .control-header {
     padding: 8px 16px;
     height: 60px;
@@ -200,8 +201,5 @@
     left: auto;
     right: 0;
   }
-  @media (max-width:830px) {
-    .work-controls label {font-size:13px;}
-    .work-controls select {min-height:44px;font-size:14px;}
-  }
+
 </style>
