@@ -78,7 +78,7 @@ def public_case(row):
 
 
 def case_evidence(raw):
-    from .issue_collector import public_issues
+    from .issue_collector import public_issues, EXPORT
 
     snapshot = raw.get("snapshot") or {}
     card = public_hypothesis(raw.get("hypothesis"))
@@ -104,7 +104,20 @@ def case_evidence(raw):
                 observed_value=None,
                 observed_session=None,
             )
-    return {"hypothesis": card, "issues": issues}
+    separate = archive_projection(raw.get("last30days"), cutoff, EXPORT)
+    return {"hypothesis": card, "issues": issues, "last30days": separate}
+
+
+def archive_projection(raw, cutoff, source):
+    from .issue_collector import public_issues
+
+    group = public_issues(raw)
+    if not cutoff or not group or group["source"] != source:
+        return None
+    if datetime.fromisoformat(group["as_of"]) != datetime.fromisoformat(cutoff):
+        return None
+    group["items"] = [item for item in group["items"] if item["source"] == source]
+    return group
 
 
 def public_detail(raw, summary):

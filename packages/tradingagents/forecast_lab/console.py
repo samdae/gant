@@ -97,6 +97,20 @@ def configure_runtime(root, lab_env):
     return app
 
 
+def report_identity(report_id):
+    dsn = os.environ.get("TRADINGAGENTS_DB_URL")
+    checked_dsn(dsn, "forecast_lab_console", "forecast_lab_console_app")
+    with psycopg.connect(dsn, connect_timeout=3) as conn:
+        conn.execute("SET TRANSACTION READ ONLY")
+        return conn.execute(
+            """SELECT sc.ticker, r.created_at FROM reports r
+            JOIN schedule_jobs sj ON sj.id=r.schedule_job_id
+            JOIN schedule_configs sc ON sc.id=sj.schedule_config_id
+            WHERE r.id=%s AND r.created_at <= statement_timestamp()""",
+            (report_id,),
+        ).fetchone()
+
+
 def console_ready():
     from tradingagents.api import app as console
 

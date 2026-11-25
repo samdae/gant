@@ -22,9 +22,9 @@
 <section class="op-page">
   <header class="op-title">
     <div>
-      <h1>연구실 안내</h1>
+      <h1>GANT 연구 안내</h1>
       <p>
-        같은 시장 근거를 본 모델이 토론이나 과거 경험을 통해 더 정확한 확률을 내는지 관측합니다.
+        개장 전 발행한 상승 확률을 다섯 거래일 뒤의 시세와 대조합니다. 각 사례에서 당시 가격, 검증 조건과 최근 30일 이슈를 함께 읽을 수 있습니다.
       </p>
     </div>
     <a class="op-primary" href="#/research">예측 사례 보기 →</a>
@@ -34,7 +34,7 @@
     <ol class="op-journey">
       <li>
         <strong>근거 동결</strong>
-        <p>한국·미국 주식과 ETF의 마감 시세를 확인하고 분석에 사용한 거래일과 가격을 저장합니다.</p>
+        <p>한국·미국 주식과 ETF의 마감 시세, 가격 가설과 재검토 조건을 저장합니다. 공개·최초 관측 시각이 모두 기준 시점보다 앞선 최근 30일 출처를 함께 보존합니다.</p>
       </li>
       <li>
         <strong>개장 전 발행</strong>
@@ -46,6 +46,7 @@
       </li>
     </ol>
   </section>
+  <nav class="guide-index" aria-label="연구 자료"><a href="#/research">당시 가격과 이슈 →</a><a href="#/results">방법별 채점 성과 →</a><a href="#/observe">관찰 종목·수집 현황 →</a></nav>
   <div class="op-two">
     <section class="op-panel">
       <h2>예측 방법과 기억 선택 비교</h2>
@@ -84,7 +85,7 @@
       따라갈 수 있습니다.
     </p>
     <div class="op-links">
-      <a href="#/" on:click={() => viewMode.set("analysis")}
+      <a href="#/dashboard" on:click={() => viewMode.set("analysis")}
         ><strong>종목별 분석 모드 →</strong><span>종목별 판단과 보유·청산 기록</span></a
       ><a href="#/portfolio"
         ><strong>포트폴리오 모드 →</strong><span>공유 자금과 포트폴리오 배분</span></a

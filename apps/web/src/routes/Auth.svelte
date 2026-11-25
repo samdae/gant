@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isForecastLab } from "../lib/workspace";
   import { setToken } from "../stores/auth";
 
   let tokenInput = "";
@@ -32,9 +33,10 @@
   <div class="page-container" style="max-width:420px">
     <form class="card" style="padding:22px" on:submit|preventDefault={save}>
       <div class="page-header" style="margin-bottom:12px">
-        <h2>관리자 접근</h2>
+        <h2>관리자 인증</h2>
       </div>
 
+      {#if isForecastLab}<p class="folio-deck">예약 등록·변경과 분석 실행에 사용할 관리자 토큰을 입력하세요.</p>{/if}
       <label class="form-label" for="tokenInput">관리자 토큰</label>
       <input id="tokenInput" type="password" autocomplete="off" aria-invalid={Boolean(error)} aria-describedby={error ? "token-error" : undefined} class="input" bind:value={tokenInput} />
       {#if error}

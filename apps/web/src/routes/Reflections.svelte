@@ -135,7 +135,7 @@
     <div class="page-header">
       <h2>{isForecastLab ? "매매 검증" : "AI분석"}</h2>
     </div>
-    <AnalysisTabs />
+    {#if isForecastLab}<p class="folio-deck">종료된 거래의 손익과 당시 판단을 검토합니다. 전체 통화 기준입니다.</p>{:else}<AnalysisTabs />{/if}
 
     {#if candidates.length > 0}
       <div class="card" style="margin-bottom:14px">

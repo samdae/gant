@@ -1,6 +1,7 @@
 <script lang="ts">
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
+  import ForecastReportList from "../components/ForecastReportList.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
   import { fetchReportTickers } from "../lib/api/endpoints";
@@ -101,16 +102,18 @@
     <div class="page-header">
       <h2>{isForecastLab ? "분석 리포트" : "AI분석"}</h2>
     </div>
-    <AnalysisTabs />
+    {#if !isForecastLab}<AnalysisTabs />{/if}
 
     {#if isForecastLab}
-      <section class="desk-panel report-directory" aria-label="종목별 리포트">
-        <header class="desk-toolbar">
-          <div class="desk-heading"><h3>종목별 리포트</h3>{#if !loading && !error}<span>{published.length}종목</span>{/if}</div>
-          <label class="desk-search">
+      <div class="report-filter"><label class="desk-search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
             <input type="search" bind:value={query} aria-label="티커 또는 종목명 검색" placeholder="티커 또는 종목명 검색" />
-          </label>
+          </label></div>
+      <ForecastReportList {query} />
+      <section class="desk-panel report-directory" aria-label="종목별 리포트">
+        <header class="desk-toolbar">
+          <div class="desk-heading"><h3>매매 분석 리포트</h3>{#if !loading && !error}<span>{published.length}종목</span>{/if}</div>
+
         </header>
         {#if loading || error || !visibleTickers.length}
           <div class="desk-state" role="status">{loading ? "리포트를 불러오는 중입니다." : error || (query ? "검색 결과가 없습니다." : "발행된 분석 리포트가 없습니다.")}</div>
@@ -164,3 +167,7 @@
     {/if}
   </div>
 </section>
+
+<style>
+  .report-filter { display: flex; justify-content: flex-end; margin: .75rem 0; }
+</style>

@@ -76,7 +76,7 @@
       <a href="#/reflections" class="back-link" aria-label="뒤로">&larr;</a>
       <h2>{isForecastLab ? "매매 검증 상세" : "AI분석"}</h2>
     </div>
-    <AnalysisTabs />
+    {#if !isForecastLab}<AnalysisTabs />{/if}
 
     {#if loading}
       <div class="card" style="padding:16px">불러오는 중...</div>

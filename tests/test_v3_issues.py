@@ -226,6 +226,22 @@ class IssueStorageTests(unittest.TestCase):
             path.write_text(json.dumps(bundle(pub.date().isoformat())), encoding="utf8")
             self.assertEqual(collect_one(store, us, export_path=path), "available")
         imported = read("NVDA", datetime.now(UTC))
+        after = datetime.now(UTC)
+        separated = store.report_sources("NVDA", after)
+        self.assertEqual(separated["last30days"]["items"], imported["items"])
+        self.assertEqual(separated["issues"]["status"], "uncollected")
+        self.assertEqual(
+            store.report_sources("NVDA", original)["last30days"]["items"], []
+        )
+        self.assertEqual(
+            store.report_sources(kr["ticker"], after)["last30days"]["items"], []
+        )
+        self.assertEqual(
+            store.report_sources("NVDA", after + timedelta(days=31))["last30days"][
+                "items"
+            ],
+            [],
+        )
         self.assertEqual(imported["source"], EXPORT)
         self.assertEqual(imported["items"][0]["published_precision"], "day")
         self.assertGreater(

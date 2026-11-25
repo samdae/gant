@@ -72,6 +72,18 @@ def research_status(raw):
             ),
             "started_at": instant(progress.get("started_at")),
             "finished_at": instant(progress.get("finished_at")),
+            "attempted": count(progress.get("attempted")),
+            "total": count(progress.get("total")),
+            "ticker": (instrument({"ticker": progress.get("ticker")}) or {}).get(
+                "ticker"
+            ),
+            "method": choice(progress.get("method"), METHODS),
+            "failures": {
+                item["ticker"]: "held"
+                for item in tickers
+                if isinstance(progress.get("failures"), dict)
+                and item["ticker"] in progress["failures"]
+            },
         },
     }
 
@@ -215,6 +227,28 @@ def research_detail(raw):
                 "rationale": public_narrative(arm.get("rationale")),
             }
         )
+        if arm["method"] == "debate":
+            roles = {
+                "create_bull_researcher",
+                "create_bear_researcher",
+                "create_research_manager",
+                "create_trader",
+                "create_aggressive_debator",
+                "create_conservative_debator",
+                "create_neutral_debator",
+                "create_risk_manager",
+            }
+            debate = (arm.get("audit") or {}).get("debate")
+            if isinstance(debate, list):
+                arms[-1]["audit"] = {
+                    "debate": [
+                        {"role": item["role"], "output": prose}
+                        for item in debate[:8]
+                        if isinstance(item, dict)
+                        and item.get("role") in roles
+                        and (prose := public_narrative(item.get("output")))
+                    ]
+                }
     if not arms:
         return None
     published = {arm["method"] for arm in arms}
@@ -392,6 +426,9 @@ def research_stats(raw):
                 "scored",
                 "same_memory",
                 "no_eligible_sector_memory",
+                "pending",
+                "failed",
+                "expired_unpublished",
             )
         },
     }

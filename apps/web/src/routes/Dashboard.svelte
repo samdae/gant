@@ -3,6 +3,7 @@
   import PortfolioSummary from "../components/PortfolioSummary.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
   import { onMount } from "svelte";
+  import { location } from "svelte-spa-router";
   import { isForecastLab } from "../lib/workspace";
   import {
     fetchReportTickers,
@@ -89,7 +90,7 @@
   };
 
   const goArchive = () => {
-    window.location.hash = "#/archive";
+    window.location.hash = isForecastLab ? "#/schedules" : "#/archive";
   };
 
   const getTotalAmount = (pos: PositionMarket) =>
@@ -111,6 +112,8 @@
     }
   });
   $: recentReports = reports.filter((r) => r.report_count > 0 && matchesCurrency(r.ticker, $currencyFilter)).slice(0, 3);
+
+  $: if (isForecastLab && $location === "/dashboard") viewMode.set("analysis");
 
   let generation = 0;
   const loadData = async () => {
@@ -165,6 +168,18 @@
   $: filteredPositions = positions.filter((p) => matchesCurrency(p.ticker, $currencyFilter));
   $: filteredPortfolioHoldings = portfolioHoldings.filter((h) => matchesCurrency(h.ticker, $currencyFilter));
 
+  type ExposureItem = { ticker: string; value: number | null; currency: string };
+  function byCurrency(items: ExposureItem[]) {
+    return [...new Set(items.map(item => item.currency))].map(currency => {
+      const rows = items.filter(item => item.currency === currency);
+      const total = rows.every(item => item.value !== null && Number.isFinite(item.value) && item.value >= 0)
+        ? rows.reduce((sum, item) => sum + (item.value ?? 0), 0) : null;
+      return { currency, items: rows.sort((a,b) => (b.value ?? 0) - (a.value ?? 0)), total };
+    });
+  }
+  $: exposure = byCurrency($viewMode === "portfolio"
+    ? filteredPortfolioHoldings.map(item => ({ ticker: item.ticker, value: item.current_value_base ?? null, currency: portfolioConfig?.base_currency || "기준 통화" }))
+    : filteredPositions.map(item => ({ ticker: item.ticker, value: getTotalAmount(item), currency: tickerCurrency(item.ticker) })));
 </script>
 
 <section class="page" id="page-dashboard">
@@ -193,6 +208,7 @@
       <PortfolioSummary config={portfolioConfig} />
     {/if}
 
+    <div class:folio-overview={isForecastLab}>
     <button class="card summary-banner" type="button" on:click={goArchive}>
       <div class="summary-header">
         <div>
@@ -238,22 +254,27 @@
     </button>
 
     {#if isForecastLab}
-      <section class="desk-panel desk-recent">
-        <header class="desk-toolbar"><h3>최근 발행 리포트</h3><a href="#/reports">전체 보기 <span aria-hidden="true">→</span></a></header>
-        {#if recentReports.length}
-          {#each recentReports as report}
-            <a class="desk-recent-row" href={`#/reports/${encodeURIComponent(report.ticker.toLowerCase())}`}>
-              <span class="desk-document" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h5"/></svg></span>
-              <span class="desk-instrument"><InstrumentLabel ticker={report.ticker} name={report.display_name} /></span>
-              <DecisionBadge value={(report.stored_decision_position === undefined ? report.decision_position : report.stored_decision_position) || ""} />
-              <time datetime={report.latest_at}>{formatDateTime(report.latest_at)}</time>
-            </a>
+      <section class="folio-trading-brief">
+        <header><h3>보유 자산 구성</h3><a href="#/positions">보유 명세 →</a></header>
+        {#if loading}<p>보유 내역을 조회하고 있습니다.</p>
+        {:else if error}<p role="alert">{error}</p>
+        {:else if exposure.length}
+          {#each exposure as group}
+            <div class="folio-allocation"><strong>{group.currency} · {group.items.length}종목</strong>
+              {#if group.total !== null && group.total > 0}
+                {#each group.items as item}
+                  <a href={"#/trade/" + item.ticker.toLowerCase()}><InstrumentLabel ticker={item.ticker} inline />
+                    <span class="folio-track"><i style:width={((item.value ?? 0) / group.total * 100) + "%"}></i></span>
+                    <span>{((item.value ?? 0) / group.total * 100).toFixed(1)}%</span>
+                  </a>
+                {/each}
+              {:else}<p>시세가 완비되면 평가액 비중을 표시합니다.</p>{/if}
+            </div>
           {/each}
-        {:else}
-          <div class="desk-state">{reportStatus === "loading" ? "리포트를 불러오는 중입니다." : reportStatus === "error" ? "최근 리포트를 조회할 수 없습니다." : "발행된 리포트가 없습니다."}</div>
-        {/if}
+        {:else}<p class="folio-empty-head">보유 자산 없음</p><p>선택한 계좌·통화에 남아 있는 모의 포지션이 없습니다.</p>{/if}
       </section>
     {/if}
+    </div>
     {#if !isForecastLab || $viewMode !== "portfolio"}
     <div class="card metric-strip" style="margin-bottom:16px">
       {#if $viewMode === "portfolio"}
@@ -384,10 +405,27 @@
       </dialog>
     {/if}
 
+    {#if isForecastLab}
+      <section class="desk-panel desk-recent">
+        <header class="desk-toolbar"><h3>최근 발행 리포트</h3><a href="#/reports">전체 보기 <span aria-hidden="true">→</span></a></header>
+        {#if recentReports.length}
+          {#each recentReports as report}
+            <a class="desk-recent-row" href={`#/reports/${encodeURIComponent(report.ticker.toLowerCase())}`}>
+              <span class="desk-document" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h5"/></svg></span>
+              <span class="desk-instrument"><InstrumentLabel ticker={report.ticker} name={report.display_name} /></span>
+              <DecisionBadge value={(report.stored_decision_position === undefined ? report.decision_position : report.stored_decision_position) || ""} />
+              <time datetime={report.latest_at}>{formatDateTime(report.latest_at)}</time>
+            </a>
+          {/each}
+        {:else}
+          <div class="desk-state">{reportStatus === "loading" ? "리포트를 불러오는 중입니다." : reportStatus === "error" ? "최근 리포트를 조회할 수 없습니다." : "발행된 리포트가 없습니다."}</div>
+        {/if}
+      </section>
+    {/if}
     <div class="dashboard-grid">
       <div class="card">
         <div class="card-header">
-            <h3>내 투자</h3>
+            <h3>{isForecastLab ? "보유 종목 명세" : "내 투자"}</h3>
             <a href="#/positions" class="card-link">전체 보기</a>
         </div>
         <div class="card-body" style="padding:0">
@@ -400,7 +438,7 @@
               {:else if $viewMode === "portfolio"}
                 {#if filteredPortfolioHoldings.length === 0}
                   <tr>
-                    <td colspan="2" class="empty-state">내 투자가 없습니다.</td>
+                    <td colspan="2" class="empty-state">보유 중인 종목이 없습니다.</td>
                   </tr>
                 {:else}
                   {#each filteredPortfolioHoldings as h}
@@ -421,7 +459,7 @@
                 {/if}
               {:else if filteredPositions.length === 0}
                 <tr>
-                  <td colspan="2" class="empty-state">내 투자가 없습니다.</td>
+                  <td colspan="2" class="empty-state">보유 중인 종목이 없습니다.</td>
                 </tr>
               {:else}
                 {#each filteredPositions as pos}

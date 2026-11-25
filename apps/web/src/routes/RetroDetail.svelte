@@ -102,7 +102,7 @@
       <a href="#/retrospective" class="back-link" aria-label="뒤로">&larr;</a>
       <h2>{isForecastLab ? "회고 분석 상세" : "AI분석"}</h2>
     </div>
-    <AnalysisTabs />
+    {#if !isForecastLab}<AnalysisTabs />{/if}
 
     <div class="retro-detail-shell">
       <div class="retro-detail-header">

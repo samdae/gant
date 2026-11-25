@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import { location } from "svelte-spa-router";
+  import { location, querystring } from "svelte-spa-router";
   import {
     marketName,
     probability,
@@ -10,12 +10,30 @@
     type ResearchCase,
   } from "../lib/researchEvidence";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
+  import ResearchReview from "../components/ResearchReview.svelte";
   import ResearchEvidence from "../components/ResearchEvidence.svelte";
   import { instrumentText, tickerNames } from "../stores/tickerNames";
 
+  const initial = new URLSearchParams(
+    window.location.hash.split("?")[1] || window.location.search,
+  );
+  let from = initial.get("from_date") || "",
+    to = initial.get("to_date") || "";
+  let draftFrom = from,
+    draftTo = to,
+    filterError = "";
+  let cursors: (number | undefined)[] = [undefined];
+  $: filterQuery = new URLSearchParams(
+    Object.fromEntries(
+      Object.entries({ market, from_date: from, to_date: to }).filter(
+        ([, v]) => v,
+      ),
+    ),
+  ).toString();
+  $: suffix = filterQuery ? "?" + filterQuery : "";
   let rows: CaseRow[] = [],
     selected: ResearchCase | null = null,
-    market = "",
+    market = initial.get("market") || "",
     busy = true,
     detailBusy = true,
     more = false;
@@ -23,17 +41,20 @@
     detailError = "",
     mounted = false;
   let listRequest: AbortController, detailRequest: AbortController;
-  let viewer: HTMLIFrameElement,
-    height = 1,
-    observer: ResizeObserver;
   const size = 8;
-  $: archive = ["/results", "/performance"].includes($location);
+  $: archive = ["/results", "/performance", "/observe"].includes($location);
   $: explicit = $location.match(/^\/research\/([1-9]\d*)$/)?.[1];
   $: selectedId = explicit ? Number(explicit) : rows[0]?.id;
-  $: if (mounted && !archive) loadList(market);
+  $: if (mounted && !archive)
+    loadList(market, from, to, cursors[cursors.length - 1]);
   $: if (mounted && !archive) loadCase(selectedId);
 
-  async function loadList(region: string, before?: number) {
+  async function loadList(
+    region: string,
+    start: string,
+    end: string,
+    before?: number,
+  ) {
     listRequest?.abort();
     const req = new AbortController();
     listRequest = req;
@@ -46,11 +67,13 @@
     try {
       const query = new URLSearchParams({ limit: String(size + 1) });
       if (region) query.set("market", region);
+      if (start) query.set("from_date", start);
+      if (end) query.set("to_date", end);
       if (before) query.set("before_id", String(before));
       const items = await researchGet<CaseRow[]>("cases?" + query, req.signal);
       if (req.signal.aborted) return;
       more = items.length > size;
-      rows = [...(before ? rows : []), ...items.slice(0, size)];
+      rows = items.slice(0, size);
     } catch (e) {
       if (!req.signal.aborted) listError = "사례 목록을 불러오지 못했습니다.";
     } finally {
@@ -75,19 +98,38 @@
       if (!req.signal.aborted) detailBusy = false;
     }
   }
-  function fitViewer() {
-    observer?.disconnect();
-    const body = viewer.contentDocument?.body;
-    if (!body) return;
-    const measure = () =>
-      (height = Math.ceil(body.getBoundingClientRect().height));
-    measure();
-    observer = new ResizeObserver(measure);
-    observer.observe(body);
-  }
-  function filter(region: string) {
-    if (explicit) window.location.hash = "#/research";
+  function restoreFilter(query: string) {
+    const params = new URLSearchParams(query);
+    const region = params.get("market") || "";
+    const start = params.get("from_date") || "";
+    const end = params.get("to_date") || "";
+    if (market === region && from === start && to === end) return;
     market = region;
+    draftFrom = from = start;
+    draftTo = to = end;
+    cursors = [undefined];
+    filterError = "";
+  }
+  $: if (mounted && !archive) restoreFilter($querystring || "");
+
+  function filter(region: string) {
+    if (draftFrom && draftTo && draftFrom > draftTo) {
+      filterError = "시작일을 종료일보다 앞서 선택하세요.";
+      return;
+    }
+    filterError = "";
+    from = draftFrom;
+    to = draftTo;
+    market = region;
+    cursors = [undefined];
+    const params = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries({ market, from_date: from, to_date: to }).filter(
+          ([, v]) => v,
+        ),
+      ),
+    );
+    window.location.hash = "#/research" + (params.size ? "?" + params : "");
   }
   onMount(() => {
     mounted = true;
@@ -95,52 +137,49 @@
   onDestroy(() => {
     listRequest?.abort();
     detailRequest?.abort();
-    observer?.disconnect();
   });
 </script>
 
 <div class="research-desk">
-  <header class="desk-header">
-    <div>
-      <h1>예측 연구</h1>
-      <p>발행 당시의 근거와 5거래일 뒤의 결과를 확인합니다.</p>
-    </div>
-    <nav aria-label="연구 보기">
-      <a
-        class:active={!archive}
-        aria-current={!archive ? "page" : undefined}
-        href="#/research">사례 탐색</a
-      ><a
-        class:active={archive}
-        aria-current={archive ? "page" : undefined}
-        href="#/results">성과 분석</a
-      >
-    </nav>
-  </header>
   {#if archive}
-    <iframe
-      bind:this={viewer}
-      title="연구 성과와 관측 현황"
-      src="/research/?embedded=1#results"
-      style:height={height + "px"}
-      on:load={fitViewer}
-    ></iframe>
+    <ResearchReview view={$location === "/observe" ? "observe" : "results"} />
   {:else}
     <div class="workarea">
       <aside aria-label="연구 사례 목록">
-        <div class="list-head">
-          <h2>관측 사례</h2>
-          <select
-            value={market}
-            aria-label="시장 선택"
-            on:change={(e) => filter(e.currentTarget.value)}
-            ><option value="">전체 시장</option><option value="kr">한국</option
-            ><option value="us">미국</option></select
+        <div class="filters">
+          <label
+            >시장<select
+              value={market}
+              on:change={(e) => filter(e.currentTarget.value)}
+              ><option value="">전체 시장</option><option value="kr"
+                >한국</option
+              ><option value="us">미국</option></select
+            ></label
           >
+          <details class="date-filter">
+            <summary>관측일 범위</summary>
+            <form on:submit|preventDefault={() => filter(market)}>
+              <label>시작일<input type="date" bind:value={draftFrom} /></label
+              ><label>종료일<input type="date" bind:value={draftTo} /></label>
+              <button>적용</button><button
+                type="button"
+                on:click={() => {
+                  draftFrom = "";
+                  draftTo = "";
+                  filter(market);
+                }}>초기화</button
+              >
+              {#if filterError}<span role="alert">{filterError}</span>{/if}
+            </form>
+          </details>
         </div>
         {#if listError}<p role="alert">
             {listError}
-            <button on:click={() => loadList(market)}>다시 조회</button>
+            <button
+              on:click={() =>
+                loadList(market, from, to, cursors[cursors.length - 1])}
+              >다시 조회</button
+            >
           </p>
         {:else if !rows.length}<p role="status">
             {busy
@@ -153,7 +192,8 @@
             <select
               value={selectedId}
               on:change={(e) =>
-                (window.location.hash = "#/research/" + e.currentTarget.value)}
+                (window.location.hash =
+                  "#/research/" + e.currentTarget.value + suffix)}
             >
               {#if explicit && !rows.some((r) => r.id === selectedId)}<option
                   value={selectedId}
@@ -169,34 +209,46 @@
                 >{/each}
             </select>
           </label>
-          <div class="register">
-            {#each rows as row (row.id)}
-              <a
-                href={"#/research/" + row.id}
-                class:selected={selectedId === row.id}
-                aria-current={selectedId === row.id ? "true" : undefined}
-              >
-                <div class="row-meta">
-                  <time>{row.data_session}</time><span
-                    >{marketName(row.market)}</span
-                  >
-                </div>
-                <InstrumentLabel ticker={row.ticker} />
-                <div class="row-meta">
-                  <span
-                    >단일 모델 {probability(
-                      row.forecast_probabilities?.single,
-                    )}</span
-                  ><span>{caseListStatus(row)}</span>
-                </div>
-              </a>
-            {/each}
-          </div>
+          <details class="archive-list">
+            <summary>사례 목록 · {rows.length}건</summary>
+            <div class="register">
+              {#each rows as row (row.id)}
+                <a
+                  href={"#/research/" + row.id + suffix}
+                  class:selected={selectedId === row.id}
+                  aria-current={selectedId === row.id ? "true" : undefined}
+                >
+                  <div class="row-meta">
+                    <time>{row.data_session}</time><span
+                      >{marketName(row.market)}</span
+                    >
+                  </div>
+                  <InstrumentLabel ticker={row.ticker} />
+                  <div class="row-meta">
+                    <span
+                      >단일 모델 {probability(
+                        row.forecast_probabilities?.single,
+                      )}</span
+                    ><span>{caseListStatus(row)}</span>
+                  </div>
+                </a>
+              {/each}
+            </div>
+          </details>
+          {#if cursors.length > 1}<button
+              class="older"
+              on:click={() => {
+                cursors = cursors.slice(0, -1);
+                window.location.hash = "#/research" + suffix;
+              }}>이전 페이지</button
+            >{/if}
           {#if more}<button
               class="older"
               disabled={busy}
-              on:click={() => loadList(market, rows[rows.length - 1].id)}
-              >{busy ? "조회 중" : "이전 사례 더 보기"}</button
+              on:click={() => {
+                cursors = [...cursors, rows[rows.length - 1].id];
+                window.location.hash = "#/research" + suffix;
+              }}>{busy ? "조회 중" : "다음 페이지"}</button
             >{/if}
         {/if}
       </aside>
@@ -221,173 +273,115 @@
 <style>
   .research-desk {
     width: 100%;
-    max-width: var(--content-max);
-    padding: var(--content-top) var(--content-gutter) 48px;
-    margin: 0 auto;
-    color: #182e38;
+    max-width: 1380px;
+    margin: auto;
+    padding: clamp(14px, 2.2vw, 28px) clamp(16px, 3.4vw, 48px) 48px;
+    color: #282521;
   }
-  .desk-header {
+  aside {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
+    align-items: baseline;
+    gap: 7px 15px;
     flex-wrap: wrap;
-    gap: 12px 18px;
-    padding-bottom: 18px;
-    border-bottom: 1px solid #c8d4d5;
-    margin-bottom: 20px;
+    padding: 10px 0 12px;
   }
-  h1,
-  h2,
-  p {
-    margin: 0;
-  }
-  h1 {
-    font-size: clamp(1.65rem, 3vw, 2.2rem);
-    font-weight: 730;
-    letter-spacing: -0.055em;
-    line-height: 1.25;
-  }
-  h2 {
-    font-size: 1.03rem;
-    letter-spacing: -0.03em;
-  }
-  .desk-header p,
-  aside > p,
-  .blank p {
-    font-size: 0.89rem;
-    color: #516571;
-    margin-top: 6px;
-  }
-  nav {
-    display: flex;
-    gap: 4px;
-    border: 1px solid #cbd8d8;
-    padding: 3px;
-    border-radius: 7px;
-    background: white;
-  }
-  nav a {
-    padding: 6px 12px;
-    font-size: 0.86rem;
-    border-radius: 4px;
-    color: #405660;
-  }
-  nav a.active {
-    background: #204d47;
-    color: white;
-  }
-  .workarea {
-    display: grid;
-    grid-template-columns: minmax(215px, 0.36fr) minmax(0, 1fr);
-    gap: clamp(16px, 2.6vw, 32px);
-    align-items: start;
-  }
-  aside,
-  .detail-pane {
-    min-width: 0;
-  }
-  .list-head,
-  .row-meta {
+  .filters,
+  .filters form,
+  .filters label,
+  .mobile-picker {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 7px;
+    gap: 6px;
   }
-  .list-head {
-    margin-bottom: 11px;
+  .filters {
+    flex-wrap: wrap;
   }
-  .list-head select,
+  .filters label,
+  .mobile-picker,
+  .date-filter summary,
+  .archive-list summary,
+  .older {
+    color: #5e574f;
+    font-size: 0.78rem;
+  }
+  .filters select,
+  .filters input,
   .mobile-picker select,
   button {
-    background: white;
-    color: #263d46;
     font: inherit;
-    font-size: 0.84rem;
-    border: 1px solid #b9c9c9;
-    border-radius: 5px;
+    background: #fff;
+    color: #3b342e;
+    border: 1px solid #cfc7bc;
+    border-radius: 4px;
     padding: 5px 8px;
     max-width: 100%;
   }
-  .register {
-    border-block: 1px solid #c8d4d5;
+  button,
+  summary {
+    cursor: pointer;
   }
-  .register a {
-    display: grid;
-    gap: 5px;
-    border-bottom: 1px solid #d6dfdf;
-    border-left: 3px solid transparent;
-    padding: 12px;
-    background: white;
-    font-size: 1rem;
-    overflow-wrap: anywhere;
-  }
-  .register a:last-child {
-    border-bottom: 0;
-  }
-  .register a.selected {
-    border-left-color: #24755e;
-    background: #eaf4ef;
-  }
-  .register a:hover {
-    background: #f0f5f3;
-  }
-  .row-meta {
-    font-size: 0.76rem;
-    color: #4a6068;
+  .date-filter[open] form {
+    padding: 6px 0;
     flex-wrap: wrap;
   }
-  .older {
-    margin-top: 10px;
-    width: 100%;
-    min-height: 36px;
+  .register {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: #ddd6cb;
+    border: 1px solid #ddd6cb;
   }
-  .mobile-picker {
-    display: none;
+  .register a {
+    padding: 10px;
+    background: white;
+  }
+  .register a.selected {
+    background: #f6eaf0;
+  }
+  .archive-list[open] {
+    flex: 1 0 100%;
+  }
+  .row-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: #655d54;
+    gap: 6px;
+  }
+  .detail-pane {
+    min-width: 0;
+    background: #fff;
+    padding: 0 clamp(12px, 2.4vw, 30px);
   }
   .blank {
-    padding: clamp(20px, 4vw, 40px);
-    border-block: 1px solid #ced9da;
-    background: #fff;
+    padding: 15px;
   }
-  iframe {
-    display: block;
-    width: 100%;
-    border: 0;
+  .blank h2,
+  .blank p {
+    margin: 4px 0;
   }
-  @media (max-width: 900px) {
-    .workarea {
-      grid-template-columns: minmax(190px, 0.38fr) minmax(0, 1fr);
-    }
+  .mobile-picker select {
+    min-width: 0;
   }
-  @media (max-width: 720px) {
-    .workarea {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 16px;
-    }
-    .register {
-      display: none;
-    }
-    .mobile-picker {
-      display: grid;
-      gap: 4px;
-      color: #526675;
-      font-size: 0.8rem;
-    }
-    .mobile-picker select {
-      width: 100%;
-      min-height: 40px;
-    }
-    .desk-header {
-      align-items: start;
-    }
-    .list-head {
-      margin-bottom: 6px;
-    }
-    .older {
-      width: auto;
-    }
+  @media (max-width: 620px) {
     .research-desk {
       padding-inline: 14px;
+    }
+    .detail-pane {
+      padding: 0 10px;
+    }
+    .mobile-picker {
+      flex: 1 0 100%;
+      align-items: baseline;
+    }
+    .mobile-picker select {
+      flex: 1;
+    }
+    .filters form {
+      max-width: 100%;
+    }
+    aside {
+      gap: 6px 10px;
     }
   }
 </style>

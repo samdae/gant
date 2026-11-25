@@ -7,7 +7,7 @@ import time
 from collections import OrderedDict
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeout
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from threading import BoundedSemaphore, Lock
 from urllib.error import HTTPError, URLError
@@ -15,7 +15,13 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import (
+    RedirectResponse,
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    Response,
+)
 
 from .public_projection import public_case, public_detail, public_report, public_stats
 from .public_research import (
@@ -79,7 +85,7 @@ def read_upstream(path):
     ):
         research_filters(parts.path, parts.query, internal=True)
     elif path not in ("/api/status", REPORTS) and not re.fullmatch(
-        r"/api/cases/[1-9][0-9]{0,15}", path
+        r"/api/(?:cases|report-sources)/[1-9][0-9]{0,15}", path
     ):
         raise ValueError("Invalid internal route")
     opener = build_opener(ProxyHandler({}), NoRedirect())
@@ -276,12 +282,24 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None):
         return {"ready": True, "console": True}
 
     @app.get("/research/")
-    def research_home():
-        return FileResponse(RESEARCH / "index.html", media_type="text/html")
+    def research_home(request: Request):
+        bookmark = re.fullmatch(r"case=([1-9][0-9]{0,15})", request.url.query)
+        if bookmark:
+            return RedirectResponse("/#/research/" + bookmark[1], status_code=307)
+        filename = (
+            "index.html"
+            if request.query_params.get("embedded") == "1"
+            else "workspace-bookmark.html"
+        )
+        return FileResponse(RESEARCH / filename, media_type="text/html")
 
     @app.get("/research/{asset}")
     def research_asset(asset: str):
-        if asset not in ("workspace-tokens.css", "instrument-names.json"):
+        if asset not in (
+            "workspace-tokens.css",
+            "instrument-names.json",
+            "workspace-bookmark.js",
+        ):
             raise HTTPException(404)
         return FileResponse(RESEARCH / asset)
 
@@ -292,6 +310,35 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None):
     @app.get("/lab.css")
     def research_css():
         return FileResponse(RESEARCH / "lab.css", media_type="text/css")
+
+    @app.get("/api/report-sources/{report_id:int}")
+    def report_sources(report_id: int):
+        from .issue_collector import EXPORT, SOURCE
+        from .public_projection import archive_projection, instant, instrument
+
+        if not 0 < report_id < 10**16:
+            raise HTTPException(404)
+
+        def project():
+            raw = reader(f"/api/report-sources/{report_id}")
+            if (
+                not isinstance(raw, dict)
+                or raw.get("id") != report_id
+                or not instrument(raw)
+            ):
+                raise HTTPException(404)
+            cutoff = instant(raw.get("as_of"))
+            if not cutoff or datetime.fromisoformat(cutoff) > datetime.now(UTC):
+                raise HTTPException(404)
+            return {
+                "id": report_id,
+                "ticker": raw["ticker"],
+                "as_of": cutoff,
+                "issues": archive_projection(raw.get("issues"), cutoff, SOURCE),
+                "last30days": archive_projection(raw.get("last30days"), cutoff, EXPORT),
+            }
+
+        return cached(("report-sources", report_id), project)
 
     @app.get("/api/status")
     def status():

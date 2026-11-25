@@ -55,7 +55,8 @@
           <button class="btn btn-secondary" on:click={() => load($viewMode)}>다시 조회</button>
         </div>
       {:else if isPublicViewer}
-        <p class="card card-body">공개할 포트폴리오 계좌가 아직 없습니다.</p>
+        <section class="folio-account"><header><h3>모의 계좌 미개설</h3><p>공유 자본이 설정되면 현금과 종목별 평가액을 열람할 수 있습니다.</p></header>
+          <nav aria-label="관련 거래 기록"><a href="#/dashboard" on:click={() => viewMode.set("analysis")}>종목별 대시보드 →</a><a href="#/positions">보유·종료 명세 →</a></nav></section>
       {:else}
         <div class="card card-body portfolio-welcome">
           {#if isForecastLab}

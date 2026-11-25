@@ -14,7 +14,7 @@ from psycopg.types.json import Jsonb
 
 from .engine import DELAY, _valid_bar
 from . import hypothesis
-from .issue_collector import SOURCE as ISSUE_SOURCE, case_issues, init_issues
+from .issue_collector import EXPORT, SOURCE as ISSUE_SOURCE, case_issues, init_issues
 from .sector_retrieval import sector_candidates, valid_classification
 
 METHODS = ("baseline", "single", "debate", "memory")
@@ -742,7 +742,7 @@ class Store:
             conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             c = conn.execute(
                 f"""WITH summary AS ({SUMMARY} WHERE c.id=%s)
-                SELECT s.*, md5(jsonb_build_array(s.id, s.status,
+                SELECT s.*, md5(jsonb_build_array('source-archive-v1', s.id, s.status,
                     (SELECT jsonb_agg(jsonb_build_array(a.method,a.status,a.recorded_at,a.xmin::text)
                         ORDER BY a.method) FROM lab_arms a WHERE a.case_id=s.id),
                     (SELECT captured_at FROM lab_references WHERE case_id=s.id),
@@ -802,7 +802,18 @@ class Store:
                     "items": [],
                 }
             )
+            c["last30days"] = case_issues(
+                conn, c["ticker"], c["snapshot"]["observed_at"], source=EXPORT
+            )
             return tag, c
+
+    def report_sources(self, ticker, cutoff):
+        with self._connect() as conn:
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            return {
+                "issues": case_issues(conn, ticker, cutoff, source=ISSUE_SOURCE),
+                "last30days": case_issues(conn, ticker, cutoff, source=EXPORT),
+            }
 
     def open_reference_cases(self):
         with self._connect() as conn:

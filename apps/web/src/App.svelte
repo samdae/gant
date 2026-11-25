@@ -26,8 +26,8 @@
   import { isForecastLab, isPublicViewer } from "./lib/workspace";
 
   const routes = {
-    ...(isForecastLab ? { "/research": Research, "/research/:id": Research, "/results": Research, "/performance": Research, "/portfolio": Portfolio } : {}),
-    "/": isForecastLab ? Portfolio : Dashboard,
+    ...(isForecastLab ? { "/research": Research, "/research/:id": Research, "/results": Research, "/performance": Research, "/observe": Research, "/dashboard": Dashboard, "/portfolio": Portfolio } : {}),
+    "/": isForecastLab ? Research : Dashboard,
     "/positions": Positions,
     "/schedules": Schedules,
     "/schedules/:ticker": ScheduleDetail,
@@ -46,13 +46,13 @@
 
   onMount(() => {
     if (!window.location.hash) {
-      window.location.hash = "#/";
+      window.location.hash = isForecastLab ? "#/research" : "#/";
     }
     loadTickerNames();
   });
 
-  $: showMode = ["/", "/portfolio", "/positions"].includes($location) || $location.startsWith("/trade/");
-  $: showCurrency = ["/", "/portfolio", "/positions", "/reports", "/retrospective", "/schedules"].includes($location);
+  $: showMode = ["/dashboard", "/portfolio", "/positions"].includes($location) || $location.startsWith("/trade/");
+  $: showCurrency = ["/dashboard", "/portfolio", "/positions", "/reports", "/retrospective", "/schedules"].includes($location);
 
   let lastLocation = "";
   $: if ($location && $location !== lastLocation) {
@@ -71,8 +71,7 @@
       <WorkspaceNav>
         {#if showMode || showCurrency}
           <AppHeader {showMode} {showCurrency} />
-        {:else if $location === "/research"}
-          <a class="standalone" href="/research/">연구 단독 화면 <span aria-hidden="true">↗</span></a>
+
         {/if}
       </WorkspaceNav>
       <main class="main-content" id="workspace-content" tabindex="-1"><Router {routes} /></main>
@@ -100,8 +99,8 @@
     transform: translateX(-50%);
   }
   .workspace {
-    --rail-width: 224px;
-    --content-max: 1320px;
+    --rail-width: 0px;
+    --content-max: 1280px;
     --content-gutter: clamp(14px, 2.3vw, 32px);
     --content-top: clamp(18px, 2.3vw, 32px);
     min-height: 100dvh;
@@ -115,7 +114,5 @@
   .workspace .main-content { padding: 0; outline: none; }
   .skip { position:fixed; top:-60px; left:8px; background:var(--fl-surface); color:var(--fl-accent); z-index:160; padding:8px 14px; }
   .skip:focus { top:8px; }
-  .standalone { display:inline-flex; align-items:center; gap:7px; color:var(--fl-muted); font-size:12px; font-weight:600; padding:7px 4px; }
-  .standalone:hover { color:var(--fl-accent); }
   @media(max-width:900px) { .workspace-body { margin-left:0; } }
 </style>

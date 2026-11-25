@@ -12,7 +12,7 @@ from typing import Literal
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg import Error as DatabaseError
 from psycopg.conninfo import conninfo_to_dict
@@ -182,6 +182,37 @@ def application(
             return Response(status_code=304, headers=headers)
         response.headers.update(headers)
         return detail
+
+    @app.get("/api/report-sources/{report_id:int}")
+    def report_sources(report_id: int, request: Request):
+        if console is None or not 0 < report_id < 10**16 or request.url.query:
+            raise HTTPException(404)
+        from .console import report_identity
+
+        identity = report_identity(report_id)
+        if not identity:
+            raise HTTPException(404)
+        ticker, cutoff = identity
+        return {
+            "id": report_id,
+            "ticker": ticker,
+            "as_of": cutoff,
+            **store.report_sources(ticker, cutoff),
+        }
+
+    if console is not None:
+
+        @app.get("/research/")
+        def integrated_research(request: Request):
+            bookmark = re.fullmatch(r"case=([1-9][0-9]{0,15})", request.url.query)
+            if bookmark:
+                return RedirectResponse("/#/research/" + bookmark[1], status_code=307)
+            filename = (
+                "index.html"
+                if request.query_params.get("embedded") == "1"
+                else "workspace-bookmark.html"
+            )
+            return FileResponse(STATIC / filename)
 
     app.mount("/research", StaticFiles(directory=STATIC, html=True), name="research")
     if console is None:

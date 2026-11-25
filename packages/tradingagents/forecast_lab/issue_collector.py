@@ -406,22 +406,26 @@ def collect_one(store, entry, fetch=fetch_feed, export_path=None):
         return "failed"
 
 
-def case_issues(conn, ticker, as_of):
+def case_issues(conn, ticker, as_of, *, source=None):
+    if source not in (None, SOURCE, EXPORT):
+        raise ValueError("Unknown archive source")
     cutoff = timestamp(as_of)
     since = cutoff - timedelta(days=30)
     run = conn.execute(
         """SELECT source,status,collected_at FROM v3_issue_runs WHERE ticker=%s
+        AND (%s::text IS NULL OR source=%s)
         AND collected_at>=%s AND collected_at<%s ORDER BY collected_at DESC,id DESC LIMIT 1""",
-        (ticker, since, cutoff),
+        (ticker, source, source, since, cutoff),
     ).fetchone()
     rows = conn.execute(
         """SELECT i.title,i.publisher,i.url,i.published_at,i.published_day,i.first_seen_at,r.source
         FROM v3_issues i JOIN v3_issue_runs r ON r.id=i.run_id WHERE i.ticker=%s
+        AND (%s::text IS NULL OR r.source=%s) AND r.collected_at < %s
         AND i.published_at >= %s
         AND (i.published_day IS NULL OR (i.published_day::timestamp AT TIME ZONE 'UTC') - interval '14 hours' >= %s)
         AND i.published_at < %s AND i.first_seen_at < %s
         ORDER BY i.published_at DESC,i.url LIMIT %s""",
-        (ticker, since, since, cutoff, cutoff, MAX_ITEMS),
+        (ticker, source, source, cutoff, since, since, cutoff, cutoff, MAX_ITEMS),
     ).fetchall()
     status = run["status"] if run else "uncollected"
     if status != "failed":
@@ -429,7 +433,7 @@ def case_issues(conn, ticker, as_of):
     return public_issues(
         {
             "status": status,
-            "source": run["source"] if run else SOURCE,
+            "source": run["source"] if run else (source or SOURCE),
             "as_of": cutoff,
             "collected_at": run["collected_at"] if run else None,
             "items": rows,

@@ -125,6 +125,7 @@
       {@const portfolio = $viewMode === "portfolio"}
       {@const activeCount = portfolio ? filteredPortfolioHoldings.length : filteredPositions.length}
       {@const closedCount = portfolio ? filteredPortfolioClosed.length : filteredClosed.length}
+      <div class="folio-register-toolbar">
       <p class="review-context">
         {portfolio ? "포트폴리오 계좌" : "종목별 분석 계좌"} · {$currencyFilter === "ALL"
           ? "전체 통화"
@@ -137,6 +138,7 @@
         <button aria-pressed={tab === "closed"} on:click={() => (tab = "closed")}
           ><span>종료</span>{#if !loading && !error}<small>{closedCount}</small>{/if}</button
         >
+      </div>
       </div>
       {#if loading}<div class="review-state" role="status">포지션 조회 중…</div>
       {:else if error}<div class="review-state" role="alert">

@@ -259,9 +259,12 @@
         >
       </header>
       {#if loading}<p class="op-hint" role="status">예약을 불러오는 중입니다.</p>
-      {:else if !error && !filteredSchedules.length}<p class="op-hint">
-          {schedules.length ? "검색 조건에 맞는 종목이 없습니다." : "등록된 종목이 없습니다."}
-        </p>
+      {:else if !error && !filteredSchedules.length}
+        <div class="folio-empty">
+          <h3>{schedules.length ? "검색 결과 없음" : "등록된 일정 없음"}</h3>
+          {#if schedules.length}<button class="btn btn-secondary" on:click={() => search = ""}>검색어 지우기</button>
+          {:else}<p>종목과 실행 주기가 등록되면 다음 실행 시각을 확인할 수 있습니다.</p>{/if}
+        </div>
       {:else if filteredSchedules.length}
         <div class="op-schedules" role="list">
           <div class="op-grid-row op-colhead" aria-hidden="true">
@@ -304,7 +307,7 @@
         </div>{/if}
     </section>
     <nav class="op-related">
-      <a href="#/live">실시간 대기열 →</a><a href="#/research">예측 연구 관찰 종목 →</a>
+      <a href="#/live">실시간 대기열 →</a><a href="#/observe">예측 연구 관찰 종목 →</a>
     </nav>
   </section>
 {:else}
@@ -315,7 +318,7 @@
       <button class="btn btn-primary" id="addScheduleBtn" on:click={openAdd}>+ 추가</button>
     </div>
     {#if isForecastLab}
-      <p class="scope-note">이 목록은 콘솔 전용 DB의 에이전트 실행 일정입니다. <a href="#/research">예측 연구 관찰 종목 보기</a></p>
+      <p class="scope-note">이 목록은 콘솔 전용 DB의 에이전트 실행 일정입니다. <a href="#/observe">예측 연구 관찰 종목 보기</a></p>
     {/if}
 
     {#if loading}

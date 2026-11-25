@@ -55,6 +55,21 @@ class PublicResearchViewerTest(unittest.TestCase):
                     "published_at": "2025-01-03T21:00:00Z",
                     "probability": 0.4,
                     "rationale": "postgresql://user:password@localhost/db",
+                    "audit": {
+                        "trace": "PRIVATE_TRACE",
+                        "debate": [
+                            {
+                                "role": "create_bull_researcher",
+                                "output": "수급 전망입니다.",
+                                "raw": "PRIVATE_TRACE",
+                            },
+                            {
+                                "role": "create_trader",
+                                "output": "postgresql://user:password@localhost/db",
+                            },
+                            {"role": "system", "output": "PRIVATE_TRACE"},
+                        ],
+                    },
                 },
             ],
         }
@@ -108,6 +123,14 @@ class PublicResearchViewerTest(unittest.TestCase):
         )
         self.assertIn("변동성", published[0]["rationale"])
         self.assertIsNone(published[1]["rationale"])
+        self.assertEqual(
+            published[1]["audit"],
+            {
+                "debate": [
+                    {"role": "create_bull_researcher", "output": "수급 전망입니다."},
+                ]
+            },
+        )
         self.assertNotIn("PRIVATE_TRACE", detail.text)
         self.assertNotIn("password", detail.text)
         self.assertEqual(

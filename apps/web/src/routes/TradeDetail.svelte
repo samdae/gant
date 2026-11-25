@@ -714,7 +714,7 @@
 <section class="page" id="page-trade">
   <div class="page-container">
     <div class="page-header">
-      <button class="back-btn" on:click={() => history.back()}>&larr;</button>
+      {#if isForecastLab}<a class="folio-up" href="#/positions">← 보유·종료 명세</a>{:else}<button class="back-btn" aria-label="뒤로" on:click={() => history.back()}>&larr;</button>{/if}
       <h2>{#if isForecastLab}<InstrumentLabel {ticker} />{:else}{ticker}{/if}</h2>
       {#if summary?.current_price != null && summary.avg_cost != null}
         <span class={`pnl-banner ${summary.return_pct >= 0 ? "pnl-pos" : "pnl-neg"}`}>

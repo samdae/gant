@@ -1,7 +1,12 @@
 <script lang="ts">
+  import ResearchPriceChart from "./ResearchPriceChart.svelte";
+  import ResearchIssueFeed from "./ResearchIssueFeed.svelte";
+  import ResearchJudgments from "./ResearchJudgments.svelte";
   import InstrumentLabel from "./InstrumentLabel.svelte";
   import {
-    articleUrl,
+    percentChange,
+    classificationLabel,
+    caseSources,
     marketName,
     methodName,
     price,
@@ -10,7 +15,9 @@
     timeLabel,
     type ResearchCase,
   } from "../lib/researchEvidence";
+  const exchangeLabels: Record<string,string> = { XKRX: "한국거래소", XNYS: "미국 정규장" };
   export let data: ResearchCase;
+  let sourcesHeading: HTMLHeadingElement;
   $: snap = data.snapshot || {};
   $: arms = data.arms || [];
   $: single = arms.find(
@@ -18,30 +25,26 @@
   );
   $: h = data.hypothesis;
   $: news = data.issues;
+  $: sources = caseSources(news, data.last30days);
   $: currency = snap.currency || h?.currency;
   $: close = h?.reference_close ?? snap.bars?.[snap.bars.length - 1]?.close;
   $: result = data.outcome;
-  let expandedCase: number | null = null;
-  $: showAllNews = expandedCase === data.id;
   $: hasForecast = arms.some((arm) => arm.status === "published");
-  $: awaitingResult = data.status === "excluded" || result?.status === "excluded"
-    ? "평가 제외"
-    : hasForecast
-      ? (Date.parse(snap.exit_close_at || data.exit_close_at || "") <= Date.now() ? "채점 대기" : "만기 대기")
-      : stateName(data.status);
-  $: issueMessage =
-    {
-      uncollected: "근거 동결 시점까지 수집 기록이 없습니다.",
-      empty: "수집했지만 시점 조건을 충족한 이슈가 없습니다.",
-      failed: "당시 최근 수집에 실패했습니다. 이전에 확보한 자료만 표시합니다.",
-      available: "",
-    }[news?.status || ""] ?? "이 사례에는 이슈 보관 기록이 없습니다.";
+  $: awaitingResult =
+    data.status === "excluded" || result?.status === "excluded"
+      ? "평가 제외"
+      : hasForecast
+        ? Date.parse(snap.exit_close_at || data.exit_close_at || "") <=
+          Date.now()
+          ? "채점 대기"
+          : "만기 대기"
+        : stateName(data.status);
 </script>
 
 <article class="evidence" aria-label="선택 사례의 연구 근거">
   <header class="company">
     <div class="context">
-      {marketName(data.market)} 시장 <span>·</span> 관측 기준일 {data.data_session}
+      {marketName(data.market)} 시장 <span>·</span> 관측 기준일 {data.data_session}{#if data.experiment_version} <span>·</span> 실험 {data.experiment_version}{/if}
     </div>
     <h2><InstrumentLabel ticker={data.ticker} inline /></h2>
     <div class="headline">
@@ -80,8 +83,34 @@
         <dd>{timeLabel(snap.exit_close_at || data.exit_close_at)}</dd>
       </div>
     </dl>
+    {#if data.last30days || news}
+      <button class="sources-link" on:click={() => sourcesHeading.focus()}>
+        당시 출처 보기 · last30days {sources.archives ? sources.archives.items.length + "건" : "기록 없음"} · 동결 목록 {news ? news.items.length + "건" : "기록 없음"} ↓
+      </button>
+    {/if}
   </header>
 
+  <div class="spread">
+    <div class="plot">
+      <ResearchPriceChart bars={snap.bars || []} {currency} />
+    </div>
+    <section class="sources">
+      <h3 bind:this={sourcesHeading} tabindex="-1">당시 확인된 30일 출처</h3>
+      <p class="muted">
+        예측 근거를 동결하기 전에 확인한 자료입니다. 모델 확률 입력에는 포함되지
+        않았습니다.
+      </p>
+      {#key data.id}
+        <ResearchIssueFeed
+          title="last30days · 기사와 커뮤니티"
+          feed={sources.archives}
+          lead
+        />
+        <ResearchIssueFeed title="RSS · 동결 이슈" feed={sources.rss} />
+        {#if sources.unmatched}<ResearchIssueFeed title="수집 경로 미확인 · 동결 이슈" feed={sources.unmatched} />{/if}
+      {/key}
+    </section>
+  </div>
   <section class="sheet">
     <h3>발행 당시의 가격 근거</h3>
     <dl class="facts">
@@ -97,7 +126,38 @@
         <dt>가격 출처</dt>
         <dd>{h?.source || snap.source || "미기록"}</dd>
       </div>
+      <div>
+        <dt>거래소 · 통화</dt>
+        <dd>
+          {exchangeLabels[snap.exchange || ""] ||
+            "거래소 미기록"} · {currency || "미기록"}
+        </dd>
+      </div>
+      {#if snap.classification}<div>
+          <dt>동결 당시 종목 분류</dt>
+          <dd>{classificationLabel(snap.classification)}</dd>
+        </div>{/if}
     </dl>
+    {#if snap.benchmark?.ticker || snap.features}
+      <details class="market">
+        <summary>시장 기준과 상대 추세</summary>
+        {#if snap.benchmark?.ticker}<p>
+            시장 기준 <InstrumentLabel ticker={snap.benchmark.ticker} inline /> ·
+            {snap.benchmark.status === "available" ? "자료 확인" : "자료 부족"}
+          </p>{/if}
+        <dl class="facts">
+          {#each [["20거래일 가격 변화", "trend_20d"], ["일간 변동성", "volatility_20d"], ["시장 대비 20거래일 변화", "relative_trend_20d"], ["시장 기준 가격 변화", "benchmark_trend_20d"]] as item}<div
+            >
+              <dt>{item[0]}</dt>
+              <dd>{percentChange(snap.features?.[item[1]])}</dd>
+            </div>{/each}
+        </dl>
+        {#if snap.benchmark?.bars?.length}<ResearchPriceChart
+            bars={snap.benchmark.bars}
+            {currency}
+          />{/if}
+      </details>
+    {/if}
     <h4>가설과 재검토 조건</h4>
     {#if h?.conditions?.length}
       <p class="muted">
@@ -153,89 +213,28 @@
         이 사례에는 발행 시점에 동결한 가격 조건이 없습니다.
       </p>{/if}
   </section>
-  <section class="sheet">
-    <h3>당시 확인된 이슈</h3>
-    {#if news}<p class="muted">
-        기준 {timeLabel(news.as_of)} · 최근 30일 · {news.source ||
-          "출처 미기록"}
-      </p>{/if}
-    {#if news?.collected_at}<p class="muted">
-        최근 수집 {timeLabel(news.collected_at)}
-      </p>{/if}
-    {#if issueMessage}<p class="empty">{issueMessage}</p>{/if}
-    {#each (showAllNews ? news?.items : news?.items.slice(0, 3)) || [] as item}
-      <div class="news">
-        <strong
-          >{#if articleUrl(item.url)}<a
-              href={articleUrl(item.url)}
-              target="_blank"
-              rel="noopener noreferrer">{item.title} ↗</a
-            >{:else}{item.title}{/if}</strong
-        >
-        <small
-          >{item.publisher || "매체 미기록"} · 공개 {item.published_precision ===
-            "day" && item.published_day
-            ? item.published_day + " (시간 미상)"
-            : timeLabel(item.published_at)} · 최초 관측 {timeLabel(
-            item.first_seen_at,
-          )}</small
-        >
-      </div>
-    {/each}
-    {#if news && news.items.length > 3}
-      <button class="news-toggle" aria-expanded={showAllNews} on:click={() => expandedCase = showAllNews ? null : data.id}>
-        {showAllNews ? "이슈 접기" : "나머지 이슈 "+(news.items.length-3)+"건 보기"}
-      </button>
-    {/if}
-    {#if news?.items?.length}<p class="muted foot">
-        발행 전 열람 가능했던 자료입니다. 확률 계산에는 사용하지 않았습니다.
-      </p>{/if}
-  </section>
-  <section class="sheet">
-    <h3>방법별 예측</h3>
-    {#each arms as arm}<div class="method">
-        <div>
-          <strong>{methodName(arm.method)}</strong><small
-            >{arm.status === "published"
-              ? timeLabel(arm.published_at)
-              : stateName(arm.status)}{arm.brier != null
-              ? " · Brier " + arm.brier.toFixed(3)
-              : ""}</small
-          >
-        </div>
-        <span
-          >{arm.status === "published"
-            ? probability(arm.probability)
-            : "미발행"}</span
-        >
-      </div>
-    {:else}<p class="empty">기록된 방법별 예측이 없습니다.</p>{/each}
-    <a class="more" href={"/research/?case=" + data.id}
-      >가격 차트·분석 전문 보기 ↗</a
-    >
-  </section>
+  <ResearchJudgments {data} />
 </article>
 
 <style>
   .evidence {
     min-width: 0;
-    color: #172c36;
-  }
-  .company,
-  .sheet {
-    background: #fff;
-    border: 1px solid #d8e1e2;
-    padding: clamp(17px, 2.4vw, 30px);
+    color: #282522;
   }
   .company {
-    border-top: 4px solid #1b6d60;
-    border-radius: 8px 8px 0 0;
+    border-top: 3px solid #852641;
+    padding: clamp(15px, 2vw, 26px) 0 15px;
   }
-  .sheet {
-    border-top: 0;
+  .context,
+  .muted,
+  dt,
+  small,
+  .headline span {
+    color: #675f59;
+    font-size: 0.82rem;
   }
-  .sheet:last-child {
-    border-radius: 0 0 8px 8px;
+  .context span {
+    margin: 0 5px;
   }
   h2,
   h3,
@@ -245,133 +244,142 @@
   dd {
     margin: 0;
   }
-  h2 {
-    font-size: clamp(1.65rem, 3vw, 2.35rem);
+  .sources-link { display:none; }
+  .company h2 :global(.symbol) { font-size:.48em; color:#675f59; letter-spacing:0; }
+  .company h2 {
+    font-family: Georgia, "Malgun Gothic", serif;
+    font-size: clamp(1.8rem, 3.8vw, 3.5rem);
+    line-height: 1.15;
     letter-spacing: -0.045em;
-    margin: 0.35rem 0 1rem;
-    overflow-wrap: anywhere;
-  }
-  h3 {
-    font-size: 1.1rem;
-    letter-spacing: -0.035em;
-  }
-  h4 {
-    font-size: 0.95rem;
-    margin: 1.3rem 0 0.3rem;
-  }
-  .context,
-  small,
-  .muted,
-  dt,
-  .headline span {
-    color: #526675;
-    font-size: 0.82rem;
-  }
-  .context span {
-    padding: 0 0.2rem;
+    margin: 8px 0 14px;
   }
   .headline,
   .period,
   .facts {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px clamp(16px, 3vw, 45px);
   }
   .headline {
-    padding: 15px 0;
-    border-block: 1px solid #d8e1e2;
+    align-items: start;
   }
-  .headline > div,
-  .headline strong,
-  small {
-    display: block;
+  .headline > div {
+    display: grid;
+    gap: 1px;
   }
   .headline strong {
-    font-size: clamp(1.4rem, 3vw, 2.25rem);
-    color: #145e51;
-    line-height: 1.3;
+    font-size: clamp(1.45rem, 2.5vw, 2.15rem);
+    color: #852641;
+    line-height: 1.25;
   }
   .headline .outcome {
-    color: #263c49;
+    color: #38332e;
+    font-size: clamp(1.3rem, 2vw, 1.75rem);
   }
   .period {
-    margin-top: 15px;
+    margin-top: 12px;
   }
-  dd {
-    font-size: 0.89rem;
+  .period > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 8px;
+  }
+  .period dd,
+  .facts dd {
+    font-size: 0.86rem;
     font-weight: 600;
     overflow-wrap: anywhere;
   }
+  .spread {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(230px, 0.9fr);
+    background: #fff;
+    border-block: 1px solid #d8d1c8;
+    margin: 3px 0 15px;
+  }
+  .plot,
+  .sources,
+  .sheet {
+    padding: clamp(14px, 2vw, 24px);
+  }
+  .plot {
+    padding-left: 0;
+  }
+  .sources {
+    border-left: 1px solid #dfd9d1;
+  }
+  .sources h3,
+  .sheet h3 {
+    font-size: 1.12rem;
+    letter-spacing: -0.02em;
+  }
+  .sources > .muted {
+    margin: 5px 0 9px;
+    font-size: 0.77rem;
+  }
+  .sheet {
+    padding-inline: 0;
+    border-top: 1px solid #dcd6ce;
+  }
   .facts {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 125px), 1fr));
-    margin-top: 14px;
+    margin: 12px 0;
   }
-  .condition,
-  .method,
-  .news {
+  .facts > div {
+    min-width: 110px;
+    max-width: 100%;
+  }
+  .sheet h4 {
+    margin: 13px 0 3px;
+  }
+  .condition {
     padding: 12px 0;
-    border-bottom: 1px solid #e2e8e8;
-  }
-  .condition,
-  .method {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
+    align-items: start;
+    gap: 8px;
+    border-bottom: 1px solid #e7e0da;
   }
-  .condition p {
-    margin-top: 3px;
-  }
-  .condition strong,
-  .method strong,
-  .news strong {
-    font-size: 0.93rem;
+  .condition p,
+  .empty,
+  .market p {
+    font-size: 0.9rem;
   }
   .status {
-    color: #304958;
-    background: #edf2f2;
-    border-radius: 4px;
-    padding: 2px 7px;
     white-space: nowrap;
-    font-size: 0.78rem;
+    color: #713247;
+    background: #f4e9ec;
+    padding: 2px 7px;
+    font-size: 0.8rem;
   }
+  .empty,
   .muted,
-  .empty {
-    margin-top: 8px;
+  .market summary {
+    line-height: 1.55;
   }
-  .empty {
-    color: #516675;
-    line-height: 1.6;
-    font-size: 0.88rem;
+  .empty,
+  .market summary {
+    color: #655d56;
   }
-  .foot {
-    font-size: 0.78rem;
-  }
-  .news a,
-  .more {
-    color: #145e51;
-    text-underline-offset: 3px;
-  }
-  .more {
-    display: inline-block;
-    margin-top: 14px;
+  .market summary {
+    cursor: pointer;
     font-size: 0.85rem;
-    text-decoration: underline;
   }
-  @media (max-width: 450px) {
-    .period {
+  .market {
+    padding: 8px 0;
+  }
+  @media (max-width: 790px) {
+    .sources-link { display:block; border:0; background:transparent; padding:6px 0; min-height:36px; color:#762641; font:inherit; font-size:.82rem; text-align:left; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
+    .spread {
       grid-template-columns: 1fr;
     }
-    .headline {
-      gap: 12px;
+    .plot,
+    .sources {
+      padding: 14px 0;
     }
-    .facts {
-      gap: 12px;
-    }
-    .method,
-    .condition {
-      align-items: flex-start;
+    .sources {
+      border: 0;
+      border-top: 1px solid #dfd9d1;
     }
   }
-  .news-toggle { margin-top:12px; padding:6px 10px; background:white; border:1px solid #b9c9c9; border-radius:5px; color:#145e51; font:inherit; font-size:.84rem; }
 </style>

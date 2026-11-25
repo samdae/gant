@@ -172,7 +172,7 @@
           {#each queue.pending as symbol}<li><InstrumentLabel ticker={symbol} /></li>{/each}
         </ol>
       </section>{/if}
-    {#if isPublicViewer}<p class="op-hint">공개 화면에서는 실행 종목과 대기열을 확인할 수 있습니다.</p>
+    {#if isPublicViewer}{#if queueSeen && !queue.running && !queue.pending.length}<section class="op-panel folio-empty"><h2>대기 중인 분석 없음</h2><a href="#/schedules">등록 일정 확인 →</a></section>{/if}
     {:else if queue.running || messages.length}
       {#if !queue.running}<p class="op-hint">가장 최근에 수신한 실행 기록입니다.</p>{/if}
       <LabTimeline groups={phaseGroups} states={stepStates} events={messages} />

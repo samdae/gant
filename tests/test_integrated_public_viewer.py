@@ -37,17 +37,29 @@ class IntegratedPublicViewerTests(unittest.TestCase):
               unissued.textContent.includes('발행 대기') && first.textContent.includes('채점 완료'),'partial vs unissued');
             check(document.querySelector('.condition').textContent.includes('75,000원') &&
               document.querySelector('.condition').textContent.includes('충족'),'frozen condition');
-            check(document.querySelector('.news a')?.textContent.includes('당시 확인된 공시') &&
-              document.querySelector('.news small').textContent.includes('시간 미상'),'archived news precision');
+            check(document.querySelector('.sources').textContent.includes('당시 확인된 공시') &&
+              document.querySelector('.sources').textContent.includes('시간 미상') && document.querySelector('.feed.lead a').textContent.includes('커뮤니티 기록'),'archived news precision');
+            check(document.querySelector('.chart svg').getAttribute('aria-label').includes('2026-10-28'), 'frozen price chart');
+            check([...document.querySelectorAll('.model summary')].some(s=>s.textContent.includes('역할 토론')), 'research methods');
+            const debate=[...document.querySelectorAll('.model')].find(d=>d.querySelector('summary').textContent.includes('역할 토론'));
+            debate.open=true;debate.querySelector('.turn').open=true;
+            check(debate.querySelector('.turn .narrative strong')?.textContent.includes('근거') && !debate.querySelector('img'), 'sanitized transcript');
+            check(document.querySelector('.sources .feed').textContent.includes('동결 목록에 포함') &&
+              document.querySelectorAll('.sources a[href="https://example.org/post"]').length===1 &&
+              [...document.querySelectorAll('.sources .feed')].some(el=>el.textContent.includes('수집 경로 미확인') && el.textContent.includes('수집 단계 미상')),
+              'mixed sources attributed and deduplicated');
             check(document.documentElement.scrollWidth<=innerWidth,'research overflow');
-            await visit('#/results',()=>document.querySelector('iframe')?.src.endsWith('#results'));
+            await visit('#/research/27',()=>document.querySelector('.sources')?.textContent.includes('당시 수집 기록이 없습니다.'));
+            check(!document.querySelector('.news') && document.querySelector('.chart').textContent.includes('종가'), 'genuine empty source and chart');
+            await visit('#/observe',()=>[...document.querySelectorAll('h2')].some(el=>el.textContent.includes('관찰 종목')));
+            await visit('#/results',()=>[...document.querySelectorAll('h2')].some(el=>el.textContent.includes('연구 성과')));
             await visit('#/schedules',()=>document.querySelector('main a[href="#/schedules/spy"]'));
             check(!document.querySelector('#addScheduleBtn, .op-cancel'),'schedule actions');
             await visit('#/schedules/SPY',()=>document.querySelector('main')?.innerText.includes('세부 실행 로그'));
-            await visit('#/live',()=>document.querySelector('main')?.innerText.includes('공개 화면에서는 실행 종목'));
+            await visit('#/live',()=>document.querySelector('main')?.innerText.includes('현재 실행 종목과 대기열'));
             await visit('#/retrospective',()=>document.querySelector('.review-empty'));
             check(!document.querySelector('.review-empty button'),'retrospective actions');
-            await visit('#/portfolio?setup=1',()=>document.body.innerText.includes('공개할 포트폴리오'));
+            await visit('#/portfolio?setup=1',()=>document.body.innerText.includes('모의 계좌 미개설'));
             check(!document.querySelector('dialog[open], .modal-overlay'),'account setup');
             await visit('#/reports/7',()=>document.querySelector('.report-meta'));
             check(document.querySelector('main h2').textContent.includes('SPY'),'legacy numeric report');
@@ -74,13 +86,14 @@ class IntegratedPublicViewerTests(unittest.TestCase):
                     content = "text/html; charset=utf-8"
                 elif path.startswith("/api/cases"):
                     row=dict(id=29,ticker="005930.KS",market="kr",data_session="2026-11-02",status="matured",forecast_probabilities={"single":0.61})
-                    detail={**row,"arms":[{"method":"single","status":"published","probability":.61}],
-                            "outcome":{"status":"scored","actual":1},"snapshot":{"currency":"KRW"},
+                    detail={**row,"arms":[{"method":"single","status":"published","probability":.61},{"method":"debate","status":"published","probability":.5,"rationale":"**참고**","audit":{"debate":[{"role":"create_bull_researcher","output":"**근거**"}]}}],
+                            "outcome":{"status":"scored","actual":1},"snapshot":{"currency":"KRW","bars":[{"date":"2026-10-28","close":74000},{"date":"2026-11-02","close":74700}]},
                             "hypothesis":{"currency":"KRW","conditions":[{"id":"breakout","metric":"exit_close","operator":"gt","threshold":75000,"status":"met","observed_value":76000}]},
-                            "issues":{"status":"available","items":[{"title":"당시 확인된 공시","publisher":"공시 자료","url":"https://example.org/release","published_precision":"day","published_day":"2026-11-01"}]}}
+                            "last30days":{"status":"available","source":"last30days agent export","items":[{"title":"커뮤니티 기록","url":"https://example.org/post","publisher":"커뮤니티"}]},
+                            "issues":{"status":"available","items":[{"title":"당시 확인된 공시","publisher":"공시 자료","source":"Google News RSS","url":"https://example.org/release","published_precision":"day","published_day":"2026-11-01"},{"title":"커뮤니티 기록","publisher":"커뮤니티","source":"last30days agent export","url":"https://example.org/post"},{"title":"수집 단계 미상","url":"https://example.org/old"}]}}
                     partial={**row,"id":28,"status":"pending","forecast_probabilities":{"single":0.0}}
                     unissued={**row,"id":27,"status":"pending","forecast_probabilities":{}}
-                    raw=json.dumps([row,partial,unissued] if path=="/api/cases" else detail).encode()
+                    raw=json.dumps([row,partial,unissued] if path=="/api/cases" else {**unissued,"arms":[],"snapshot":{}} if path.endswith("/27") else detail).encode()
                     content="application/json"
                 elif path.startswith(("/workspace-api/", "/public-api/")):
                     data = {"/workspace-api/schedules":[{"ticker":"SPY","interval_days":1}],

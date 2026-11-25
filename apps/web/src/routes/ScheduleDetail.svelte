@@ -187,11 +187,11 @@
         <h1><InstrumentLabel {ticker} /></h1>
         <p>최근 20개 분석 회차의 실행 기록입니다.</p>
       </div>
-      <a class="op-link" href="#/live">실시간 실행 →</a>
+      <a class="op-link" href="#/schedules">← 전체 예약</a>
     </header>
     {#if loading}<p class="op-panel" role="status">회차를 불러오는 중입니다.</p>
     {:else if cycleError}<p class="op-error" role="alert">{cycleError}</p>
-    {:else if !cycles.length}<p class="op-panel">이 종목에 기록된 실행 회차가 없습니다.</p>
+    {:else if !cycles.length}<section class="op-panel folio-empty"><h2>실행 회차 없음</h2><p>예약이 실행되면 여기에 회차별 시작 시각과 결과가 표시됩니다.</p><a href="#/live">실시간 실행 →</a></section>
     {:else}
       {@const cycle = cycles.find((c) => String(c.id) === selectedCycleId)}
       <section class="op-panel">

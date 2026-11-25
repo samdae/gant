@@ -16,7 +16,7 @@
   ];
 
   const currencyOptions: { value: CurrencyFilter; label: string }[] = [
-    { value: "ALL", label: "ALL" },
+    { value: "ALL", label: "전체" },
     { value: "KRW", label: "KRW" },
     { value: "USD", label: "USD" },
   ];
@@ -37,13 +37,13 @@
     const val = next as ViewMode;
     if (val === "portfolio") {
       viewMode.set("portfolio");
-      if (isForecastLab && window.location.hash === "#/") window.location.hash = "#/portfolio";
+      if (isForecastLab && window.location.hash.split("?")[0] === "#/dashboard") window.location.hash = "#/portfolio";
       checkPortfolioConfig();
       return;
     }
     showActivateModal = false;
     viewMode.set("analysis");
-    if (isForecastLab && window.location.hash.split("?")[0] === "#/portfolio") window.location.hash = "#/";
+    if (isForecastLab && window.location.hash.split("?")[0] === "#/portfolio") window.location.hash = "#/dashboard";
   }
 
   function onCurrencyChange(next: string) {
@@ -108,7 +108,7 @@
   .work-controls label { display:flex; gap:6px; align-items:center; color:var(--fl-muted); font-size:12px; }
   .work-controls select { max-width:110px; color:var(--fl-ink); background:var(--fl-surface); border:1px solid var(--fl-line); border-radius:8px; padding:6px; min-height:32px; font:600 12px var(--fl-font); }
   .work-controls select:focus-visible { outline:2px solid var(--fl-accent); outline-offset:2px; }
-  @media(max-width:630px) { .work-controls { gap:4px; } .work-controls label span { display:none; } }
+  @media(max-width:630px) { .work-controls { gap:14px; } }
 
   .control-header {
     padding: 8px 16px;
@@ -199,5 +199,9 @@
   .align-right :global(.select-panel) {
     left: auto;
     right: 0;
+  }
+  @media (max-width:830px) {
+    .work-controls label {font-size:13px;}
+    .work-controls select {min-height:44px;font-size:14px;}
   }
 </style>

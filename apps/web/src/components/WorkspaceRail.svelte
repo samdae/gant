@@ -1,176 +1,81 @@
 <script lang="ts">
-  import { isPublicViewer } from "../lib/workspace";
   import { location } from "svelte-spa-router";
-  import { currentPage, sections } from "../lib/workspaceNavigation";
-  import { viewMode } from "../stores/mode";
+  import { isPublicViewer } from "../lib/workspace";
+  import { sections, currentPage } from "../lib/workspaceNavigation";
 
-  export let dismiss: (() => void) | undefined = undefined;
-  export let onNavigate: (() => void) | undefined = undefined;
-  $: current = currentPage($location).page.route;
-
-  function navigate(route: string) {
-    if (route === "/") viewMode.set("analysis");
-    onNavigate?.();
-  }
+  export let dismiss: () => void;
+  $: active = currentPage($location).page.route;
 </script>
 
-<div class="rail">
-  <div class="identity">
-    <a
-      class="brand"
-      href="#/research"
-      aria-label="Forecast Lab 연구 홈"
-      on:click={() => navigate("/research")}
-    >
-      <svg
-        class="mark"
-        width="35"
-        height="35"
-        viewBox="0 0 36 36"
-        aria-hidden="true"
-      >
-        <rect width="36" height="36" rx="9" fill="#4977f4" />
-        <path
-          d="M9 27V11l5-3v19zM17 23V13l5-3v13zM25 18v-7l4-3v10z"
-          fill="white"
-        />
-      </svg>
-      <span>Forecast <b>Lab</b></span>
-    </a>
-    {#if dismiss}
-      <button
-        class="dismiss"
-        type="button"
-        aria-label="메뉴 닫기"
-        on:click={dismiss}
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true"
-          ><path d="M6 6l12 12M18 6L6 18" /></svg
+<header class="drawer-head">
+  <strong>전체 메뉴</strong><button
+    type="button"
+    on:click={dismiss}
+    aria-label="메뉴 닫기">닫기</button
+  >
+</header>
+<nav aria-label="전체 메뉴">
+  {#each sections as section}
+    <section>
+      <h2>{section.name}</h2>
+      {#each section.pages.filter((page) => !isPublicViewer || page.route !== "/auth") as page}
+        <a
+          href={"#" + page.route}
+          on:click={dismiss}
+          aria-current={active === page.route ? "page" : undefined}
+          >{page.label}</a
         >
-      </button>
-    {/if}
-  </div>
-  <nav aria-label="작업 공간 주 탐색">
-    {#each sections as section}
-      <div class="group" class:settings={section.name === "설정"}>
-        <div class="group-label">{section.name}</div>
-        {#each section.pages.filter((p) => !isPublicViewer || p.route !== "/auth") as page}
-          <a
-            class="item"
-            href={"#" + page.route}
-            class:active={current === page.route}
-            aria-current={current === page.route ? "page" : undefined}
-            on:click={() => navigate(page.route)}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true"
-              ><path d={page.icon} /></svg
-            >
-            <span>{page.label}</span>
-          </a>
-        {/each}
-      </div>
-    {/each}
-  </nav>
-</div>
+      {/each}
+    </section>
+  {/each}
+</nav>
 
 <style>
-  .rail {
-    background: var(--fl-nav);
-    color: var(--fl-nav-ink);
-    font-family: var(--fl-font);
-    display: flex;
-    flex-direction: column;
-    min-height: 100%;
-  }
-  .identity {
+  .drawer-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    padding: 24px 20px 27px;
+    padding: 15px 22px;
+    border-bottom: 2px solid var(--fl-ink);
+    font-size: 19px;
   }
-  .brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    color: white;
-    font-size: 21px;
-    letter-spacing: -0.055em;
-    font-weight: 650;
-  }
-  .brand b {
-    font-weight: 480;
-    color: #c5d5ee;
+  button {
+    font: inherit;
+    font-size: 13px;
+    padding: 8px 12px;
+    border: 1px solid var(--fl-line);
+    background: white;
+    color: var(--fl-ink);
   }
   nav {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 22px;
-    padding: 0 12px 18px;
+    padding: 4px 22px 20px;
   }
-  .group-label {
-    color: var(--fl-nav-muted);
-    font-size: 11px;
-    letter-spacing: 0.045em;
-    font-weight: 650;
-    padding: 0 12px 6px;
-  }
-  .item {
+  section {
     display: flex;
+    gap: 8px 18px;
+    flex-wrap: wrap;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--fl-line);
+  }
+  h2 {
+    font-size: 13px;
+    color: var(--fl-accent);
+    margin: 0;
+    width: 100%;
+  }
+  a {
+    display: inline-flex;
     align-items: center;
-    gap: 12px;
-    min-height: 39px;
-    margin: 2px 0;
-    padding: 8px 12px;
-    color: #c8d4e8;
-    font-size: 14px;
-    font-weight: 510;
-    border-radius: 8px;
-    line-height: 1.3;
+    min-height: 36px;
+    color: var(--fl-ink);
+    font-size: 15px;
   }
-  .item svg,
-  .dismiss svg {
-    width: 18px;
-    height: 18px;
-    flex: none;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.65;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+  a[aria-current] {
+    font-weight: 800;
+    text-decoration: underline;
   }
-  .item:hover {
-    background: #1e304c;
-    color: white;
-  }
-  .item.active {
-    color: white;
-    background: #25437b;
-    box-shadow: inset 3px 0 #789cff;
-    font-weight: 680;
-  }
-  .item.active svg {
-    color: #bbd0ff;
-  }
-  .settings {
-    margin-top: auto;
-    padding-top: 14px;
-    border-top: 1px solid #2a3850;
-  }
-  .dismiss {
-    display: grid;
-    place-items: center;
-    width: 36px;
-    height: 36px;
-    background: transparent;
-    border: 1px solid #43546c;
-    color: white;
-    border-radius: 8px;
-  }
-  a:focus-visible,
-  button:focus-visible {
-    outline: 2px solid #b5cdff;
-    outline-offset: 2px;
+  nav a,
+  .drawer-head button {
+    min-height: 44px;
   }
 </style>

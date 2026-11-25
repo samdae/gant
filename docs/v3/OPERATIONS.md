@@ -90,3 +90,15 @@ finally { Remove-Item Env:FORECAST_LAB_ACCEPTANCE_DSN -ErrorAction SilentlyConti
 [외부 조회용 사례](https://v3.daehun.app/#/research/1) · [로컬 조회용 사례](http://127.0.0.1:8025/#/research/1) · [로컬 운영자 사례](http://127.0.0.1:8024/#/research/1)
 
 이 프리뷰는 gant-v3-preview.1 태그로 재현한다. Windows PostgreSQL과 Chrome을 사용한 전체 테스트 142건, 프런트엔드 단위 테스트 2건이 통과했고 Svelte 검사에서 오류·경고가 0건이었다. 아래 두 가지 동작도 실행 중인 인스턴스에서 확인했다. 8024·8025에서 같은 NVDA 사례의 기준선·단일 모델·토론 결과를 읽을 수 있고, 8025의 쓰기 요청은 HTTP 405로 차단된다.
+
+## 통합 콘솔의 배포와 검증
+
+연구 사례와 분석 리포트는 같은 Svelte 앱에서 읽는다. 예측은 `/#/research/{id}`, 매매 분석은 `/#/reports/{ticker}`에서 열며, 리포트 목록은 `/#/reports`다. 기존 `/research/?case=1`, `/research/#results`, `/research/#observe` 북마크도 각각 해당 화면으로 연결된다.
+
+운영 중에 업데이트할 때는 위와 같은 두 Vite 환경 변수로 배포 후보를 별도 폴더에 빌드하고, 전체 테스트의 `FORECAST_PUBLIC_UI_DIST`를 그 폴더로 지정한다. 서버 변경이 있으면 v3의 `/api/status`가 유휴 상태이고 `/workspace-api/queue`가 비었는지 확인한다. 8024 리스너의 명령줄에서 v3의 lab.env와 `serve --console`을, 8025에서는 v3 packages와 `public_app:app`을 대조한다. 해당 리스너만 하나씩 재시작하고 각 포트에서 연구 사례가 조회되는지 확인한다. 8024는 `scripts/start-forecast-lab.ps1`, 8025는 `scripts/start-forecast-lab-public.ps1`로 기동한다.
+
+기존 v3 dist의 index.html을 보관하고, 후보의 해시가 붙은 JS와 CSS를 먼저 복사한 뒤 index.html을 원자적으로 교체한다. 직전 정적 파일을 남겨 두면 보관한 index.html로 화면을 복구할 수 있다. 서버 코드까지 복구해야 하면 직전 릴리스 태그와 호환되는 번들을 함께 기동한다. 이 배포에는 PostgreSQL 초기화·재시작이나 Cloudflare 설정 변경이 필요하지 않다.
+
+최초 통합 확인용 기록은 엔비디아 #1이다. 공개 사례 API와 PC·모바일 화면에서 시세 65거래일, 역할 토론 8개, 동결 RSS 40건, 같은 시각 기준 last30days 3건을 대조할 수 있다. 마지막 3건은 최초 동결 40건 밖에 있던 자료다. 가상매매 리포트가 없는 초기 DB에서는 두 회차의 테스트 데이터를 사용해 출처의 시간 경계, 회차 변경 및 이전 응답 처리를 검증한다.
+
+2026-11-25에 공개한 통합 콘솔의 태그는 `gant-v3-preview.2`다. Windows에서 Python 테스트 146건, 프런트엔드 단위 테스트 2건, Svelte 타입 검사를 통과했다. 공개 주소에서 360·393·1440px로 리포트 목록부터 엔비디아 사례, 원문 목록과 발행 당시 시각, 역할별 토론, 기존 북마크까지 검증했다. 12개 공개 화면과 5개 운영자 화면에서 조회를 확인했다. 공개 서버의 쓰기 요청은 405였으며 v2의 두 공개 주소가 제공한 번들은 배포 전 해시와 일치했다.

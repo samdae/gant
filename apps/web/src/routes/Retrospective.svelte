@@ -240,10 +240,15 @@
   <div class="page-container">
     <div class="page-header">
       <h2>{isForecastLab ? "회고 분석" : "AI분석"}</h2>
+      {#if isForecastLab && !isPublicViewer}<button class="btn btn-primary" on:click={openModal}>회고 요청</button>{/if}
     </div>
-    <AnalysisTabs>
-      <svelte:fragment slot="action">{#if !isPublicViewer}<button class="btn btn-primary" on:click={openModal}>{isForecastLab ? "회고 요청" : "요청"}</button>{/if}</svelte:fragment>
-    </AnalysisTabs>
+    {#if isForecastLab}
+      <p class="folio-deck">종목과 회차별로 당시 판단과 사후 평가를 대조합니다.</p>
+    {:else}
+      <AnalysisTabs>
+        <svelte:fragment slot="action">{#if !isPublicViewer}<button class="btn btn-primary" on:click={openModal}>요청</button>{/if}</svelte:fragment>
+      </AnalysisTabs>
+    {/if}
 
     {#if loading}
       <div class="card" style="padding:16px">불러오는 중...</div>

@@ -6,7 +6,7 @@
   max-width: var(--content-max);
   margin: 0 auto;
   padding: var(--content-top) var(--content-gutter) 32px;
-  color: var(--fl-ink, #17243b);
+  color: var(--fl-ink, #252520);
   font-variant-numeric: tabular-nums;
 }
 .op-page h1,
@@ -66,15 +66,15 @@
   cursor: pointer;
 }
 .op-page .op-primary {
-  background: var(--fl-accent, #305ce0);
-  border: 1px solid var(--fl-accent, #305ce0);
+  background: var(--fl-accent, #852641);
+  border: 1px solid var(--fl-accent, #852641);
   color: white;
 }
 .op-link,
 .op-related a,
 .op-cancel {
   background: white;
-  color: var(--fl-ink, #17243b);
+  color: var(--fl-ink, #252520);
   border: 1px solid var(--fl-line, #dbe2eb);
 }
 .op-page > .op-link {
@@ -150,7 +150,7 @@
   padding: 12px 14px;
   border: 1px solid var(--fl-line, #dbe2eb);
   border-radius: 7px;
-  color: var(--fl-accent, #305ce0);
+  color: var(--fl-accent, #852641);
 }
 .op-links span {
   color: var(--fl-muted, #52647a);
@@ -166,15 +166,15 @@
 }
 .op-journey li {
   counter-increment: journey;
-  border-top: 3px solid #7792e8;
-  background: #f4f7fd;
+  border-top: 3px solid var(--fl-accent);
+  background: var(--fl-surface-subtle);
   padding: 12px;
 }
 .op-journey li::before {
   content: counter(journey);
-  border: 1px solid #bccbf1;
+  border: 1px solid var(--fl-line);
   border-radius: 50%;
-  color: #294cb8;
+  color: var(--fl-accent);
   display: inline-grid;
   place-items: center;
   width: 22px;
@@ -217,10 +217,10 @@
 .op-example td {
   padding: 6px;
   text-align: left;
-  border-bottom: 1px solid #dbe2eb;
+  border-bottom: 1px solid var(--fl-line);
 }
 .op-example th {
-  background: #f0f4fb;
+  background: var(--fl-surface-subtle);
 }
 .op-toolbar label {
   display: flex;
@@ -237,7 +237,7 @@
   border-radius: 5px;
   padding: 7px 10px;
   font: inherit;
-  color: #17243b;
+  color: #252520;
 }
 .op-toolbar h2 {
   margin-bottom: 3px;

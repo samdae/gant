@@ -1,227 +1,257 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import { location } from "svelte-spa-router";
-  import InstrumentLabel from "./InstrumentLabel.svelte";
+  import { currentPage, sections } from "../lib/workspaceNavigation";
+  import { isPublicViewer } from "../lib/workspace";
   import WorkspaceRail from "./WorkspaceRail.svelte";
-  import { currentPage } from "../lib/workspaceNavigation";
 
   let drawer: HTMLDialogElement;
   let opener: HTMLButtonElement;
   let open = false;
-  let lastRoute = "";
   $: context = currentPage($location);
-  $: if ($location !== lastRoute) {
-    lastRoute = $location;
-    if (open) closeDrawer(true);
-  }
 
-  function openDrawer() {
-    if (drawer.open) return;
-    drawer.showModal();
-    open = true;
+  async function closeMenu() {
+    drawer.close();
+    await tick();
+    opener?.focus();
   }
-  async function closeDrawer(navigated = false) {
-    drawer?.close();
-    open = false;
-    if (navigated) {
-      await tick();
-      const content = document.getElementById("workspace-content");
-      content?.focus({ preventScroll: true });
-    } else opener?.focus({ preventScroll: true });
-  }
-  onMount(() => {
-    const desktop = window.matchMedia("(min-width: 901px)");
-    const dismissOnResize = () => {
-      if (desktop.matches && drawer.open) closeDrawer(true);
-    };
-    desktop.addEventListener("change", dismissOnResize);
-    return () => desktop.removeEventListener("change", dismissOnResize);
-  });
 </script>
 
-<aside class="desktop-rail"><WorkspaceRail /></aside>
-<div class="workspace-top">
-  <button
-    class="menu-toggle"
-    type="button"
-    bind:this={opener}
-    aria-label="전체 메뉴 열기"
-    aria-controls="workspace-drawer"
-    aria-expanded={open}
-    on:click={openDrawer}
-  >
-    <svg viewBox="0 0 24 24" aria-hidden="true"
-      ><path d="M3 6h18M3 12h18M3 18h18" /></svg
+<header class="folio-mast">
+  <div class="mast-inner">
+    <a class="brand" href="#/research" aria-label="GANT Forecast Lab 연구 홈"
+      ><span>GANT<span class="brand-dot">.</span></span><small
+        >Forecast Lab</small
+      ></a
     >
-  </button>
-  <nav class="crumb" aria-label="현재 위치">
-    <span class="ancestor">{context.section}</span><span
-      class="separator"
-      aria-hidden="true">/</span
+    <nav class="desktop-rail" aria-label="주 탐색">
+      {#each sections as section}
+        <a
+          href={"#" + section.pages[0].route}
+          class:active={context.section.name === section.name}>{section.name}</a
+        >
+      {/each}
+    </nav>
+    <span class="access">{isPublicViewer ? "공개 열람" : "운영 콘솔"}</span>
+    <button
+      class="menu-toggle"
+      type="button"
+      bind:this={opener}
+      aria-label="전체 메뉴 열기"
+      aria-expanded={open}
+      aria-controls="workspace-drawer"
+      on:click={() => {
+        drawer.showModal();
+        open = true;
+      }}>메뉴 <span aria-hidden="true">☰</span></button
     >
-    {#if context.detail}
-      <a href={"#" + context.page.route}>{context.page.label}</a>
-      <span aria-hidden="true">/</span><strong aria-current="page"
-        >{#if ["/schedules", "/reports", "/positions", "/retrospective"].includes(context.page.route)}<InstrumentLabel ticker={context.detail} inline />{:else}{context.detail}{/if}</strong
-      >
-    {:else}
-      <strong aria-current="page">{context.page.label}</strong>
-    {/if}
-  </nav>
-  <div class="actions"><slot /></div>
+  </div>
+</header>
+<div class="folio-subnav">
+  <div class="sub-inner">
+    <nav aria-label={context.section.name + " 세부 메뉴"}>
+      {#each context.section.pages.filter((p) => !isPublicViewer || p.route !== "/auth") as page}
+        <a
+          href={"#" + page.route}
+          aria-current={context.page.route === page.route ? "page" : undefined}
+          >{page.label}</a
+        >
+      {/each}
+    </nav>
+    <div class="actions"><slot /></div>
+  </div>
 </div>
 <dialog
   id="workspace-drawer"
-  aria-label="작업 공간 메뉴"
+  aria-label="전체 메뉴"
   bind:this={drawer}
   on:close={() => (open = false)}
 >
-  <button
-    class="backdrop-dismiss"
-    type="button"
-    tabindex="-1"
-    aria-label="메뉴 배경 닫기"
-    on:click={() => closeDrawer()}
-  ></button>
-  <div class="drawer-panel">
-    <WorkspaceRail
-      onNavigate={() => closeDrawer(true)}
-      dismiss={() => closeDrawer()}
-    />
-  </div>
+  <WorkspaceRail dismiss={closeMenu} />
 </dialog>
 
 <style>
-  .desktop-rail {
-    position: fixed;
-    z-index: 110;
-    inset: 0 auto 0 0;
-    width: var(--rail-width);
-    overflow-y: auto;
-    background: var(--fl-nav);
-    scrollbar-width: thin;
-    scrollbar-color: #405474 var(--fl-nav);
+  .folio-mast {
+    background: #272722;
+    color: #fff;
   }
-  .workspace-top {
+  .mast-inner,
+  .sub-inner {
+    max-width: 1280px;
+    margin: auto;
+    padding-inline: var(--content-gutter);
+    box-sizing: border-box;
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 0 clamp(20px, 3.5vw, 48px);
-    min-height: 64px;
-    border-bottom: 1px solid var(--fl-line);
-    background: var(--fl-surface);
-    color: var(--fl-ink);
   }
-  .crumb {
+  .mast-inner {
+    gap: clamp(20px, 4vw, 64px);
+    min-height: 66px;
+  }
+  .brand {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 10px;
-    font-size: 13px;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    flex-wrap: wrap;
-    color: var(--fl-muted);
+    color: #fff;
+    white-space: nowrap;
   }
-  .crumb strong {
-    min-width: 0;
-    color: var(--fl-ink);
-    font-weight: 650;
+  .brand > span {
+    font:
+      700 38px/0.9 Georgia,
+      "Times New Roman",
+      serif;
+    letter-spacing: -2.3px;
   }
-  .crumb span[aria-hidden] {
-    color: #aab6c8;
+  .brand-dot {
+    color: #e1a7ac;
   }
-  .crumb a:hover {
-    text-decoration: underline;
+  .brand small {
+    font:
+      italic 16px Georgia,
+      serif;
+    color: #eae7dd;
   }
-  .actions {
-    margin-left: auto;
+  .desktop-rail {
+    display: flex;
+    align-self: stretch;
+    gap: clamp(18px, 2.5vw, 34px);
+  }
+  .desktop-rail a {
+    color: #d6d4ca;
+    font-size: 14px;
     display: flex;
     align-items: center;
-    min-width: 0;
+    position: relative;
+    padding: 0 2px;
+    white-space: nowrap;
+  }
+  .desktop-rail a.active {
+    color: white;
+    font-weight: 750;
+  }
+  .desktop-rail a.active::after {
+    content: "";
+    position: absolute;
+    height: 3px;
+    inset: auto 0 0;
+    background: #d9a3ae;
+  }
+  .access {
+    margin-left: auto;
+    font-size: 12px;
+    color: #dedacf;
+    white-space: nowrap;
   }
   .menu-toggle {
     display: none;
-    width: 40px;
-    height: 40px;
+    background: none;
+    border: 1px solid #77756d;
+    color: #fff;
+    padding: 7px 10px;
+    font: inherit;
+    font-size: 13px;
+  }
+  .folio-subnav {
+    background: #fffefa;
+    border-bottom: 1px solid var(--fl-line);
+  }
+  .sub-inner {
+    min-height: 42px;
+    gap: 12px;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .sub-inner nav {
+    display: flex;
+    gap: clamp(15px, 2.4vw, 30px);
+  }
+  .sub-inner a {
+    font-size: 13px;
+    min-height: 41px;
+    display: flex;
     align-items: center;
-    justify-content: center;
-    border: 1px solid var(--fl-line);
-    border-radius: 9px;
-    background: white;
-    color: var(--fl-ink);
-    flex: none;
+    color: var(--fl-muted);
+    border-bottom: 2px solid transparent;
   }
-  .menu-toggle svg {
-    width: 19px;
-    height: 19px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.7;
-    stroke-linecap: round;
+  .sub-inner a[aria-current] {
+    color: var(--fl-accent);
+    border-color: currentColor;
+    font-weight: 750;
   }
-  .menu-toggle:focus-visible,
-  .crumb a:focus-visible {
-    outline: 2px solid var(--fl-accent);
+  .actions:empty {
+    display: none;
+  }
+  .actions {
+    padding: 4px 0;
+  }
+  .mast-inner a:focus-visible,
+  .menu-toggle:focus-visible {
+    outline: 2px solid white;
     outline-offset: 3px;
   }
   dialog {
-    border: 0;
-    padding: 0;
+    position: fixed;
+    inset: 10px 10px auto auto;
     margin: 0;
-    width: 100vw;
-    max-width: none;
-    height: 100dvh;
-    max-height: none;
-    background: transparent;
-    color: inherit;
+    padding: 0;
+    border: 0;
+    width: min(380px, calc(100vw - 20px));
+    max-height: 90dvh;
+    overflow-y: auto;
+    color: var(--fl-ink);
+    background: #fffefa;
+    box-shadow: 0 12px 60px #24231c40;
   }
   dialog::backdrop {
-    background: rgb(8 20 37 / 52%);
+    background: #1d191752;
   }
-  .backdrop-dismiss {
-    position: absolute;
-    inset: 0;
-    border: 0;
-    background: transparent;
-  }
-  .drawer-panel {
-    position: relative;
-    width: min(290px, 85vw);
-    height: 100%;
-    overflow-y: auto;
-    background: var(--fl-nav);
-  }
-  @media (max-width: 900px) {
+  @media (max-width: 830px) {
     .desktop-rail {
       display: none;
     }
     .menu-toggle {
-      display: flex;
+      display: block;
     }
-    .workspace-top {
+    .mast-inner {
       min-height: 58px;
-      gap: 10px;
-      padding: 5px 14px;
+      gap: 15px;
+    }
+    .brand > span {
+      font-size: 32px;
+    }
+    .brand small {
+      font-size: 14px;
+    }
+    .sub-inner {
+      gap: 0 15px;
+    }
+    .actions {
+      margin-left: auto;
     }
   }
-  @media (max-width: 550px) {
-    .ancestor,
-    .separator {
-      display: none;
+  @media (max-width: 520px) {
+    .sub-inner {
+      align-items: center;
     }
-    .crumb {
-      gap: 5px;
-      font-size: 12px;
+    .actions:not(:empty) {
+      width: 100%;
+      border-top: 1px solid var(--fl-line);
+      padding: 6px 0;
     }
-    .workspace-top {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      gap: 8px;
-      padding: 6px 10px;
+    .access {
+      font-size: 11px;
     }
   }
-  @media (max-width: 340px) {
-    .workspace-top { grid-template-columns: auto minmax(0, 1fr); }
-    .actions:not(:empty) { grid-column: 2; margin: 0; }
+  @media (max-width: 830px) {
+    .menu-toggle,
+    .sub-inner nav a {
+      min-height: 44px;
+    }
+    .menu-toggle {
+      padding-inline: 12px;
+    }
+    .sub-inner nav a {
+      font-size: 14px;
+    }
   }
 </style>

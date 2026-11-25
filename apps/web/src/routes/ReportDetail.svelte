@@ -1,5 +1,6 @@
 <script lang="ts">
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
+  import ReportIssueArchive from "../components/ReportIssueArchive.svelte";
   import ReportDecisionEvidence from "../components/ReportDecisionEvidence.svelte";
   import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import { params } from "svelte-spa-router";
@@ -176,7 +177,9 @@
     openSections = isForecastLab && report ? sectionsByReport.get(report.id) ?? { final_trade_decision: Boolean(report.final_trade_decision?.trim()) } : {};
   };
 
+  let loadSequence = 0;
   const loadReport = async (t: string) => {
+    const request = ++loadSequence;
     loading = true;
     error = "";
     try {
@@ -190,7 +193,7 @@
         symbol = item.ticker;
       }
       const result = (await fetchReportsByTicker(symbol, 20)) as Report[];
-      if (ticker !== t) return;
+      if (request !== loadSequence || ticker !== t) return;
       reports = result;
       if (reports && reports.length > 0) {
         selectReport(publicId || String(reports[0].id));
@@ -199,10 +202,10 @@
         selectedReportId = "";
       }
     } catch (err) {
-      if (ticker !== t) return;
+      if (request !== loadSequence || ticker !== t) return;
       error = formatErrorMessage(err, "AI분석을 불러오지 못했습니다.");
     } finally {
-      if (ticker === t) loading = false;
+      if (request === loadSequence && ticker === t) loading = false;
     }
   };
 
@@ -317,6 +320,11 @@
             </div>
           {/if}
         </div>
+        {#if isForecastLab && group === conclusion}
+          {#key report.id}
+            <ReportIssueArchive id={report.id} ticker={report.ticker || ticker} />
+          {/key}
+        {/if}
       {/each}
     {/if}
   </div>
