@@ -1,5 +1,7 @@
 # TradingAgents Windows 배포 Launchpad
 
+[v3 프리뷰](https://v3.daehun.app/)는 읽기 전용 8025로 연결된다. [메인](https://daehun.app/)은 v2를 서비스한다. v1과 v1 예약 작업은 종료 상태다.
+
 ## v3 체크아웃에서 시작할 때
 
 현재 브랜치가 **codex/gant-v3**이면 [v3 Windows 운영 절차](docs/v3/OPERATIONS.md)를 따른다. 개발 서비스는 8024·8025, 전용 PostgreSQL은 55436을 사용한다. 아래의 외부 호스트, 예약 작업, 데이터 이전 절차는 v1·v2 운영 기록이다.

@@ -7,7 +7,7 @@
 | PostgreSQL | 127.0.0.1:55436, 독립 pgdata, SCRAM 인증 |
 | 연구·콘솔·검증 | forecast_lab_research, forecast_lab_console, forecast_lab_acceptance · 각 DB의 별도 로그인 |
 | 운영자·조회용 로컬 화면 | http://127.0.0.1:8024/ · http://127.0.0.1:8025/ |
-| 외부 운영 | daehun.app은 v1, research.daehun.app과 lab.daehun.app은 v2 |
+| 외부 운영 | [v3 읽기 전용 프리뷰](https://v3.daehun.app/) · [v2 메인](https://daehun.app/) · [v2 기존 공개 주소](https://research.daehun.app/) · [v2 관리자](https://lab.daehun.app/) |
 
 v3 개발 DB는 빈 상태에서 시작한다. 포트와 클러스터 디렉터리를 함께 확인한다. 보호된 런타임 안의 lab.env, console.env, acceptance.env가 각 자격증명을 담고 있다. 초기 연구 스케줄은 꺼 두고, 등록된 가상매매 예약도 빈 상태에서 시작한다. 같은 DB명이 있는 v2 클러스터는 55434에서 운영된다.
 
@@ -49,7 +49,7 @@ try {
 .\.venv\Scripts\python.exe scripts/initialize-v3-runtime.py
 ~~~
 
-기존 Windows 설치에서는 다음 명령부터 시작한다. loopback 읽기 전용 서버가 v3 운영자 서버만 조회하며 Cloudflare 터널은 v1·v2 배포 설정을 따른다.
+기존 Windows 설치에서는 다음 명령부터 시작한다. loopback 읽기 전용 서버가 v3 운영자 서버만 조회하며 공유 Cloudflare 터널의 v3 호스트는 8025를 향한다. TradingAgents V3 Preview 예약 작업은 Windows 사용자 로그온 시와 15분 간격으로 웹 서비스를 기동한다. 공유 커넥터는 v2 체크아웃의 TradingAgents Public Tunnel 작업이 기동한다. 예측 자동 실행은 별도 lab.env 설정을 따른다.
 
 ~~~powershell
 .\scripts\start-forecast-lab-services.ps1
@@ -87,6 +87,6 @@ finally { Remove-Item Env:FORECAST_LAB_ACCEPTANCE_DSN -ErrorAction SilentlyConti
 
 첫 실제 사례는 NVDA #1이다. 11월 24일 미국 거래일 자료로 기준선·단일 모델·토론 확률을 발행했다. 첫 토론 시도는 시간 제한으로 실패했다. 같은 사례의 동결된 근거로 재시도해 토론 결과를 저장했고 기존 단일 모델 결과를 유지했다. 만기 전에는 두 가격 조건이 대기이고, 사용할 수 있는 성숙 기억이 없어 기억 실험 두 가지는 건너뛰었다. 최신순 이슈 40건을 보관했다. 만기 예정은 12월 3일 06:00 KST다.
 
-[로컬 조회용 사례](http://127.0.0.1:8025/#/research/1) · [로컬 운영자 사례](http://127.0.0.1:8024/#/research/1)
+[외부 조회용 사례](https://v3.daehun.app/#/research/1) · [로컬 조회용 사례](http://127.0.0.1:8025/#/research/1) · [로컬 운영자 사례](http://127.0.0.1:8024/#/research/1)
 
 이 프리뷰는 gant-v3-preview.1 태그로 재현한다. Windows PostgreSQL과 Chrome을 사용한 전체 테스트 142건, 프런트엔드 단위 테스트 2건이 통과했고 Svelte 검사에서 오류·경고가 0건이었다. 아래 두 가지 동작도 실행 중인 인스턴스에서 확인했다. 8024·8025에서 같은 NVDA 사례의 기준선·단일 모델·토론 결과를 읽을 수 있고, 8025의 쓰기 요청은 HTTP 405로 차단된다.

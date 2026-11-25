@@ -1,5 +1,7 @@
 # G-ANT
 
+[v3 공개 프리뷰](https://v3.daehun.app/) · [엔비디아 예측 사례](https://v3.daehun.app/#/research/1) · [v2 메인](https://daehun.app/)
+
 ## GANT v3 · 개발 브랜치
 
 이 체크아웃은 Research v2에서 분기한 **v3**다. 연구 화면에서는 개별 예측의 당시 근거와 사후 결과를 연결한다. 버전별 기준 커밋, 제품 기획, 측정 계약은 [v3 기획·설계](docs/v3/README.md), 새 Windows 인스턴스의 기동과 검증은 [v3 운영 문서](docs/v3/OPERATIONS.md)를 따른다.
