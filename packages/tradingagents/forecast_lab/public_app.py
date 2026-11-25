@@ -204,6 +204,14 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None):
                 request.url.path.startswith("/workspace-api/")
                 or request.url.path in ("/api/cases", "/api/stats")
                 or (
+                    request.url.path == "/sw.js"
+                    and len(request.query_params.multi_items()) == 1
+                    and re.fullmatch(
+                        r"/assets/index-[a-zA-Z0-9_-]{1,100}\.js",
+                        request.query_params.get("build", ""),
+                    )
+                )
+                or (
                     request.url.path == "/"
                     and re.fullmatch(r"case=[1-9][0-9]{0,15}", request.url.query)
                 )
@@ -235,7 +243,7 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None):
                 "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'none'; base-uri 'none'",
                 "Cache-Control": "public, max-age=30"
                 if response.status_code == 200
-                and request.url.path not in ("/", "/research/", "/healthz", "/ready")
+                and request.url.path not in ("/", "/research/", "/healthz", "/ready", "/sw.js")
                 else "no-store",
             }
         )
@@ -255,6 +263,10 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None):
     def home():
         marker = '<meta name="forecast-console-access" content="public-readonly">'
         return HTMLResponse(shell_html().replace("</head>", marker + "</head>", 1))
+
+    @app.get("/sw.js")
+    def retire_v1_worker():
+        return FileResponse(ASSETS / "retire-v1.js", media_type="application/javascript")
 
     @app.get("/assets/{asset}")
     def shell_asset(asset: str):

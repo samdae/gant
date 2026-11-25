@@ -1,10 +1,12 @@
 # TradingAgents Windows 배포 Launchpad
 
-[공개 콘솔](https://research.daehun.app/)과 [관리용 콘솔](https://lab.daehun.app/)은 같은 화면 번들을 사용한다. 방문자는 로그인 없이 모의계좌와 리포트를 조회하고 관리자는 이메일 인증 후 설정을 변경한다. 이 브랜치의 연구실은 전용 DB와 별도 웹 포트를 사용한다. 연구실을 시작·백업·복구하려면 [Windows 연구실 운영 문서](docs/forecast-lab/OPERATIONS.md)를 따른다. 아래 절차는 기존 공개 사이트에 적용한다.
+메인은 [v2 공개 콘솔](https://daehun.app/)이다. [v3 프리뷰](https://v3.daehun.app/)도 별도로 열려 있다. 공용 터널은 TradingAgents Public Tunnel 작업이 기동한다. v1 API·Nginx·DB와 v1 예약 작업은 중지 상태다.
+
+[공개 콘솔](https://research.daehun.app/)과 [관리용 콘솔](https://lab.daehun.app/)은 같은 화면 번들을 사용한다. 방문자는 로그인 없이 모의계좌와 리포트를 조회하고 관리자는 이메일 인증 후 설정을 변경한다. 이 브랜치의 연구실은 전용 DB와 별도 웹 포트를 사용한다. 연구실을 시작·백업·복구하려면 [Windows 연구실 운영 문서](docs/forecast-lab/OPERATIONS.md)를 따른다. 아래 v1 이력은 복구 참고용이다.
 
 이 저장소를 처음 여는 운영자와 LLM을 위한 배포·복구 절차다. Windows PowerShell에서 실행한다. 기준 경로는 C:\Users\samda\dev\TradingAgents다. 경로와 포트는 아래 실측값을 출발점으로 삼고 실행 직전에 다시 확인한다.
 
-## 현재 운영 상태 — 2026-11-23 KST
+## v1 운영 기록 — 2026-11-23 KST
 
 **Windows 단독 공개 배포 완료.** 운영 주소는 https://daehun.app 이다. 아래의 최초 이전 절차는 복구·재구축 참고용이다. 이미 운영 중인 DB에 최초 생성/복원 절차를 다시 실행하지 않는다.
 

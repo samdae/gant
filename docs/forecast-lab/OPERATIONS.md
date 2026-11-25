@@ -2,7 +2,7 @@
 
 ## 인계 시 먼저 확인할 항목
 
-기획과 측정 규약은 [기획](PRODUCT.md)과 [설계](DESIGN.md)에 있다. 프로젝트는 `C:\Users\samda\dev\TradingAgents-ForecastLab`의 `codex/forecast-lab` 브랜치다. 기존 공개 사이트는 별도 프로젝트에서 계속 실행된다. 연구실 주소는 이 PC의 [로컬 대시보드](http://127.0.0.1:8014/)다.
+기획과 측정 규약은 [기획](PRODUCT.md)과 [설계](DESIGN.md)에 있다. 프로젝트는 `C:\Users\samda\dev\TradingAgents-ForecastLab`의 `codex/forecast-lab` 브랜치다. 메인 공개 도메인은 이 v2 체크아웃을 사용한다. 연구실 주소는 이 PC의 [로컬 대시보드](http://127.0.0.1:8014/)다.
 
 | 구성 | 연구실 설정 |
 |---|---|
@@ -13,11 +13,11 @@
 | 모델 | 현재 Windows 사용자의 Codex ChatGPT 로그인. 모델은 `FORECAST_LAB_MODEL`에 명시 |
 | 기억 | PostgreSQL에 성숙한 확률·근거·특징·시장 관측을 저장. 운영 Chroma와 별도 |
 | 마켓 데이터 | 종목 식별과 기업행위는 Yahoo, 한국 가격은 NAVER 차트, 미국 가격은 Yahoo. 정규장 시각은 XKRX/XNYS 거래소 달력 |
-| 선택형 외부 비교 | `FORECAST_LAB_LEGACY_REFERENCE=1`에서 기존 공개 리포트의 루프백 읽기 경로 사용. 장애 시 연구는 계속됨 |
+| v1 비교 자료 | v1 종료 시 `FORECAST_LAB_LEGACY_REFERENCE=0`으로 설정했다. v2의 예정된 새 예측과 기존에 저장한 비교 기록은 유지한다. |
 
 ## 평상시 시작과 점검
 
-로그인 없이 [공개 콘솔](https://research.daehun.app/)에서 대시보드, 종목별 분석 리포트, 연구 결과, 가상계좌 잔고·수량·체결, 예약과 회고를 조회한다. [운영 콘솔](https://lab.daehun.app/)은 승인된 이메일로 받은 Cloudflare Access 일회용 코드로 로그인한다. 관리 세션은 12시간이며 가상매매 변경에는 콘솔 자체 관리자 인증도 필요하다.
+로그인 없이 [메인 콘솔](https://daehun.app/) 또는 [기존 공개 주소](https://research.daehun.app/)에서 대시보드, 종목별 분석 리포트, 연구 결과, 가상계좌 잔고·수량·체결, 예약과 회고를 조회한다. [운영 콘솔](https://lab.daehun.app/)은 승인된 이메일로 받은 Cloudflare Access 일회용 코드로 로그인한다. 관리 세션은 12시간이며 가상매매 변경에는 콘솔 자체 관리자 인증도 필요하다.
 
 ### 외부 경로와 복구
 
@@ -25,15 +25,20 @@
 |---|---|---|
 | `research.daehun.app` | `http://127.0.0.1:8015` | 운영 콘솔과 같은 화면으로 익명 조회 |
 | `lab.daehun.app` | `http://127.0.0.1:8014` | **Forecast Lab** Access 앱의 개별 이메일 정책으로 전체 콘솔 보호 |
-| `daehun.app` | `http://127.0.0.1:18080` | 기존 사이트의 독립적인 Nginx 경로 |
+| `daehun.app` | `http://127.0.0.1:8015` | 메인 v2 공개 조회 |
+| `v3.daehun.app` | `http://127.0.0.1:8025` | 별도 v3 DB의 읽기 전용 프리뷰. 8024는 로컬 운영자 전용 |
 
 공개 앱은 관리 서버와 같은 `apps/web/dist` 파일에 읽기 전용 표시를 넣어 제공한다. 공개 프로세스는 DB 인증 없이 지정된 8014 조회 결과를 사용한다. 핵심 경로는 `/workspace-api/reports`, `/workspace-api/portfolio/config`, `/api/cases` 및 연구 상세다. 초기 공개판의 `/public-api/` 경로도 호환용으로 제공한다. 검색·필터는 읽기 요청이며 게시·삭제·설정 변경·작업 실행과 WebSocket 연결은 공개 서버가 차단한다.
 
 1. Windows의 기존 named tunnel 설정은 `%LOCALAPPDATA%\TradingAgentsDeploy\tunnel.yml`에 있다. 변경 전에 현재 설정을 접근 제한된 런타임 폴더로 백업한다. 관리 호스트 규칙의 `originRequest.access.required: true`, 팀 `daehun-forecast-lab` 및 Access 앱의 실제 `audTag`를 유지한다. 기존 정책은 승인 이메일 하나 및 일회용 코드 로그인으로 보호한다.
-2. 위 표의 호스트를 각각 정확히 지정한다. 공개 규칙은 오직 8015를 향하고 마지막 미일치 규칙은 `http_status:404`다. 공개·운영 연구 호스트의 DNS는 모두 기존 터널을 가리키는 프록시된 CNAME이다. 최초 등록은 Cloudflare DNS 관리 화면 또는 도메인 관리 권한이 있는 환경의 `cloudflared tunnel route dns <터널> research.daehun.app`에서 한다. 일상적인 Windows 기동에는 DNS 관리용 인증서가 필요하지 않다.
-3. 로컬 준비 상태와 공개 상세를 확인한 뒤 `cloudflared tunnel --config <후보 파일> ingress validate`와 각 호스트의 `ingress rule`을 확인한다. 활성 파일에 후보를 원자적으로 반영하고 같은 구성 경로로 새 커넥터를 시작한다. 새 프로세스에서 등록 로그를 확인한 뒤 실행 경로와 PID를 확인한 이전 커넥터만 종료한다. **TradingAgents Windows Deployment** 작업은 기존 사이트와 터널, **TradingAgents Forecast Lab** 작업은 8014와 8015를 기동한다.
-4. 새 브라우저로 공개 홈과 실제 상세를 열고, 공개 호스트의 리포트·포트폴리오 조회가 200이고 내부 실행 이벤트가 404인지 확인한다. 공개 경로의 쓰기 차단은 격리 테스트에서 확인한다. 익명으로 운영 호스트에 접속하면 팀의 `cloudflareaccess.com`으로 이동하며 기존 `daehun.app/api/health`는 200이어야 한다.
+2. 위 표의 호스트를 각각 정확히 지정한다. v2 공개 호스트는 8015, v3 공개 호스트는 8025로 연결되며 마지막 미일치 규칙은 `http_status:404`다. 공개·운영 연구 호스트의 DNS는 모두 기존 터널을 가리키는 프록시된 CNAME이다. 최초 등록은 Cloudflare DNS 관리 화면 또는 도메인 관리 권한이 있는 환경의 `cloudflared tunnel route dns <터널> research.daehun.app`에서 한다. 일상적인 Windows 기동에는 DNS 관리용 인증서가 필요하지 않다.
+3. 로컬 준비 상태와 공개 상세를 확인한 뒤 `cloudflared tunnel --config <후보 파일> ingress validate`와 각 호스트의 `ingress rule`을 확인한다. 활성 파일에 후보를 원자적으로 반영하고 같은 구성 경로로 새 커넥터를 시작한다. 새 프로세스에서 등록 로그를 확인한 뒤 실행 경로와 PID를 확인한 이전 커넥터만 종료한다. 공유 터널은 **TradingAgents Public Tunnel** 작업이 기동한다. v2의 **TradingAgents Forecast Lab** 작업이 8014·8015를, **TradingAgents V3 Preview** 작업이 8024·8025를 기동한다. 세 작업은 현재 Windows 사용자 로그온 시와 15분 간격으로 실행된다. v2 작업과 백업은 계속 활성 상태이며 v1의 두 예약 작업은 비활성 상태다.
+4. 새 브라우저로 공개 홈과 실제 상세를 열고, 공개 호스트의 리포트·포트폴리오 조회가 200이고 내부 실행 이벤트가 404인지 확인한다. 공개 경로의 쓰기 차단은 격리 테스트에서 확인한다. 익명으로 운영 호스트에 접속하면 팀의 `cloudflareaccess.com`으로 이동하며 `daehun.app/healthz`와 `v3.daehun.app/healthz`는 200이어야 한다. 각 공개 주소의 `/api/cases?limit=1`을 해당 로컬 공개 서버와 대조한다.
 5. 공개를 중단해야 하면 공개 호스트 규칙을 제거하고 새 커넥터를 등록한 뒤 이전 커넥터를 종료한다. 그 도메인은 마지막 404 규칙을 사용한다. 공개 앱만 다시 시작할 때는 8015 소유 프로세스의 체크아웃과 모듈을 검증한 뒤 전용 기동 스크립트 `scripts/start-forecast-lab-public.ps1`를 실행한다. 프라이빗 운영 앱과 DB는 계속 동작한다.
+
+### 공유 터널 점검
+
+Windows v2 체크아웃에서 `scripts/start-windows-tunnel.ps1 -CheckOnly`로 설정 파일과 커넥터의 실제 등록 상태를 확인한다. 커넥터 복구는 `Start-ScheduledTask -TaskName 'TradingAgents Public Tunnel'`로 실행한다. 현재 Windows 사용자 로그온이 기동 조건이다. 커넥터 실행 파일과 터널 자격 파일은 기존 TradingAgentsDeploy에 남아 있다. v1 데이터·API·Nginx는 중지된 상태로 유지한다. 메인 주소의 `/sw.js`는 v1을 방문했던 브라우저의 기존 서비스 워커를 해제한다.
 
 프런트엔드 변경 시 8014와 8015가 동일한 새 해시 파일을 쓰도록 assets를 먼저 복사하고 index.html을 마지막에 교체한다. API가 변경되면 연구 및 가상매매 워커가 유휴 상태일 때 두 서비스의 프로세스 ID와 체크아웃을 확인한 뒤 재기동한다. 새 브라우저로 공개 대시보드, 종목 리포트, 포트폴리오, 예약, 연구 사례와 성과 탭을 점검한다.
 

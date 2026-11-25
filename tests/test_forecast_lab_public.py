@@ -103,6 +103,18 @@ class PublicReaderTests(TestCase):
             self.assertNotIn("PRIVATE_", response.text)
             self.assertIn("nosniff", response.headers["x-content-type-options"])
 
+    def test_v1_service_worker_retirement(self):
+        for path in ("/sw.js", "/sw.js?build=%2Fassets%2Findex-CCH7LmLo.js"):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("javascript", response.headers["content-type"])
+            self.assertIn("no-store", response.headers["cache-control"])
+            self.assertIn("self.registration.unregister()", response.text)
+            self.assertNotIn("clear-site-data", response.headers)
+        for query in ("foo=1", "build=../../other.js", "build=/assets/index-A.js&build=/assets/index-B.js"):
+            self.assertEqual(self.client.get("/sw.js?" + query).status_code, 400)
+        self.assertEqual(self.reader.call_count, 0)
+
     def test_unknown_ids_and_queries_do_not_trigger_unbounded_internal_reads(self):
         for i in range(51, 71):
             self.assertEqual(self.client.get(f"/public-api/cases/{i}").status_code, 404)
