@@ -2,7 +2,7 @@
 
 [Windows 배포·복구 Launchpad](LAUNCHPAD.md)
 
-**Live** — [https://daehun.app](https://daehun.app)
+v1은 2026-11-25에 운영을 종료했다. 현재 메인은 [Research v2](https://daehun.app/)이고 실험 버전은 [v3 프리뷰](https://v3.daehun.app/)에서 조회한다.
 
 12개 AI 에이전트가 협업하여 주식을 분석하고,
 가상 매매로 판단을 검증하며,

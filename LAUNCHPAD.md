@@ -1,8 +1,12 @@
 # TradingAgents Windows 배포 Launchpad
 
+## v1 운영 종료 · 2026-11-25
+
+메인 주소는 [Research v2](https://daehun.app/)다. Windows의 v1 API(8001), Nginx(18080), PostgreSQL(55432)은 중지했다. 기존 DB와 백업은 디스크에 보존한다. v1의 Windows Deployment 및 PostgreSQL Backup 예약 작업은 비활성 상태다. 아래는 v1 복구용 과거 기록이다. 현재 배포의 기동·복구는 [v2 운영 문서](https://github.com/samdae/gant/blob/codex/forecast-lab/docs/forecast-lab/OPERATIONS.md)를 따른다.
+
 이 저장소를 처음 여는 운영자와 LLM을 위한 배포·복구 절차다. Windows PowerShell에서 실행한다. 기준 경로는 C:\Users\samda\dev\TradingAgents다. 경로와 포트는 아래 실측값을 출발점으로 삼고 실행 직전에 다시 확인한다.
 
-## 현재 운영 상태 — 2026-11-23 KST
+## v1 운영 기록 — 2026-11-23 KST
 
 **Windows 단독 공개 배포 완료.** 운영 주소는 https://daehun.app 이다. 아래의 최초 이전 절차는 복구·재구축 참고용이다. 이미 운영 중인 DB에 최초 생성/복원 절차를 다시 실행하지 않는다.
 
