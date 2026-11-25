@@ -6,8 +6,9 @@ import socket
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import exchange_calendars
@@ -21,8 +22,10 @@ class IsolationTests(unittest.TestCase):
         for dsn in (
             "",
             "dbname=postgres host=127.0.0.1 user=test port=5432",
-            "dbname=forecast_lab_test host=example.com user=test port=55434",
-            "dbname=forecast_lab_test host=127.0.0.1 hostaddr=192.0.2.1 user=test port=55434",
+            "dbname=forecast_lab_research host=127.0.0.1 user=test port=55434",
+            "dbname=forecast_lab_research host=localhost user=test port=55436",
+            "dbname=forecast_lab_test host=example.com user=test port=55436",
+            "dbname=forecast_lab_test host=127.0.0.1 hostaddr=192.0.2.1 user=test port=55436",
         ):
             with self.assertRaises(ValueError):
                 Store(dsn)
@@ -83,7 +86,24 @@ class ForecastStoreTests(unittest.TestCase):
         base = f"postgresql://test:{password}@127.0.0.1:{port}/"
         with psycopg.connect(base + "postgres", autocommit=True) as conn:
             conn.execute("CREATE DATABASE forecast_lab_test")
-        cls.store = Store(base + "forecast_lab_test")
+        # Exercise the production DSN guard, then redirect only this fixture's
+        # guarded address to its disposable cluster before opening a connection.
+        real_dsn = base + "forecast_lab_test"
+        guarded_dsn = real_dsn.replace(f":{port}/", ":55436/")
+        connect = psycopg.connect
+
+        def connect_fixture(dsn, *args, **kwargs):
+            if dsn != guarded_dsn:
+                raise AssertionError("Unexpected fixture DSN")
+            return connect(real_dsn, *args, **kwargs)
+
+        redirect = patch(
+            "tradingagents.forecast_lab.store.psycopg.connect",
+            side_effect=connect_fixture,
+        )
+        redirect.start()
+        cls.addClassCleanup(redirect.stop)
+        cls.store = Store(guarded_dsn)
         cls.store.init()
 
     def setUp(self):
@@ -657,6 +677,95 @@ class ForecastStoreTests(unittest.TestCase):
             (audit["control_memory_id"], audit["selected_memory_id"]), (newer, newer)
         )
 
+    def test_v3_freezes_and_scores_independent_price_conditions_atomically(self):
+        from tradingagents.forecast_lab.hypothesis import freeze
+
+        s = self.store
+        snap = self.snapshot("CARD")
+        cal = exchange_calendars.get_calendar(
+            "XNYS" if snap["market"] == "us" else "XKRX"
+        )
+        last = date.fromisoformat(snap["data_session"])
+        days = [
+            d.date().isoformat()
+            for d in cal.sessions_in_range(last - timedelta(days=21), last)[-5:]
+        ]
+        snap.update(
+            currency="USD" if snap["market"] == "us" else "KRW",
+            provider_exchange="fixture",
+        )
+        snap["bars"] = [dict(snap["bars"][-1], date=d) for d in days]
+        snap["hypothesis"] = freeze(snap, days)
+        bad = {**snap, "hypothesis": {**snap["hypothesis"], "reference_close": 99999}}
+        with self.assertRaisesRegex(ValueError, "historical prices"):
+            s.create_case(bad)
+        live = s.create_case(snap)
+        first = s.detail(live)["issues"]
+        self.assertEqual(first["status"], "uncollected")
+        # Even a newly imported run with a back-dated observation timestamp cannot
+        # retroactively become a published historical attachment.
+        with s._connect() as conn:
+            conn.execute(
+                """INSERT INTO v3_issue_runs(ticker,source,query,collected_at,status,item_count)
+                VALUES('CARD','Google News RSS','fixture',%s::timestamptz-interval '5 minutes','empty',0)""",
+                (snap["observed_at"],),
+            )
+        self.assertEqual(s.create_case(snap), live)
+        self.assertEqual(s.detail(live)["issues"], first)
+        self.assertEqual(
+            s.detail(live)["hypothesis"]["conditions"][0]["status"], "pending"
+        )
+        cid, old = self.historical("CARD", 35, [("single", 0.6, "v1", None)])
+        old.update(
+            currency="USD" if old["market"] == "us" else "KRW",
+            provider_exchange="fixture",
+        )
+        last = date.fromisoformat(old["data_session"])
+        oldcal = exchange_calendars.get_calendar(
+            "XNYS" if old["market"] == "us" else "XKRX"
+        )
+        days = [
+            d.date().isoformat()
+            for d in oldcal.sessions_in_range(last - timedelta(days=21), last)[-5:]
+        ]
+        old["bars"] = [dict(old["bars"][-1], date=d) for d in days]
+        old["hypothesis"] = freeze(old, days)
+        with s._connect() as conn:
+            conn.execute(
+                "UPDATE lab_cases SET snapshot=%s WHERE id=%s", (Jsonb(old), cid)
+            )
+        bars = [
+            dict(old["bars"][-1], date=d, open=105, high=112, low=97, close=100)
+            for d in old["sessions"]
+        ]
+        # Label is down (100 < 105); closing prices stayed inside the reference range.
+        evidence = dict(
+            source=old["source"],
+            observed_at=datetime.now(UTC).isoformat(),
+            evidence=dict(
+                sessions=old["sessions"],
+                bars=bars,
+                ticker="CARD",
+                currency="WRONG",
+                exchange="fixture",
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "currency"):
+            s.record_outcome(cid, entry_open=105, exit_close=100, evidence=evidence)
+        evidence["evidence"]["currency"] = old["currency"]
+        self.assertTrue(
+            s.record_outcome(cid, entry_open=105, exit_close=100, evidence=evidence)
+        )
+        evaluated = s.detail(cid)
+        self.assertEqual(evaluated["outcome"]["actual"], 0)
+        self.assertEqual(
+            [r["status"] for r in evaluated["hypothesis"]["conditions"]],
+            ["not_met", "not_met"],
+        )
+        self.assertFalse(
+            s.record_outcome(cid, entry_open=105, exit_close=100, evidence=evidence)
+        )
+
     def test_reference_requires_matched_horizon_and_prospective_capture(self):
         s = self.store
         snap = self.snapshot("REF")
@@ -749,8 +858,15 @@ class ForecastStoreTests(unittest.TestCase):
         )
         unpublished = self.store.create_case(self.snapshot("UNPUBLISHED"))
         self.assertEqual(self.store.recent_cases(1)[0]["id"], unpublished)
-        self.assertEqual(self.store.recent_cases(1, published_only=True)[0]["id"], other[0])
-        self.assertEqual(self.store.recent_cases(1, before_id=other[0], published_only=True)[0]["id"], first[0])
+        self.assertEqual(
+            self.store.recent_cases(1, published_only=True)[0]["id"], other[0]
+        )
+        self.assertEqual(
+            self.store.recent_cases(1, before_id=other[0], published_only=True)[0][
+                "id"
+            ],
+            first[0],
+        )
         day = first[1]["data_session"]
         filters = {"market": first[1]["market"], "from_date": day, "to_date": day}
         self.assertEqual(

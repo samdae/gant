@@ -376,7 +376,7 @@ def install_console_reads(app, reader=None):
     def local_get(path):
         # path is constructed exclusively by the finite dispatch below.
         try:
-            with opener.open("http://127.0.0.1:8014" + path, timeout=5) as response:
+            with opener.open("http://127.0.0.1:8024" + path, timeout=5) as response:
                 body = response.read(12 * 1024 * 1024 + 1)
             if len(body) > 12 * 1024 * 1024:
                 raise ValueError("Invalid read response")

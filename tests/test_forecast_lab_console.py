@@ -17,9 +17,10 @@ from tradingagents.forecast_lab.console import checked_dsn
 
 class ConsoleIsolationTests(unittest.TestCase):
     def test_refuses_wrong_database_role_host_and_indirect_connections(self):
-        base = "host=127.0.0.1 port=55434 dbname=forecast_lab_console user=forecast_lab_console_app password=fake"
+        base = "host=127.0.0.1 port=55436 dbname=forecast_lab_console user=forecast_lab_console_app password=fake"
         for bad in (
-            base.replace("55434", "5432"),
+            base.replace("55436", "5432"),
+            base.replace("55436", "55434"),
             base.replace("127.0.0.1", "example.org"),
             base.replace("dbname=forecast_lab_console", "dbname=forecast_lab_research"),
             base.replace("user=forecast_lab_console_app", "user=postgres"),
@@ -80,7 +81,7 @@ class ConsoleIsolationTests(unittest.TestCase):
                 base = f"postgresql://{role}:{password}@127.0.0.1:{port}/"
                 with psycopg.connect(base + "postgres", autocommit=True) as conn:
                     conn.execute("CREATE DATABASE forecast_lab_console")
-                header = f"postgresql://{role}:{password}@127.0.0.1:55434/"
+                header = f"postgresql://{role}:{password}@127.0.0.1:55436/"
                 (root / "console.env").write_text(
                     "FORECAST_LAB_CONSOLE_DSN=" + header + "forecast_lab_console\n"
                     "TRADINGAGENTS_ADMIN_TOKEN=fixture-token\n",
@@ -126,13 +127,13 @@ def fixture():
 
     root = Path(os.environ["CONSOLE_TEST_ROOT"])
     port = int(os.environ["CONSOLE_TEST_PORT"])
-    assert port != 55434
+    assert port != 55436
     original_connect = psycopg.connect
 
     def private_connect(dsn, *args, **kwargs):
         if dsn != os.environ["TRADINGAGENTS_DB_URL"]:
             raise AssertionError("unexpected database configuration")
-        return original_connect(dsn.replace(":55434/", f":{port}/"), *args, **kwargs)
+        return original_connect(dsn.replace(":55436/", f":{port}/"), *args, **kwargs)
 
     with patch.object(psycopg, "connect", side_effect=private_connect):
         console = configure_runtime(root, root / "lab.env")

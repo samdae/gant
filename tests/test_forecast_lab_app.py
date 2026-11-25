@@ -84,6 +84,22 @@ class ClockConnection(psycopg.Connection):
         return super().execute(query, *args, **kwargs)
 
 
+class V3LoopbackIsolation(unittest.TestCase):
+    def test_preview_process_uses_only_v3_data_and_origin(self):
+        from tradingagents.forecast_lab.app import runtime_root, settings
+        from tradingagents.forecast_lab.public_app import ORIGIN
+
+        dsn = "host=127.0.0.1 port=55436 dbname=forecast_lab_research user=research"
+        with patch.dict(os.environ, {"LOCALAPPDATA": "sandbox", "FORECAST_LAB_DSN": dsn}):
+            self.assertEqual(runtime_root(), Path("sandbox") / "TradingAgentsV3")
+            self.assertEqual(settings(), dsn)
+        self.assertEqual(ORIGIN, "http://127.0.0.1:8024")
+        for wrong in ("55434", "55432", "8014", "8015"):
+            with self.subTest(port=wrong), patch.dict(os.environ, {"FORECAST_LAB_DSN": dsn.replace("55436", wrong)}):
+                with self.assertRaises(ValueError):
+                    settings()
+
+
 class FixtureStore(Store):
     def _connect(self):
         stamp = self.clock().isoformat()
@@ -183,7 +199,7 @@ class LabAcceptanceTest(unittest.TestCase):
         params = conninfo_to_dict(dsn)
         self.assertEqual(
             (params["host"], params["port"], params["dbname"]),
-            ("127.0.0.1", "55434", "forecast_lab_acceptance"),
+            ("127.0.0.1", "55436", "forecast_lab_acceptance"),
         )
         namespace = "qa_worker_" + uuid.uuid4().hex
         with psycopg.connect(dsn) as conn:

@@ -3,6 +3,7 @@
 import re
 from datetime import UTC, date, datetime
 
+from .public_projection import case_evidence
 from .classification import EQUITIES, FUNDS, VERSION
 from .public_projection import METHODS, count, instant, instrument, number, public_case
 
@@ -297,6 +298,7 @@ def research_detail(raw):
     reference = raw.get("reference") or {}
     return {
         **summary,
+        **case_evidence(raw),
         "snapshot": snapshot,
         "arms": arms,
         "outcome": outcome,

@@ -6,6 +6,8 @@
 | v2 · Research | codex/forecast-lab | 22171678cdda964849a0a9955bf0f8e2f014cb7c |
 | v3 · 연구 개발 | codex/gant-v3 | 위 v2 커밋에서 분기 |
 
+기준 태그는 `gant-v1`과 `research-v2`다. 이후 브랜치가 이동해도 이 태그에서 분기 당시 코드를 복원할 수 있다.
+
 목표는 주가 방향 판단을 발행 시점 자료로 재현하고, 만기가 지난 뒤 어떤 근거와 기억이 도움이 되었는지 확인하는 것이다. v2의 종목별·포트폴리오 모드와 읽기 전용 콘솔을 계승한다. v3는 Windows 독립 체크아웃과 새 PostgreSQL 클러스터를 사용한다. 운영 주소의 전환은 별도 릴리스로 관리한다.
 
 ## 기획과 구현의 순서
@@ -22,3 +24,9 @@
 ## 기준 자료
 
 [트레이딩 연구 방법](https://github.com/tradermonty/claude-trading-skills) · [최근 이슈 조사](https://github.com/mvanhorn/last30days-skill) · [UI 검토](https://github.com/pbakaus/impeccable) · [개발 세션 메모리](https://github.com/thedotmack/claude-mem)
+
+## 구현 문서
+
+- [가격 가설과 채점](FORECAST.md)에 기준 고가·저가, 검증에 사용하는 종가, 기업행위와 결측 처리 규칙을 기록했다.
+- [시장 이슈 수집](ISSUES.md)에 한국·미국 RSS, last30days 구조화 파일, 처음 본 시각, 발행 시점 동결 및 수집 상태를 기록했다.
+- [Windows 실행·검증](OPERATIONS.md)에 DB 생성, 사용자 환경의 개발 도구, 로컬 기동, 관찰 목록, 자동화 옵션 및 테스트 명령을 기록했다.

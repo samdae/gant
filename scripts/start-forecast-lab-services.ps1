@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$EnvFile = (Join-Path $env:LOCALAPPDATA 'TradingAgentsForecastLab/lab.env')
+    [string]$EnvFile = (Join-Path $env:LOCALAPPDATA 'TradingAgentsV3/lab.env')
 )
 
 $ErrorActionPreference = 'Stop'

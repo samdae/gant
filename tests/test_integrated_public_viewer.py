@@ -29,7 +29,17 @@ class IntegratedPublicViewerTests(unittest.TestCase):
           try {
             await wait(()=>document.querySelector('.workspace'));
             check(!document.querySelector('.desktop-rail a[href="#/auth"]'),'admin menu');
-            await visit('#/research/29',()=>document.querySelector('iframe')?.src.includes('case=29'));
+            await visit('#/research/29',()=>document.querySelector('.evidence h2')?.textContent.includes('삼성전자'));
+            check(document.querySelector('.headline').textContent.includes('61.0%'),'published probability');
+            await wait(()=>document.querySelectorAll('.register a').length===3);
+            const [first,partial,unissued]=document.querySelectorAll('.register a');
+            check(partial.textContent.includes('일부 방법 발행') && !partial.textContent.includes('발행 대기') &&
+              unissued.textContent.includes('발행 대기') && first.textContent.includes('채점 완료'),'partial vs unissued');
+            check(document.querySelector('.condition').textContent.includes('75,000원') &&
+              document.querySelector('.condition').textContent.includes('충족'),'frozen condition');
+            check(document.querySelector('.news a')?.textContent.includes('당시 확인된 공시') &&
+              document.querySelector('.news small').textContent.includes('시간 미상'),'archived news precision');
+            check(document.documentElement.scrollWidth<=innerWidth,'research overflow');
             await visit('#/results',()=>document.querySelector('iframe')?.src.endsWith('#results'));
             await visit('#/schedules',()=>document.querySelector('main a[href="#/schedules/spy"]'));
             check(!document.querySelector('#addScheduleBtn, .op-cancel'),'schedule actions');
@@ -62,6 +72,16 @@ class IntegratedPublicViewerTests(unittest.TestCase):
                     html = (DIST / "index.html").read_text(encoding="utf8").replace("<head>", '<head><meta name="forecast-console-access" content="public-readonly"><script>localStorage.setItem("gant_admin_token","stale-test-only");window.socketCalls=0;window.WebSocket=class{constructor(){window.socketCalls++}}</script>')
                     raw = html.replace("</body>", "<script>"+checks+"</script></body>").encode()
                     content = "text/html; charset=utf-8"
+                elif path.startswith("/api/cases"):
+                    row=dict(id=29,ticker="005930.KS",market="kr",data_session="2026-11-02",status="matured",forecast_probabilities={"single":0.61})
+                    detail={**row,"arms":[{"method":"single","status":"published","probability":.61}],
+                            "outcome":{"status":"scored","actual":1},"snapshot":{"currency":"KRW"},
+                            "hypothesis":{"currency":"KRW","conditions":[{"id":"breakout","metric":"exit_close","operator":"gt","threshold":75000,"status":"met","observed_value":76000}]},
+                            "issues":{"status":"available","items":[{"title":"당시 확인된 공시","publisher":"공시 자료","url":"https://example.org/release","published_precision":"day","published_day":"2026-11-01"}]}}
+                    partial={**row,"id":28,"status":"pending","forecast_probabilities":{"single":0.0}}
+                    unissued={**row,"id":27,"status":"pending","forecast_probabilities":{}}
+                    raw=json.dumps([row,partial,unissued] if path=="/api/cases" else detail).encode()
+                    content="application/json"
                 elif path.startswith(("/workspace-api/", "/public-api/")):
                     data = {"/workspace-api/schedules":[{"ticker":"SPY","interval_days":1}],
                             "/workspace-api/schedules/SPY/cycles":[{"id":2,"scheduled_cycle":3,"status":"done","created_at":"2026-11-01T00:00:00Z"}],

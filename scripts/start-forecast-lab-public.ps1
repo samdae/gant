@@ -3,23 +3,23 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $project = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$runtime = Join-Path $env:LOCALAPPDATA 'TradingAgentsForecastLab'
+$runtime = Join-Path $env:LOCALAPPDATA 'TradingAgentsV3'
 $logs = Join-Path $runtime 'logs'
 $packages = Join-Path $project 'packages'
-$expected = '-m\s+uvicorn\s+tradingagents\.forecast_lab\.public_app:app\s+--host\s+127\.0\.0\.1\s+--port\s+8015\s+--no-access-log\s+--no-proxy-headers\s+--app-dir\s+"?' + [regex]::Escape($packages) + '"?\s*$'
+$expected = '-m\s+uvicorn\s+tradingagents\.forecast_lab\.public_app:app\s+--host\s+127\.0\.0\.1\s+--port\s+8025\s+--no-access-log\s+--no-proxy-headers\s+--app-dir\s+"?' + [regex]::Escape($packages) + '"?\s*$'
 
 function Test-PublicListener {
-    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort 8015 -ErrorAction SilentlyContinue)
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort 8025 -ErrorAction SilentlyContinue)
     foreach ($listener in $listeners) {
         $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)"
         if ($listener.LocalAddress -ne '127.0.0.1' -or $proc.Name -ne 'python.exe' -or $proc.CommandLine -notmatch $expected) {
-            throw 'Port 8015 is occupied by a different listener. Verify its identity before taking action.'
+            throw 'Port 8025 is occupied by a different listener. Verify its identity before taking action.'
         }
     }
     return $listeners.Count -gt 0
 }
 
-$mutex = [Threading.Mutex]::new($false, 'Local\TradingAgentsForecastLabPublicStart')
+$mutex = [Threading.Mutex]::new($false, 'Local\TradingAgentsV3PublicStart')
 $locked = $false
 try {
     try { $locked = $mutex.WaitOne(30000) } catch [Threading.AbandonedMutexException] { $locked = $true }
@@ -33,9 +33,9 @@ try {
     for ($i = 0; $i -lt 20; $i++) {
         if (Test-PublicListener) {
             try {
-                $health = Invoke-RestMethod 'http://127.0.0.1:8015/healthz' -TimeoutSec 2
+                $health = Invoke-RestMethod 'http://127.0.0.1:8025/healthz' -TimeoutSec 2
                 if ($health.service -ceq 'forecast-lab-public' -and $health.ok -eq $true) {
-                    Write-Output 'Forecast Lab public viewer ready at http://127.0.0.1:8015/'
+                    Write-Output 'Forecast Lab public viewer ready at http://127.0.0.1:8025/'
                     return
                 }
             } catch {}

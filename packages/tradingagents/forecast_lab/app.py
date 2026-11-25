@@ -26,7 +26,7 @@ STATIC = Path(__file__).with_name("web")
 
 def runtime_root():
     return (
-        Path(os.environ.get("LOCALAPPDATA", Path.home())) / "TradingAgentsForecastLab"
+        Path(os.environ.get("LOCALAPPDATA", Path.home())) / "TradingAgentsV3"
     )
 
 
@@ -35,14 +35,14 @@ def settings():
     cfg = conninfo_to_dict(dsn)
     if (
         cfg.get("host") != "127.0.0.1"
-        or cfg.get("port") != "55434"
+        or cfg.get("port") != "55436"
         or not re.fullmatch(
             r"forecast_lab_(research|acceptance|test[a-z0-9_]*)", cfg.get("dbname", "")
         )
         or any(key in cfg for key in ("hostaddr", "service", "options"))
     ):
         raise ValueError(
-            "Expected isolated forecast_lab_research/test database on 127.0.0.1:55434"
+            "Expected isolated forecast_lab_research/test database on 127.0.0.1:55436"
         )
     return dsn
 
@@ -296,7 +296,7 @@ def main():
             readiness=readiness,
         ),
         host="127.0.0.1",
-        port=8014,
+        port=8024,
         access_log=False,
     )
 

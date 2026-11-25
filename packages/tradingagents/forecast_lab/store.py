@@ -13,6 +13,8 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from .engine import DELAY, _valid_bar
+from . import hypothesis
+from .issue_collector import SOURCE as ISSUE_SOURCE, case_issues, init_issues
 from .sector_retrieval import sector_candidates, valid_classification
 
 METHODS = ("baseline", "single", "debate", "memory")
@@ -31,6 +33,8 @@ CREATE TABLE IF NOT EXISTS lab_cases(
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  UNIQUE(ticker, data_session, experiment_version),
  CHECK(observed_at <= created_at AND created_at < entry_at AND entry_at < exit_at));
+CREATE TABLE IF NOT EXISTS lab_case_issue_evidence(
+ case_id bigint PRIMARY KEY REFERENCES lab_cases ON DELETE CASCADE, projection jsonb NOT NULL);
 CREATE TABLE IF NOT EXISTS lab_references(
  case_id bigint PRIMARY KEY REFERENCES lab_cases,
  experiment_version text NOT NULL, source text NOT NULL, source_report_id bigint NOT NULL,
@@ -69,7 +73,9 @@ WHEN c.entry_at > statement_timestamp() AND
 WHEN EXISTS(SELECT FROM lab_arms a WHERE a.case_id=c.id AND a.status='published') THEN 'awaiting'
 ELSE 'unpublished' END"""
 SUMMARY = f"""SELECT c.id,c.ticker,c.market,c.data_session,c.experiment_version,c.created_at,
- c.entry_at AS entry_open_at,c.exit_at AS exit_close_at,{STATE} AS status
+ c.entry_at AS entry_open_at,c.exit_at AS exit_close_at,{STATE} AS status,
+ COALESCE((SELECT jsonb_object_agg(a.method,a.probability) FROM lab_arms a WHERE a.case_id=c.id
+           AND a.status='published'), '{{}}'::jsonb) AS forecast_probabilities
  FROM lab_cases c LEFT JOIN lab_outcomes o ON o.case_id=c.id"""
 MEMORY_FROM = """
  FROM lab_memories m JOIN lab_cases c ON c.id=m.case_id JOIN lab_outcomes o ON o.case_id=m.case_id
@@ -133,9 +139,9 @@ class Store:
         params = conninfo_to_dict(dsn or "")
         if (
             not re.fullmatch(r"forecast_lab[a-z0-9_]*", params.get("dbname", ""))
-            or params.get("host") not in ("localhost", "127.0.0.1", "::1")
+            or params.get("host") != "127.0.0.1"
             or not params.get("user")
-            or not params.get("port")
+            or params.get("port") != "55436"
             or any(k in params for k in ("service", "hostaddr", "options"))
         ):
             raise ValueError(
@@ -155,6 +161,7 @@ class Store:
         with self._connect() as conn:
             conn.execute("SELECT pg_advisory_xact_lock(892417601)")
             conn.execute(SCHEMA)
+            init_issues(conn)
             if conn.execute("""SELECT 1 FROM pg_constraint WHERE conrelid='lab_arms'::regclass
                                AND conname='lab_arms_method_sector_v1'""").fetchone():
                 return
@@ -251,6 +258,16 @@ class Store:
             for bar in [*bars, *bench]
         ):
             raise ValueError("snapshot contains invalid or future bars")
+        if (
+            "hypothesis" in snapshot
+            or snapshot.get("input_policy")
+            == "corporate-action-clean-trailing-windows-v2"
+        ):
+            lookback = cal.sessions_in_range(day - timedelta(days=30), day)[-5:]
+            card = hypothesis.freeze(snapshot, [d.date().isoformat() for d in lookback])
+            if snapshot.get("hypothesis", card) != card:
+                raise ValueError("Hypothesis conflicts with historical prices")
+            snapshot = {**snapshot, "hypothesis": card}
         key = (ticker, day, version)
         with self._connect() as conn:
             prior = conn.execute(
@@ -278,6 +295,11 @@ class Store:
                 ),
             ).fetchone()
             if row:
+                frozen_issues = case_issues(conn, ticker, seen)
+                conn.execute(
+                    "INSERT INTO lab_case_issue_evidence(case_id,projection) VALUES(%s,%s)",
+                    (row["id"], Jsonb(frozen_issues)),
+                )
                 return row["id"]
             prior = conn.execute(
                 "SELECT id FROM lab_cases WHERE (ticker,data_session,experiment_version)=(%s,%s,%s)",
@@ -642,6 +664,21 @@ class Store:
                     raise ValueError(
                         "outcome provenance inconsistent with frozen sessions or prices"
                     )
+                if c["snapshot"].get("hypothesis"):
+                    if (
+                        window.get("ticker") != c["ticker"]
+                        or window.get("currency") != c["snapshot"]["currency"]
+                        or window.get("exchange") != c["snapshot"]["provider_exchange"]
+                    ):
+                        raise ValueError(
+                            "Condition observations differ from the frozen listing or currency"
+                        )
+                    evidence = {
+                        **evidence,
+                        "hypothesis_results": hypothesis.evaluate(
+                            c["snapshot"]["hypothesis"], bars
+                        ),
+                    }
             row = conn.execute(
                 """INSERT INTO lab_outcomes(case_id,status,entry_open,exit_close,actual,
                 reason,evidence,observed_at) SELECT %s,%s,%s,%s,%s,%s,%s,t FROM (SELECT clock_timestamp() t) tm
@@ -749,6 +786,22 @@ class Store:
             c["reference"] = conn.execute(
                 "SELECT * FROM lab_references WHERE case_id=%s", (case_id,)
             ).fetchone()
+            c["hypothesis"] = hypothesis.detail(c["snapshot"], c["outcome"])
+            issue_row = conn.execute(
+                "SELECT projection FROM lab_case_issue_evidence WHERE case_id=%s",
+                (case_id,),
+            ).fetchone()
+            c["issues"] = (
+                issue_row["projection"]
+                if issue_row
+                else {
+                    "status": "uncollected",
+                    "as_of": c["snapshot"]["observed_at"],
+                    "source": ISSUE_SOURCE,
+                    "collected_at": None,
+                    "items": [],
+                }
+            )
             return tag, c
 
     def open_reference_cases(self):

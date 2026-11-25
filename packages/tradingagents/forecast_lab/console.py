@@ -20,7 +20,7 @@ def checked_dsn(raw, database, user=None):
         ) from None
     if (
         cfg.get("host") != "127.0.0.1"
-        or cfg.get("port") != "55434"
+        or cfg.get("port") != "55436"
         or cfg.get("dbname") != database
         or not cfg.get("user")
         or not cfg.get("password")
@@ -81,7 +81,7 @@ def configure_runtime(root, lab_env):
         PORTFOLIO_ENABLED="true",
         LLM_PROVIDER="codex",
         CODEX_MODEL=lab.get("FORECAST_LAB_MODEL") or "gpt-6.2-sol",
-        TRADINGAGENTS_CORS_ORIGINS="http://127.0.0.1:8014,http://localhost:8014",
+        TRADINGAGENTS_CORS_ORIGINS="http://127.0.0.1:8024,http://localhost:8024",
         PYTHON_DOTENV_DISABLED="1",
     )
     from tradingagents.default_config import DEFAULT_CONFIG

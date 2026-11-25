@@ -28,7 +28,7 @@ from .public_research import (
 RESEARCH = Path(__file__).with_name("web")
 SHELL = Path(__file__).resolve().parents[3] / "apps/web/dist"
 ASSETS = Path(__file__).with_name("public_web")
-ORIGIN = "http://127.0.0.1:8014"
+ORIGIN = "http://127.0.0.1:8024"
 CASE_LIST = "/api/cases?limit=60"
 STATS = "/api/stats"
 REPORTS = "/workspace-api/reports?limit=20"

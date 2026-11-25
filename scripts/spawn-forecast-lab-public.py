@@ -37,7 +37,7 @@ if __name__ == "__main__":
         [
             sys.executable, "-I", "-X", "utf8", "-m", "uvicorn",
             "tradingagents.forecast_lab.public_app:app", "--host", "127.0.0.1",
-            "--port", "8015", "--no-access-log", "--no-proxy-headers",
+            "--port", "8025", "--no-access-log", "--no-proxy-headers",
             "--app-dir", str(project / "packages"),
         ],
         public_dir, runtime / "logs",

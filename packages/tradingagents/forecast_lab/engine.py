@@ -19,6 +19,7 @@ import yfinance as yf
 from yfinance.exceptions import YFPricesMissingError
 
 from .classification import POLICY, classify
+from .hypothesis import freeze as freeze_hypothesis
 
 EXPERIMENT_VERSION = "direction-5s-v2"
 DELAY = timedelta(minutes=20)
@@ -61,7 +62,7 @@ def _json(data):
 def _configure_yahoo_cache():
     root = (
         os.getenv("FORECAST_LAB_STATE_DIR")
-        or Path(os.getenv("LOCALAPPDATA", Path.home())) / "TradingAgentsForecastLab"
+        or Path(os.getenv("LOCALAPPDATA", Path.home())) / "TradingAgentsV3"
     )
     yf.set_tz_cache_location(str(Path(root) / "yfinance-cache"))
 
@@ -392,6 +393,7 @@ class ForecastEngine:
             baseline=baseline,
             features=features,
         )
+        snapshot["hypothesis"] = freeze_hypothesis(snapshot, history[-5:])
         return snapshot
 
     def outcome(self, snapshot):
@@ -439,6 +441,8 @@ class ForecastEngine:
             "bars": [bars[d] for d in days if d in bars],
             "sessions": days,
             "exchange": meta["exchangeName"],
+            "ticker": meta["symbol"].upper(),
+            "currency": meta["currency"],
         }
         source = meta.get("price_source", SOURCE)
         if source != snapshot["source"]:
@@ -639,7 +643,7 @@ class ForecastEngine:
         evidence = _json(
             {
                 key: value for key, value in snapshot.items()
-                if key not in {"baseline", "classification", "retrieval_policy"}
+                if key not in {"baseline", "classification", "retrieval_policy", "hypothesis"}
             }
         )
         audit = {

@@ -26,8 +26,7 @@
   import { isForecastLab, isPublicViewer } from "./lib/workspace";
 
   const routes = {
-    ...(isForecastLab ? { "/research": Research, "/portfolio": Portfolio } : {}),
-    ...(isPublicViewer ? { "/research/:id": Research, "/results": Research, "/performance": Research } : {}),
+    ...(isForecastLab ? { "/research": Research, "/research/:id": Research, "/results": Research, "/performance": Research, "/portfolio": Portfolio } : {}),
     "/": isForecastLab ? Portfolio : Dashboard,
     "/positions": Positions,
     "/schedules": Schedules,

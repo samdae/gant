@@ -6,6 +6,8 @@ import re
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from .hypothesis import public_hypothesis
+
 METHODS = {"baseline", "single", "debate", "memory", "memory_sector"}
 # Reviewed instrument names. Console display aliases are editable and may contain private text.
 NAMES = json.loads(
@@ -64,15 +66,62 @@ def public_case(row):
         "id": row["id"],
         "market": row["market"],
         "status": row["status"],
+        "forecast_probabilities": {
+            method: p
+            for method, p in (row.get("forecast_probabilities") or {}).items()
+            if method in METHODS and number(p, 0, 1) is not None
+        },
         "data_session": session,
         "entry_open_at": entry,
         "exit_close_at": exit_at,
     }
 
 
+def case_evidence(raw):
+    from .issue_collector import public_issues
+
+    snapshot = raw.get("snapshot") or {}
+    card = public_hypothesis(raw.get("hypothesis"))
+    cutoff = instant(snapshot.get("observed_at"))
+    issues = public_issues(raw.get("issues"))
+    if issues and instant(issues["as_of"]) != cutoff:
+        # Compare instants, allowing different explicit UTC offsets.
+        if not cutoff or datetime.fromisoformat(
+            issues["as_of"]
+        ) != datetime.fromisoformat(cutoff):
+            issues = None
+    if card and (
+        card["ticker"] != raw.get("ticker")
+        or card["data_session"] != raw.get("data_session")
+        or not cutoff
+        or datetime.fromisoformat(card["observed_at"]) != datetime.fromisoformat(cutoff)
+    ):
+        card = None
+    if card and raw.get("status") != "matured":
+        for condition in card["conditions"]:
+            condition.update(
+                status="unavailable" if raw.get("status") == "excluded" else "pending",
+                observed_value=None,
+                observed_session=None,
+            )
+    return {"hypothesis": card, "issues": issues}
+
+
 def public_detail(raw, summary):
-    if not isinstance(raw, dict) or public_case(raw) != summary:
+    fresh = public_case(raw)
+    if not fresh or any(
+        fresh[k] != summary.get(k)
+        for k in (
+            "id",
+            "ticker",
+            "market",
+            "data_session",
+            "entry_open_at",
+            "exit_close_at",
+        )
+    ):
         return None
+    summary = fresh
     forecasts = []
     for a in raw.get("arms", []):
         if (
@@ -116,6 +165,7 @@ def public_detail(raw, summary):
     return {
         **summary,
         "forecasts": forecasts,
+        **case_evidence(raw),
         "outcome": outcome,
         "summary": f"{summary['name']}의 다음 거래일 시가부터 다섯 번째 거래일 종가까지의 상승 확률을 비교합니다.",
     }

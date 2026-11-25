@@ -19,7 +19,7 @@ def credentials(lab, filename, field, database, user=None):
         raise SystemExit("Invalid Forecast Lab backup configuration") from None
     if (
         db.get("host") != "127.0.0.1"
-        or db.get("port") != "55434"
+        or db.get("port") != "55436"
         or db.get("dbname") != database
         or not db.get("user")
         or (user and db["user"] != user)
@@ -70,7 +70,7 @@ def backup(lab, tools, db):
 
 def main():
     local = Path(os.environ["LOCALAPPDATA"])
-    lab = local / "TradingAgentsForecastLab"
+    lab = local / "TradingAgentsV3"
     tools = local / "TradingAgentsDeploy" / "pgsql" / "bin"
     databases = (
         credentials(lab, "lab.env", "FORECAST_LAB_DSN", "forecast_lab_research"),

@@ -39,7 +39,7 @@ async def app(scope, receive, send):
                 port = str(sock.getsockname()[1])
             for name in ("start-forecast-lab-public.ps1", "spawn-forecast-lab-public.py"):
                 src = (ROOT / "scripts" / name).read_text(encoding="utf-8-sig")
-                src = src.replace("8015", port).replace(
+                src = src.replace("8025", port).replace(
                     "Join-Path $project '.venv/Scripts/python.exe'", "'" + sys.executable.replace("'", "''") + "'")
                 (scripts / name).write_text(src, encoding="utf-8-sig")
             entry = scripts / "start-forecast-lab-services.ps1"
