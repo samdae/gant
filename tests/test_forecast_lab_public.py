@@ -69,6 +69,8 @@ class PublicReaderTests(TestCase):
                 "arms": [
                     arm,
                     {**arm, "method": "memory", "status": "skipped"},
+                    {**arm, "method": "debate", "status": "failed", "error": "PRIVATE_TIMEOUT"},
+                    {**arm, "method": "PRIVATE_METHOD", "status": "failed"},
                     {**arm, "published_at": "2030-01-01T00:00:00Z"},
                 ],
                 "outcome": {
@@ -102,6 +104,14 @@ class PublicReaderTests(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertNotIn("PRIVATE_", response.text)
             self.assertIn("nosniff", response.headers["x-content-type-options"])
+
+    def test_integrated_failure_discloses_only_method_and_status(self):
+        response = self.client.get("/api/cases/10")
+        self.assertEqual(response.status_code, 200)
+        failures = [arm for arm in response.json()["arms"] if arm["status"] == "failed"]
+        self.assertEqual(failures, [{"method": "debate", "status": "failed"}])
+        self.assertNotIn("PRIVATE_TIMEOUT", response.text)
+        self.assertNotIn("PRIVATE_METHOD", response.text)
 
     def test_unknown_ids_and_queries_do_not_trigger_unbounded_internal_reads(self):
         for i in range(51, 71):

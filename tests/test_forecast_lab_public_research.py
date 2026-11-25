@@ -100,9 +100,14 @@ class PublicResearchViewerTest(unittest.TestCase):
         detail = self.client.get("/api/cases/29")
         body = detail.json()
         self.assertEqual(len(body["snapshot"]["bars"]), 1)
-        self.assertEqual([a["method"] for a in body["arms"]], ["single", "debate"])
-        self.assertIn("변동성", body["arms"][0]["rationale"])
-        self.assertIsNone(body["arms"][1]["rationale"])
+        published = [arm for arm in body["arms"] if arm["status"] == "published"]
+        self.assertEqual([arm["method"] for arm in published], ["single", "debate"])
+        self.assertEqual(
+            [arm for arm in body["arms"] if arm["status"] != "published"],
+            [{"method": "memory", "status": "failed"}],
+        )
+        self.assertIn("변동성", published[0]["rationale"])
+        self.assertIsNone(published[1]["rationale"])
         self.assertNotIn("PRIVATE_TRACE", detail.text)
         self.assertNotIn("password", detail.text)
         self.assertEqual(

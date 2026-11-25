@@ -227,6 +227,8 @@ def research_detail(raw):
             next(a for a in arms if a["method"] == "memory_sector")["audit"] = (
                 selection_summary(arm)
             )
+        if arm.get("status") == "failed" and arm.get("method") in METHODS:
+            arms.append({"method": arm["method"], "status": "failed"})
         if arm.get("status") == "skipped" and arm.get("method") in (
             "memory",
             "memory_sector",

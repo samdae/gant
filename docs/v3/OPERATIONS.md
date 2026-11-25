@@ -79,4 +79,14 @@ try { .\.venv\Scripts\python.exe -m unittest discover -s tests -v }
 finally { Remove-Item Env:FORECAST_LAB_ACCEPTANCE_DSN -ErrorAction SilentlyContinue }
 ~~~
 
-브라우저 검증에는 Windows Chrome 설치가 필요하다. 별도 경로를 사용하면 CHROME_BIN에 실행 파일을 지정한다. 수집·채점 회귀는 검증 DB 또는 별도 임시 PostgreSQL에서 수행한다.
+브라우저 검증에는 Windows Chrome 설치가 필요하다. 별도 경로를 사용하면 CHROME_BIN에 실행 파일을 지정한다. 프런트엔드 검사와 단위 테스트는 apps/web에서 `npm run check`와 `node --test tests/api-cache.test.mjs tests/research-markdown.test.mjs`를 실행한다. 수집·채점 회귀는 검증 DB 또는 별도 임시 PostgreSQL에서 수행한다.
+
+## 첫 Windows 프리뷰 검증 · 2026-11-25 KST
+
+새 DB에서 관찰 종목 23개를 대상으로 RSS 수집을 실행해 모든 종목에서 적격 기사를 받았다. 개발용 last30days는 Hacker News 검색으로 실제 결과 3건을 내보냈고 수집 명령에서 별도로 가져왔다. 수집 결과는 저장 당시의 검색 범위에 의존한다.
+
+첫 실제 사례는 NVDA #1이다. 11월 24일 미국 거래일 자료로 기준선·단일 모델·토론 확률을 발행했다. 첫 토론 시도는 시간 제한으로 실패했다. 같은 사례의 동결된 근거로 재시도해 토론 결과를 저장했고 기존 단일 모델 결과를 유지했다. 만기 전에는 두 가격 조건이 대기이고, 사용할 수 있는 성숙 기억이 없어 기억 실험 두 가지는 건너뛰었다. 최신순 이슈 40건을 보관했다. 만기 예정은 12월 3일 06:00 KST다.
+
+[로컬 조회용 사례](http://127.0.0.1:8025/#/research/1) · [로컬 운영자 사례](http://127.0.0.1:8024/#/research/1)
+
+이 프리뷰는 gant-v3-preview.1 태그로 재현한다. Windows PostgreSQL과 Chrome을 사용한 전체 테스트 142건, 프런트엔드 단위 테스트 2건이 통과했고 Svelte 검사에서 오류·경고가 0건이었다. 아래 두 가지 동작도 실행 중인 인스턴스에서 확인했다. 8024·8025에서 같은 NVDA 사례의 기준선·단일 모델·토론 결과를 읽을 수 있고, 8025의 쓰기 요청은 HTTP 405로 차단된다.
