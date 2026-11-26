@@ -66,10 +66,22 @@ class ReportingBrowserTests(unittest.TestCase):
           const q=s=>document.querySelector(s);
           try {
             location.hash='#/reports';
+            await wait(()=>q('.round-picker button'));
+            const reportTabs=()=>[...document.querySelectorAll('.report-kind button')];
+            const selected=()=>q('.report-kind [aria-pressed=true]')?.textContent;
+            if(reportTabs().map(b=>b.textContent).join('|')!=='분석 리포트|확률 예측' ||
+               selected()!=='분석 리포트' || q('.forecast-reports') || caseQueries.length)throw Error('report list default');
+            reportTabs()[1].click();
             await wait(()=>q('.forecast-reports a[href="#/research/1"]')?.textContent.includes('39.0%'));
+            if(selected()!=='확률 예측' || q('.report-directory'))throw Error('mixed report types');
             const ledger=q('.forecast-reports'), estimate=q('.forecast-reports .figure strong');
             if(getComputedStyle(ledger).backgroundColor!=='rgb(32, 33, 36)' ||
               getComputedStyle(estimate).color!=='rgb(195, 169, 255)') throw Error('forecast ledger theme');
+            q('.forecast-reports a').click();
+            await wait(()=>q('.evidence h2')?.textContent.includes('엔비디아'));
+            history.back();
+            await wait(()=>selected()==='확률 예측' && q('.forecast-reports a'));
+            reportTabs()[0].click();
             await wait(()=>q('.round-picker button'));
             const expectedControlHeight = matchMedia('(max-width: 767px)').matches ? 44 : 40;
             for (const selector of ['.desk-search','.report-kind button','.round-picker button']) {

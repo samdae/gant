@@ -6,6 +6,7 @@
   import ForecastReportList from "../components/ForecastReportList.svelte";
   import { isForecastLab } from "../lib/workspace";
   import { onMount } from "svelte";
+  import { querystring } from "svelte-spa-router";
   import { fetchReportTickers } from "../lib/api/endpoints";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
   import { instrumentName, tickerNames } from "../stores/tickerNames";
@@ -28,9 +29,14 @@
 
   let tickers: TickerSummary[] = [];
   let query = "";
-  let kind: "all" | "forecast" | "trade" = "all";
+  $: kind = isForecastLab && new URLSearchParams($querystring).get("tab") === "forecast" ? "forecast" : "trade";
   let roundsTicker = "";
-  const kinds = [{value:"all",label:"전체"}, {value:"forecast",label:"확률 예측"}, {value:"trade",label:"매매 분석"}] as const;
+  const kinds = [
+    { value: "trade", label: "분석 리포트", hash: "#/reports" },
+    { value: "forecast", label: "확률 예측", hash: "#/reports?tab=forecast" },
+  ] as const;
+  let mounted = false;
+  let requestedTickers = false;
   let loading = true;
   let error = "";
 
@@ -91,8 +97,12 @@
   };
 
   onMount(() => {
-    loadTickers();
+    mounted = true;
   });
+  $: if (mounted && kind === "trade" && !requestedTickers) {
+    requestedTickers = true;
+    loadTickers();
+  }
 
   $: filteredTickers = tickers.filter((t) => matchesCurrency(t.ticker, $currencyFilter));
   $: normalizedQuery = query.trim().toLowerCase();
@@ -111,17 +121,18 @@
 
     {#if isForecastLab}
       <div class="report-filter">
-        <div class="report-kind" aria-label="리포트 유형">
+        <div class="report-kind" role="group" aria-label="리포트 유형">
           {#each kinds as option}
-            <button aria-pressed={kind === option.value} on:click={() => kind = option.value}>{option.label}</button>
+            <button type="button" aria-pressed={kind === option.value} on:click={() => window.location.hash = option.hash}>{option.label}</button>
           {/each}
         </div>
         <label class="desk-search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
             <input type="search" bind:value={query} aria-label="티커 또는 종목명 검색" placeholder="티커 또는 종목명 검색" />
           </label></div>
-      {#if kind !== "trade"}<ForecastReportList {query} />{/if}
-      {#if kind !== "forecast"}
+      {#if kind === "forecast"}
+      <ForecastReportList {query} />
+      {:else}
       <section class="desk-panel report-directory" aria-label="종목별 리포트">
         <header class="desk-toolbar">
           <div class="desk-heading"><h3>매매 분석 리포트</h3>{#if !loading && !error}<span>{published.length}종목</span>{/if}</div>

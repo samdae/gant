@@ -1,5 +1,6 @@
 <script lang="ts">
   import PendingState from "./PendingState.svelte";
+  import RefreshButton from "./RefreshButton.svelte";
   import { onDestroy, onMount } from "svelte";
   import { querystring } from "svelte-spa-router";
   import ResearchFilters from "./ResearchFilters.svelte";
@@ -141,11 +142,8 @@
 <section class="review" class:results-view={view === "results"}>
   <header class="heading">
     <h2>{view === "observe" ? "관측 현황" : "예측 성과"}</h2>
-    <button class="refresh" type="button" disabled={statsBusy || statusBusy} aria-busy={statsBusy || statusBusy} on:click={refreshNow}>
-      <svg class:working={statsBusy || statusBusy} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M20 7v5h-5"/><path d="M19.4 11a7.5 7.5 0 1 0-1.9 6.2"/>
-      </svg>새로고침
-    </button>
+    <RefreshButton label={view === "observe" ? "관측 현황 새로고침" : "예측 성과 새로고침"}
+      busy={statsBusy || statusBusy} on:click={refreshNow} />
     <span class="refresh-announcement" role="status">{announcement}</span>
   </header>
   <ResearchFilters
@@ -368,13 +366,7 @@
 </section>
 
 <style>
-  .refresh {display:inline-flex; align-items:center; justify-content:center; gap:var(--fl-control-gap,8px); min-block-size:var(--fl-control-height,40px);}
-  .refresh svg {flex:none;}
-  .refresh:disabled {cursor:wait;}
   .refresh-announcement {position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%);}
-  .working {animation:refresh-turn .9s linear infinite;}
-  @keyframes refresh-turn {to {transform:rotate(360deg);}}
-  @media(prefers-reduced-motion:reduce){.working{animation:none;}}
 
   .counts div {
     display: flex;
@@ -409,11 +401,8 @@
   }
   .heading {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 0.75rem;
-  }
-  .heading {
     justify-content: space-between;
   }
   h2,
@@ -426,9 +415,6 @@
   }
   h3 {
     font-size: 1.18rem;
-  }
-  button {
-    cursor: pointer;
   }
   .review > section {
     padding: 1.15rem;
@@ -453,10 +439,6 @@
   }
   article p {
     font-size: 0.91rem;
-  }
-  button:focus-visible {
-    outline: 2px solid var(--fl-accent, #d5f65e);
-    outline-offset: 2px;
   }
   .counts,
   .coverage {

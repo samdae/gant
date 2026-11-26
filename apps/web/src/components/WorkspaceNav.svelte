@@ -10,6 +10,7 @@
   const tabs = [
     { href: "/research", label: "연구", group: "예측 연구", icon: "research" },
     { href: "/reports", label: "리포트", group: "분석 기록", icon: "reports" },
+    { href: "/dashboard", label: "대시보드", icon: "dashboard" },
     {
       href: "/portfolio",
       label: "모의계좌",
@@ -22,6 +23,8 @@
   let open = false;
   let viaLink = false;
   $: context = currentPage($location);
+  $: activeTab = tabs.find((tab) => tab.href === context.page.route)
+    ?? tabs.find((tab) => tab.group === context.section.name);
 
   function showMenu() {
     viaLink = false;
@@ -181,7 +184,7 @@
 <nav class="phone-tabs" aria-label="모바일 주 탐색">
   {#each tabs as tab}<a
       href={"#" + tab.href}
-      aria-current={context.section.name === tab.group ? "location" : undefined}
+      aria-current={!open && tab === activeTab ? "location" : undefined}
       ><WorkspaceIcon name={tab.icon} size={21} /><span>{tab.label}</span></a
     >{/each}
   <button
@@ -190,8 +193,7 @@
     aria-controls="workspace-drawer"
     aria-expanded={open}
     aria-label="전체 메뉴 열기"
-    class:active={open ||
-      !tabs.some((tab) => tab.group === context.section.name)}
+    class:active={open || !activeTab}
     on:click={showMenu}
     ><WorkspaceIcon name="menu" size={21} /><span>전체 메뉴</span></button
   >
@@ -342,16 +344,15 @@
     }
     .phone-tabs {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       position: fixed;
       z-index: 60;
       bottom: 0;
       left: 0;
       right: 0;
       box-sizing: border-box;
-      padding: 4px max(5px, env(safe-area-inset-right))
-        max(4px, env(safe-area-inset-bottom))
-        max(5px, env(safe-area-inset-left));
+      padding-block: 4px max(4px, env(safe-area-inset-bottom));
+      padding-inline: max(5px, env(safe-area-inset-left), env(safe-area-inset-right));
       background: var(--fl-surface);
       border-top: 1px solid var(--fl-line);
     }
@@ -362,6 +363,8 @@
       gap: 3px;
       flex-direction: column;
       min-height: 48px;
+      padding-inline: 0;
+      white-space: nowrap;
       color: var(--fl-muted);
       font: 550 11px/1.3 var(--fl-font);
       background: none;

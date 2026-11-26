@@ -1,5 +1,6 @@
 <script lang="ts">
   import PendingState from "./PendingState.svelte";
+  import RefreshButton from "./RefreshButton.svelte";
   import { onDestroy, onMount } from "svelte";
   import { isPublicViewer } from "../lib/workspace";
   import {
@@ -18,6 +19,8 @@
     more = false,
     mounted = false;
   let current: AbortController;
+  let listRegion: string | undefined;
+  let pageCursor: number | undefined;
   const size = 20;
   $: market =
     $currencyFilter === "USD" ? "us" : $currencyFilter === "KRW" ? "kr" : "";
@@ -35,7 +38,9 @@
     current = req;
     busy = true;
     error = false;
-    if (!before) {
+    pageCursor = before;
+    if (region !== listRegion) {
+      listRegion = region;
       rows = [];
       more = false;
     }
@@ -46,7 +51,8 @@
     try {
       const data = await researchGet<CaseRow[]>("cases?" + params, req.signal);
       if (req.signal.aborted) return;
-      rows = [...rows, ...data.slice(0, size)];
+      const page = data.slice(0, size);
+      rows = before === undefined ? page : [...rows, ...page];
       more = data.length > size;
     } catch {
       if (!req.signal.aborted) error = true;
@@ -61,7 +67,10 @@
 </script>
 
 <section class="forecast-reports" aria-label="확률 예측 리포트">
-  <h3>확률 예측</h3>
+  <header class="forecast-heading">
+    <h3>확률 예측</h3>
+    <RefreshButton label="확률 예측 새로고침" {busy} on:click={() => load(market)} />
+  </header>
   {#if visible.length}
     <div class="list-columns" aria-hidden="true">
       <span>회사 · 사례</span><span>상승 확률</span><span>관측일</span>
@@ -85,8 +94,8 @@
     </a>
   {/each}
   {#if error}<p role="alert">
-      예측 목록을 불러오지 못했습니다. <button
-        on:click={() => load(market, rows.at(-1)?.id)}>다시 조회</button
+      {pageCursor !== undefined ? "이전 예측을 불러오지 못했습니다." : rows.length ? "예측 목록을 갱신하지 못했습니다. 마지막 조회 결과입니다." : "예측 목록을 불러오지 못했습니다."}
+      <button on:click={() => load(market, pageCursor)}>다시 조회</button
       >
     </p>
   {:else if !visible.length}<p role="status">
@@ -97,7 +106,7 @@
   {#if more && !error}<button
       disabled={busy}
       on:click={() => load(market, rows[rows.length - 1].id)}
-      >{#if busy}<PendingState label="이전 예측 조회 중" />{:else}이전 예측 더 보기{/if}</button
+      >{#if busy && pageCursor !== undefined}<PendingState label="이전 예측 조회 중" />{:else}이전 예측 더 보기{/if}</button
     >{/if}
 </section>
 
@@ -130,9 +139,15 @@
     overflow: hidden;
     background: var(--fl-surface, #202124);
   }
+  .forecast-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .2rem .45rem .2rem 1rem;
+  }
   h3 {
     margin: 0;
-    padding: 0.9rem 1rem;
     font-size: 1.08rem;
   }
   a {
