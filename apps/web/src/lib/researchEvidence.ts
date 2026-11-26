@@ -96,6 +96,14 @@ export type Issues = {
     first_seen_at: string;
   }[];
 };
+export type ReportNewsEvidence = {
+  version: 1;
+  as_of: string;
+  status: "available" | "empty" | "partial" | "unavailable";
+  items: (Issues["items"][number] & { ref: string })[];
+  analyst_cited: string[];
+  decision_cited: string[];
+};
 export function caseSources(frozen?: Issues | null, collected?: Issues | null) {
   const rssSource = "Google News RSS";
   const exportSource = "last30days agent export";

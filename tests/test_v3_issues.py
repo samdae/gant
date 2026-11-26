@@ -8,10 +8,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import test_forecast_lab_store as store_fixture
 from tradingagents.forecast_lab.scheduled_issues import collect_scheduled
+from tradingagents.forecast_lab.trade_news import trade_news
 from tradingagents.forecast_lab.issue_collector import (
     EXPORT,
     SOURCE,
@@ -22,6 +23,7 @@ from tradingagents.forecast_lab.issue_collector import (
     parse_export,
     parse_feed,
     public_issues,
+    record_observation,
 )
 
 
@@ -50,6 +52,20 @@ def bundle(when):
 
 
 class IssueProjectionTests(unittest.TestCase):
+    def test_trade_news_distinct_urls_keep_stable_contiguous_references(self):
+        cutoff = datetime(2025, 2, 1, tzinfo=UTC)
+        observed = (cutoff - timedelta(hours=1)).isoformat()
+        first = {"url": "https://example.org/one", "title": "먼저 읽은 기사", "source": EXPORT,
+                 "publisher": "example.org", "published_at": observed, "first_seen_at": observed}
+        duplicate = {**first, "source": SOURCE}
+        second = {**duplicate, "url": "https://example.org/two"}
+        with patch("tradingagents.forecast_lab.trade_news.case_issues", side_effect=[
+            {"status": "available", "items": [first]}, {"status": "available", "items": [duplicate, second]},
+        ]):
+            packet = trade_news(Mock(), "WMT", cutoff)
+        self.assertEqual([(row["ref"], row["url"]) for row in packet["items"]],
+                         [("N1", first["url"]), ("N2", second["url"])])
+
     def test_feed_bounds_and_host(self):
         now = datetime.now(UTC)
         self.assertEqual(len(parse_feed(feed(now), now)), 1)
@@ -198,6 +214,45 @@ class IssueStorageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         store_fixture.ForecastStoreTests.setUpClass.__func__(cls)
+
+    def test_trade_news_freezes_both_sources_strictly_before_decision(self):
+        ticker = "NEWS-PKT"
+        cutoff = datetime(2025, 3, 1, 12, tzinfo=UTC)
+        early = cutoff - timedelta(hours=1)
+        with self.store._connect() as conn:
+            for source, publisher, prefix in (
+                (SOURCE, "통신사", "https://news.google.com/rss/articles/article"),
+                (EXPORT, "hackernews", "https://news.ycombinator.com/item?id="),
+            ):
+                items = [(prefix + str(n), f"자료 {n}", publisher, early - timedelta(minutes=n), None)
+                         for n in range(43)]
+                record_observation(conn, ticker, source, ticker, early, "available", items)
+            record_observation(conn, ticker, SOURCE, ticker, cutoff, "available", [
+                ("https://news.google.com/rss/articles/boundary", "Too late", "Reuters", cutoff, None)
+            ])
+        with self.store._connect() as conn:
+            packet = trade_news(conn, ticker, cutoff)
+            self.assertEqual(conn.execute("SHOW transaction_read_only").fetchone()["transaction_read_only"], "on")
+        self.assertEqual(packet["status"], "available")
+        self.assertEqual([x["ref"] for x in packet["items"]], [f"N{i}" for i in range(1, 81)])
+        for source in (SOURCE, EXPORT):
+            self.assertEqual([x["title"] for x in packet["items"] if x["source"] == source],
+                             [f"자료 {n}" for n in range(40)])
+        with self.store._connect() as conn:
+            self.assertEqual(trade_news(conn, ticker, cutoff), packet)
+        with self.store._connect() as conn:
+            self.assertEqual(trade_news(conn, ticker, early)["status"], "unavailable")
+        with self.store._connect() as conn:
+            record_observation(conn, ticker, EXPORT, ticker, cutoff, "failed", [])
+        with self.store._connect() as conn:
+            partial = trade_news(conn, ticker, cutoff + timedelta(seconds=1))
+            self.assertEqual(partial["status"], "partial")
+            self.assertIn("Too late", [x["title"] for x in partial["items"]])
+        with self.store._connect() as conn:
+            for source in (SOURCE, EXPORT):
+                record_observation(conn, "NEWS-ZERO", source, "none", early, "empty", [])
+        with self.store._connect() as conn:
+            self.assertEqual(trade_news(conn, "NEWS-ZERO", cutoff)["status"], "empty")
 
     def test_scheduled_run_precedes_cutoff_and_coalesces_concurrent_schedules(self):
         connect = self.store._connect

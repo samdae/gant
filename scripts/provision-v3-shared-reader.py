@@ -15,7 +15,7 @@ GRANTS = {
         "SELECT (id,ticker,data_session,entry_at,snapshot) ON public.lab_cases",
         "SELECT (case_id,method,probability,status,published_at) ON public.lab_arms"]),
     "v2_console": ("55434", "forecast_lab_console", [
-        "SELECT (id,schedule_job_id,created_at) ON public.reports",
+        "SELECT (id,schedule_job_id,created_at,news_evidence) ON public.reports",
         "SELECT (id,schedule_config_id) ON public.schedule_jobs",
         "SELECT (id,ticker) ON public.schedule_configs"]),
     "v3_archive": ("55436", "forecast_lab_research", [

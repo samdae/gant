@@ -1,6 +1,7 @@
 """Report archives use the saved report identity and two point-in-time source groups."""
 
 from datetime import UTC, datetime
+from contextlib import contextmanager
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
@@ -10,9 +11,85 @@ from fastapi.testclient import TestClient
 from tradingagents.forecast_lab.app import application
 from tradingagents.forecast_lab.issue_collector import EXPORT, SOURCE
 from tradingagents.forecast_lab.public_app import create_app
+from tradingagents.forecast_lab.public_projection import news_evidence_projection
+from tradingagents.forecast_lab.shared_archive import LocalSupplement
+from tradingagents.forecast_lab.shared_view import SharedReader
+from fastapi import HTTPException
 
 
 class ReportArchiveTests(TestCase):
+    def test_input_keeps_reference_order_and_citations_across_two_full_sources(self):
+        cutoff = "2025-01-06T00:00:00+00:00"
+        rows = []
+        for i in range(1, 81):
+            rss = i % 2 == 0
+            rows.append({
+                "ref": f"N{i}", "source": SOURCE if rss else EXPORT,
+                "title": f"Headline {i}", "publisher": "News" if rss else "github",
+                "url": f"https://news.google.com/rss/articles/stored-{i}" if rss else f"https://github.com/public/research/issues/{i}",
+                "published_at": "2025-01-03T00:00:00Z", "first_seen_at": "2025-01-04T00:00:00Z",
+            })
+        for count in (16, 80):
+            with self.subTest(count=count):
+                last = f"N{count}"
+                packet = {"version": 1, "ticker": "NVDA", "as_of": cutoff, "status": "available",
+                          "items": rows[:count], "analyst_cited": ["N1", last], "decision_cited": [last]}
+                clean = news_evidence_projection(packet, "NVDA", cutoff)
+                self.assertEqual([row["ref"] for row in clean["items"]], [row["ref"] for row in rows[:count]])
+                self.assertEqual(clean["items"][-1]["url"], rows[count - 1]["url"])
+                self.assertEqual(clean["decision_cited"], [last])
+                self.assertEqual(news_evidence_projection(clean, "NVDA", cutoff), clean)
+        # 41 RSS + 39 export records are outside the per-source archive contract.
+        unbalanced = [{**rows[1], "ref": "N1", "url": "https://news.google.com/rss/articles/other-123"}, *rows[1:]]
+        self.assertEqual(news_evidence_projection({**packet, "items": unbalanced}, "NVDA", cutoff), {"status": "unverified"})
+
+    def test_frozen_news_input_survives_archive_outage_and_both_public_projections(self):
+        cutoff = "2025-01-06T00:00:00+00:00"
+        item = {
+            "ref": "N1", "source": SOURCE, "publisher": "시장 뉴스", "title": "분석 당시 제목",
+            "url": "https://news.google.com/rss/articles/stored-123",
+            "published_at": "2025-01-03T00:00:00Z", "first_seen_at": "2025-01-04T00:00:00Z",
+            "private_notes": "SECRET",
+        }
+        packet = {"version": 1, "ticker": "NVDA", "as_of": cutoff, "status": "available",
+                  "items": [item], "analyst_cited": ["N1"], "decision_cited": ["N1"], "prompt": "SECRET"}
+        identity = {"ticker": "NVDA", "cutoff": datetime(2025, 1, 7, tzinfo=UTC), "news_evidence": packet}
+        db = Mock()
+        db.execute.return_value.fetchone.return_value = identity
+        local = object.__new__(LocalSupplement)
+
+        @contextmanager
+        def connect(key):
+            if key == "v3_archive":
+                raise HTTPException(503)
+            self.assertEqual(key, "v2_console")
+            yield db
+
+        def read():
+            core = TestClient(create_app(SharedReader(local), shared_role="core"))
+            edge = TestClient(create_app(lambda path: core.get(path).json(), shared_role="edge"))
+            return edge.get("/api/report-sources/3").json()
+
+        with patch.object(local, "connect", connect):
+            data = read()
+            stored = data["news_evidence"]
+            self.assertEqual(data["issues"]["status"], "failed")
+            self.assertNotIn("SECRET", str(data))
+            self.assertEqual(stored["items"][0]["ref"], "N1")
+            self.assertEqual(stored["items"][0]["title"], item["title"])
+            self.assertEqual(stored["decision_cited"], ["N1"])
+            self.assertEqual(stored["as_of"], cutoff)
+            self.assertIn("r.news_evidence", db.execute.call_args.args[0])
+            self.assertEqual(db.execute.call_args.args[1], (3,))
+            for change in ({"ticker": "SPY"}, {"as_of": "2025-01-08T00:00:00Z"},
+                           {"items": [{**item, "first_seen_at": cutoff}]}, {"decision_cited": ["N9"]},
+                           {"items": [{**item, "url": "https://internal.local/private"}]}):
+                with self.subTest(change=change):
+                    identity["news_evidence"] = {**packet, **change}
+                    self.assertEqual(read()["news_evidence"], {"status": "unverified"})
+            identity["news_evidence"] = None
+            self.assertIsNone(read()["news_evidence"])
+
     def test_only_persisted_identity_controls_private_query(self):
         store = Mock()
         when = datetime(2025, 1, 6, tzinfo=UTC)

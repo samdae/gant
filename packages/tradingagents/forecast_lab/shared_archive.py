@@ -10,6 +10,7 @@ from psycopg.rows import dict_row
 
 from .forecast_directory import published_tickers
 from .issue_collector import case_issues, SOURCE, EXPORT
+from .public_projection import news_evidence_projection
 from .shared_view import empty_archive
 
 DATABASES = {
@@ -68,7 +69,7 @@ class LocalSupplement:
                        FROM lab_cases WHERE id=%s"""
         elif kind == "report":
             key = "v2_console"
-            query = """SELECT sc.ticker,r.created_at AS cutoff FROM reports r
+            query = """SELECT sc.ticker,r.created_at AS cutoff,r.news_evidence FROM reports r
                 JOIN schedule_jobs sj ON sj.id=r.schedule_job_id
                 JOIN schedule_configs sc ON sc.id=sj.schedule_config_id WHERE r.id=%s"""
         else:
@@ -87,4 +88,7 @@ class LocalSupplement:
                         groups[name] = {**group, "provenance": "v3_archive_as_of"}
         except HTTPException:
             pass
-        return {"ticker": ticker, "as_of": cutoff.isoformat(), "id": record_id, **groups}
+        result = {"ticker": ticker, "as_of": cutoff.isoformat(), "id": record_id, **groups}
+        if kind == "report":
+            result["news_evidence"] = news_evidence_projection(identity["news_evidence"], ticker, result["as_of"])
+        return result

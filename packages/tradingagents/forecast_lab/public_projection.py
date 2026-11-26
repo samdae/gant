@@ -124,6 +124,58 @@ def archive_projection(raw, cutoff, source):
     return group
 
 
+def news_evidence_projection(raw, ticker, report_time):
+    """Validate the packet saved with this report. An invalid record is never shown as a non-delivery."""
+    from .issue_collector import EXPORT, MAX_ITEMS, SOURCE, public_issues
+
+    if raw is None:
+        return None
+    unknown = {"status": "unverified"}
+    if not isinstance(raw, dict) or type(raw.get("version")) is not int or raw["version"] != 1:
+        return unknown
+    cutoff = instant(raw.get("as_of"))
+    if raw.get("ticker") != ticker or not cutoff or datetime.fromisoformat(cutoff) > datetime.fromisoformat(report_time):
+        return unknown
+    status, rows = raw.get("status"), raw.get("items")
+    if status not in ("available", "partial", "empty", "unavailable") or not isinstance(rows, list) or len(rows) > 2 * MAX_ITEMS:
+        return unknown
+    if (status == "available" and not rows) or (status in ("empty", "unavailable") and rows):
+        return unknown
+    groups = {SOURCE: [], EXPORT: []}
+    refs = []
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict) or row.get("source") not in (SOURCE, EXPORT) or row.get("ref") != f"N{index}":
+            return unknown
+        groups[row["source"]].append(row)
+        refs.append(row["ref"])
+    # Each archive group has its own cutoff, URL checks and maximum. Keep the model's
+    # reference order even when the two sources are interleaved in the saved packet.
+    by_ref = {}
+    try:
+        for source, group in groups.items():
+            if len(group) > MAX_ITEMS:
+                return unknown
+            clean = public_issues({"source": source, "as_of": cutoff, "status": "available", "items": group})
+            if not clean or len(clean["items"]) != len(group):
+                return unknown
+            for row, item in zip(group, clean["items"]):
+                by_ref[row["ref"]] = {**item, "ref": row["ref"]}
+    except (ValueError, OverflowError):
+        return unknown
+    items = [by_ref[ref] for ref in refs]
+    if len({item["url"] for item in items}) != len(items):
+        return unknown
+    cited = {}
+    for key in ("analyst_cited", "decision_cited"):
+        values = raw.get(key)
+        if not isinstance(values, list) or len(values) > len(items) or any(v not in refs for v in values):
+            return unknown
+        cited[key] = [ref for ref in refs if ref in values]
+    if not set(cited["decision_cited"]).issubset(cited["analyst_cited"]):
+        return unknown
+    return {"version": 1, "ticker": ticker, "as_of": cutoff, "status": status, "items": items, **cited}
+
+
 def public_detail(raw, summary):
     fresh = public_case(raw)
     if not fresh or any(

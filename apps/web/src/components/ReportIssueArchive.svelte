@@ -1,12 +1,14 @@
 <script lang="ts">
   import PendingState from "./PendingState.svelte";
   import SourceGroup from "./SourceGroup.svelte";
+  import ReportNewsEvidence from "./ReportNewsEvidence.svelte";
   import { onMount, onDestroy } from "svelte";
   import {
     articleUrl,
     timeLabel,
     researchGet,
     type Issues,
+    type ReportNewsEvidence as NewsEvidence,
   } from "../lib/researchEvidence";
   export let id: number;
   export let ticker: string;
@@ -16,6 +18,7 @@
     as_of: string;
     issues?: Issues;
     last30days?: Issues;
+    news_evidence?: NewsEvidence | { status: "unverified" } | null;
   };
   let archive: Archive | null = null;
   let error = "";
@@ -57,9 +60,14 @@
     </p>
   {:else if !archive}<p><PendingState label="수집 기록을 확인하는 중입니다."/></p>
   {:else}
+    {#if archive.news_evidence?.status === "unverified"}
+      <p>저장된 뉴스 분석가 입력 기록을 확인할 수 없습니다.</p>
+    {:else if archive.news_evidence}
+      <ReportNewsEvidence packet={archive.news_evidence} />
+    {/if}
     <p>
-      {timeLabel(archive.as_of)} 발행 시점까지 {archive.issues?.provenance === "v3_archive_as_of" || archive.last30days?.provenance === "v3_archive_as_of" ? "같은 종목에 대해 별도로 수집된 참고 자료입니다." : "보관된 자료입니다."} 이 자료가 매매
-      판단에 사용됐는지는 기록되지 않았습니다.
+      {timeLabel(archive.as_of)} 발행 시점까지 같은 종목에 대해 수집한 참고 자료입니다.
+      {#if !archive.news_evidence}이 자료 묶음은 이 회차의 뉴스 분석가에게 전달되지 않았습니다.{/if}
     </p>
     {#each [{ label: "last30days 조사 자료", data: archive.last30days }, { label: "뉴스", data: archive.issues }] as group}
       {@const items = group.data?.items || []}

@@ -325,7 +325,7 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None, works
     @app.get("/api/report-sources/{report_id:int}")
     def report_sources(report_id: int):
         from .issue_collector import EXPORT, SOURCE
-        from .public_projection import archive_projection, instant, instrument
+        from .public_projection import archive_projection, instant, instrument, news_evidence_projection
 
         if not 0 < report_id < 10**16:
             raise HTTPException(404)
@@ -345,6 +345,7 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None, works
                 "id": report_id,
                 "ticker": raw["ticker"],
                 "as_of": cutoff,
+                "news_evidence": news_evidence_projection(raw.get("news_evidence"), raw["ticker"], cutoff),
                 "issues": archive_projection(raw.get("issues"), cutoff, SOURCE),
                 "last30days": archive_projection(raw.get("last30days"), cutoff, EXPORT),
             }

@@ -56,12 +56,12 @@ function expiry(path: string, value: unknown, now: number): number {
   if (!/^\/api\/(cases|report-sources)\//.test(path)) return until;
   const record = value as {
     status?: string; entry_open_at?: string; exit_close_at?: string;
-    issues?: { status?: string }; last30days?: { status?: string };
+    issues?: { status?: string }; last30days?: { status?: string }; news_evidence?: { status?: string };
   };
   // "uncollected" is a frozen as-of result. A missing or failed source is retryable.
   const completedSource = (source?: {status?: string}) =>
     source?.status === "available" || source?.status === "empty" || source?.status === "uncollected";
-  if (!completedSource(record.issues) || !completedSource(record.last30days)) return 0;
+  if (!completedSource(record.issues) || !completedSource(record.last30days) || record.news_evidence?.status === "unverified") return 0;
   if (!path.startsWith("/api/cases/")) return until;
   if (record.status === "matured" || record.status === "excluded") return until;
   if (record.status !== "awaiting") return 0;
@@ -122,7 +122,8 @@ export async function publicJson<T>(url: string, options: Options = {}): Promise
   if (signal?.aborted) throw new DOMException("Request aborted", "AbortError");
   const path = url.split("?")[0];
   const token = publishedRoute.test(path) ? cacheToken() : undefined;
-  const key = token ? PREFIX + token + ":GET:" + url : "";
+  const schema = path.startsWith("/api/report-sources/") ? ":news-input-v1:" : ":";
+  const key = token ? PREFIX + token + schema + "GET:" + url : "";
 
   let request: Promise<T>;
   async function download(shared: boolean): Promise<T> {

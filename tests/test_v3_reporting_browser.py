@@ -56,7 +56,11 @@ class ReportingBrowserTests(unittest.TestCase):
             const items=[{title:'회차 자료 '+id,publisher:'테스트 매체',url:'https://example.org/post',
               published_at:date,first_seen_at:date}];
             items.push({...items[0],title:"추가 자료 "+id,url:'https://example.org/more/'+id});
-            return json({id,ticker:'NVDA',as_of:date,issues:{status:'available',items},last30days:{status:'uncollected',items:[]}});
+            const news_evidence=id===7 ? {version:1,status:'available',as_of:'2026-11-23T00:00:00Z',
+              items:Array.from({length:42},(_,i)=>({...items[0],ref:'N'+(i+1),url:'https://example.org/frozen/'+i,
+                source:i%2 ? 'last30days agent export' : 'Google News RSS',title:i===41 ? '인용된 제목' : '입력에만 보관된 제목 '+i})),
+              analyst_cited:['N42'],decision_cited:['N42']} : null;
+            return json({id,ticker:'NVDA',as_of:date,issues:{status:'available',items},last30days:{status:'uncollected',items:[]},news_evidence});
           }
           if(p==='/workspace-api/reports/tickers')return json([{ticker:'NVDA',report_count:2,latest_at:'2026-11-24T03:00:00Z'}]);
           if(p==='/workspace-api/reports')return json([report(8),report(7)]);
@@ -131,6 +135,16 @@ class ReportingBrowserTests(unittest.TestCase):
             q('#cycle-select').click(); await wait(()=>q('[role=option][aria-selected=false]'));
             q('[role=option][aria-selected=false]').click(); await wait(()=>q('.archive')?.innerText.includes('회차 자료 7'));
             const [emptyArchive,newsArchive]=document.querySelectorAll('.archive .source');
+            const delivered=q('.archive .news-input');
+            if(!delivered?.innerText.includes('입력 기준') || !delivered.innerText.includes('인용된 제목') ||
+               !delivered.innerText.includes('최종 판단 인용 1건') || delivered.innerText.includes('입력에만 보관된 제목'))
+              throw Error('saved references and citations');
+            delivered.querySelector('button').click();
+            await wait(()=>delivered.innerText.includes('입력에만 보관된 제목'));
+            if(delivered.querySelectorAll('article').length!==42 || !delivered.querySelector('article').innerText.includes('N42') ||
+               !delivered.querySelector('article').innerText.includes('뉴스 분석가 인용'))
+              throw Error('all delivered headlines');
+            delivered.querySelector('button').click();
             const expand=newsArchive.querySelector('h4 > button[aria-expanded="false"]');
             if(!emptyArchive.querySelector('h4')?.textContent.includes('last30days') ||
                !emptyArchive.textContent.includes('0건') || emptyArchive.querySelector('button') ||
