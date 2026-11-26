@@ -102,9 +102,10 @@
   .archive {
     background: var(--fl-surface, #202124);
     color: var(--fl-ink, #f4f2e9);
-    border-block: 1px solid var(--fl-line, #3b3d41);
+    border: 1px solid var(--fl-line);
+    border-radius: var(--fl-radius,16px);
     margin: 1rem 0;
-    padding: 1rem;
+    padding: clamp(16px,2.5vw,28px);
   }
   h3 {
     margin: 0;

@@ -104,9 +104,10 @@
 {/if}
 
 <style>
-  .work-controls { display:flex; align-items:center; gap:12px; }
+  .work-controls { display:flex; align-items:center; flex-wrap:nowrap; gap:10px 14px; }
   .control-field { display:flex; gap:6px; align-items:center; min-width:0; font-size:13px; }
-  .control-field > span { color:var(--fl-muted); }
+  .control-field :global(.select-menu) { width: auto; }
+  .control-field > span { flex:none; white-space:nowrap; color:var(--fl-muted); font-size:.77rem; font-weight:570; }
   @media(max-width:600px) {
     .work-controls { gap:5px; }
     .control-field > span { display:none; }

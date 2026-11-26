@@ -368,16 +368,19 @@
 <style>
   .refresh-announcement {position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%);}
 
-  .counts div {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
+  .counts {
+    border-block:1px solid var(--fl-line);
+    margin:16px 0;
   }
+  .counts div { display:flex; align-items:baseline; gap:.6rem; }
+  .counts div dd { order:-1; font-size:1.45rem; color:var(--fl-ink); }
+  .review > section > h3 { margin-bottom:.6rem; }
+
   .cohort-empty,
   .review > section {
     background: var(--fl-surface, #202124);
     border: 1px solid var(--fl-line, #3b3d41);
-    border-radius: 0.25rem;
+    border-radius: var(--fl-radius,16px);
     padding: 1rem 1.2rem;
     margin-block: 0.9rem;
   }
@@ -411,13 +414,14 @@
     margin: 0;
   }
   h2 {
-    font-size: 1.65rem;
+    font:730 clamp(1.8rem,3vw,2.65rem)/1.15 var(--fl-display);
+    letter-spacing:-.035em;
   }
   h3 {
     font-size: 1.18rem;
   }
   .review > section {
-    padding: 1.15rem;
+    padding: clamp(17px,2.6vw,30px);
     border-top: 1px solid var(--fl-line, #3b3d41);
   }
   p,

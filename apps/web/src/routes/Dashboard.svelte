@@ -216,6 +216,24 @@
       <PortfolioSummary config={portfolioConfig} />
     {/if}
 
+    {#if isForecastLab && (reportStatus !== "ready" || recentReports.length)}
+      <section class="desk-panel desk-recent" aria-label="최근 발행 리포트">
+        <header class="desk-toolbar"><h3>최근 발행 리포트</h3><a href="#/reports">전체 보기 <span aria-hidden="true">→</span></a></header>
+        {#if recentReports.length}
+          <div class="latest-edition">
+          {#each recentReports as report}
+            <a class="latest-story" href={"#/reports/" + encodeURIComponent(report.ticker.toLowerCase())}>
+              <InstrumentLabel ticker={report.ticker} name={report.display_name} />
+              <DecisionBadge value={(report.stored_decision_position === undefined ? report.decision_position : report.stored_decision_position) || ""} />
+              <time datetime={report.latest_at}>{formatDateTime(report.latest_at)}</time>
+            </a>
+          {/each}
+          </div>
+        {:else}
+          <div class="desk-state">{#if reportStatus === "loading"}<PendingState label="최근 리포트 조회 중"/>{:else}{reportStatus === "error" ? "최근 리포트를 조회할 수 없습니다." : "발행된 리포트가 없습니다."}{/if}</div>
+        {/if}
+      </section>
+    {/if}
     {#if quietAccount}
       <section class="quiet-account">
         <header><h3>보유·거래 현황</h3><a href="#/positions">포지션 명세</a></header>
@@ -418,23 +436,6 @@
 
     {/if}
 
-    {#if isForecastLab && (reportStatus !== "ready" || recentReports.length)}
-      <section class="desk-panel desk-recent">
-        <header class="desk-toolbar"><h3>최근 발행 리포트</h3><a href="#/reports">전체 보기 <span aria-hidden="true">→</span></a></header>
-        {#if recentReports.length}
-          {#each recentReports as report}
-            <a class="desk-recent-row" href={`#/reports/${encodeURIComponent(report.ticker.toLowerCase())}`}>
-              <span class="desk-document" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h5"/></svg></span>
-              <span class="desk-instrument"><InstrumentLabel ticker={report.ticker} name={report.display_name} /></span>
-              <DecisionBadge value={(report.stored_decision_position === undefined ? report.decision_position : report.stored_decision_position) || ""} />
-              <time datetime={report.latest_at}>{formatDateTime(report.latest_at)}</time>
-            </a>
-          {/each}
-        {:else}
-          <div class="desk-state">{#if reportStatus === "loading"}<PendingState label="최근 리포트 조회 중"/>{:else}{reportStatus === "error" ? "최근 리포트를 조회할 수 없습니다." : "발행된 리포트가 없습니다."}{/if}</div>
-        {/if}
-      </section>
-    {/if}
     <div class="dashboard-grid">
       {#if !isForecastLab || loading || error || ($viewMode === "portfolio" ? filteredPortfolioHoldings.length : filteredPositions.length)}
       <div class="card">
@@ -557,6 +558,13 @@
 </section>
 
 <style>
+  .latest-edition { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,175px),1fr)); }
+  .latest-story { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:9px 12px; min-width:0; padding:16px 20px; text-decoration:none; color:var(--fl-ink); border-inline-end:1px solid var(--fl-line); }
+  .latest-story:last-child { border:0; }
+  .latest-story :global(.instrument) { flex:1 1 58%; }
+  .latest-story:hover { background:var(--fl-surface-subtle); }
+  .latest-story time { width:100%; color:var(--fl-muted); font-size:.77rem; }
+  @media(max-width:640px) { .latest-edition { grid-template-columns:1fr; } .latest-story { border-inline-end:0; border-bottom:1px solid var(--fl-line); padding:13px 16px; } .latest-story time { width:auto; } }
   .quiet-account {grid-column:1/-1; background:var(--fl-surface, #202124); color:var(--fl-ink, #f4f2e9); border:1px solid var(--fl-line, #3b3d41); border-radius:.7rem; padding:1.1rem 1.25rem;}
   .quiet-account header,.quiet-account dl div,.quiet-actions {display:flex; justify-content:space-between; align-items:center; gap:.75rem;}
   .quiet-account header {border-bottom:1px solid var(--fl-line, #3b3d41); padding-bottom:.75rem;}

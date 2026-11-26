@@ -2,7 +2,13 @@
 
 [v3 리포트](https://v3.daehun.app/#/reports) · [엔비디아 예측 사례](https://v3.daehun.app/#/research/35) · [v2 메인](https://daehun.app/)
 
-## GANT v3 · 개발 브랜치
+## GANT v4 · 공개 뷰어
+
+[리포트 열기](https://v3.daehun.app/v4/#/reports) · [연구 사례](https://v3.daehun.app/v4/#/research) · [대시보드](https://v3.daehun.app/v4/#/dashboard)
+
+이 브랜치 `codex/gant-v4`는 v3의 `gant-v3-preview.10`에서 분기했다. 새 탐색 도구와 본문 배치로 기존 리포트, 예측, 매매 기록을 읽을 수 있다. 자료와 인용은 v3의 공개 조회 경로에서 가져오며, 예측 발행과 모의매매 예약은 v2에서 실행한다. 제품 변경과 함께 기획·설계 및 배포 절차를 유지한다. [제품 기획](PRODUCT.md) · [화면 설계](DESIGN.md) · [Windows 배포](docs/v4/OPERATIONS.md)
+
+## GANT v3 · 이전 버전
 
 새 예약 매매 리포트에서 뉴스 분석가에게 전달된 최근 30일 자료와 뉴스 분석가·최종 판단의 기사 인용을 확인할 수 있다. 발행 시점 참고 목록은 별도로 열람한다. [매매 분석의 뉴스 입력](docs/v3/ISSUES.md)
 

@@ -45,7 +45,7 @@
   }
   .filter-grid {
     display: grid;
-    grid-template-columns: minmax(85px, 105px) minmax(0, 1fr);
+    grid-template-columns: minmax(116px, 126px) minmax(0, 1fr);
     gap: var(--fl-control-gap, 8px);
     max-width: 400px;
     align-items: end;

@@ -92,7 +92,7 @@
 .op-cancel:hover, .op-cancel:focus-visible {
   color: var(--fl-down, #ff9a85);
   border-color: var(--fl-line, #3b3d41);
-  background: #372728;
+  background: var(--fl-negative-soft, #f8e5de);
 }
 .op-related {
   justify-content: flex-start;
@@ -277,16 +277,16 @@
   font-size: 0.75rem;
 }
 .op-state[data-state="running"] {
-  background: #323426;
+  background: var(--fl-surface-subtle);
   color: var(--fl-accent, #d5f65e);
 }
 .op-state[data-state="completed"] {
-  background: #26342e;
-  color: #abdabd;
+  background: var(--fl-accent-soft);
+  color: var(--fl-accent);
 }
 .op-state[data-state="error"],
 .op-error {
-  background: #372728;
+  background: var(--fl-negative-soft, #f8e5de);
   color: var(--fl-down, #ff9a85);
 }
 .op-error {

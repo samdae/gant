@@ -43,9 +43,10 @@
 </span>
 
 <style>
-  .evidence, .fact, .fill { display: flex; flex-wrap: wrap; align-items: center; }
-  .evidence { gap: 8px 16px; text-align: left; min-width: 0; }
-  .fact, .fill { gap: 4px 6px; font-size: .8rem; }
-  .label, time { color: var(--fl-muted, #b5b4ad); }
-  .fill { font-variant-numeric: tabular-nums; }
+  .evidence { display:grid; grid-template-columns:minmax(5rem,1fr) minmax(6rem,1fr) minmax(9rem,1.6fr); gap:14px; width:100%; min-width:0; }
+  .fact { display:flex; flex-wrap:wrap; gap:6px; align-content:start; align-items:center; color:var(--fl-ink); font-size:.88rem; }
+  .label { width:100%; color:var(--fl-muted); font-size:.79rem; font-weight:600; }
+  .fill { display:flex; flex-wrap:wrap; align-items:center; gap:4px; font-variant-numeric:tabular-nums; }
+  time { color:var(--fl-muted); }
+  @media(max-width:550px) { .evidence { grid-template-columns:1fr 1fr; } .fills { grid-column:1/-1; } }
 </style>

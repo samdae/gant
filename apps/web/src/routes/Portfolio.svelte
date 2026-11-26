@@ -66,8 +66,11 @@
         </div>
       {:else if isPublicViewer}
         <section class="account-register">
-          <div class="register-title"><h3>모의 계좌 미개설</h3></div>
-          <p>초기 자본이 설정되면 잔액과 보유 종목을 확인할 수 있습니다.</p>
+          <div class="register-title">
+            <svg aria-hidden="true" viewBox="0 0 48 48"><path d="M8 17v-5c0-2 1-3 3-3h24v8M9 16h30a2 2 0 0 1 2 2v18a2 2 0 0 1-2 2H10a3 3 0 0 1-3-3V19a3 3 0 0 1 2-3Z"/><path d="M41 23h-9a3 3 0 0 0 0 6h9"/></svg>
+            <h3>모의 계좌 미개설</h3>
+            <p>초기 자본이 설정되면 잔액과 보유 종목을 확인할 수 있습니다.</p>
+          </div>
           <nav aria-label="관련 거래 기록">
             <a href="#/research">예측 사례 읽기</a>
             <a href="#/dashboard" on:click={() => viewMode.set("analysis")}
@@ -146,30 +149,15 @@
 {/if}
 
 <style>
-  .account-register {
-    padding: 1rem 1.15rem;
-    border-radius: 0.65rem;
-    background: var(--fl-surface, #202124);
-    border: 1px solid var(--fl-line, #3b3d41);
-    color: var(--fl-ink, #f4f2e9);
-  }
-  .register-title h3 {
-    font-size: 1.08rem;
-    font-weight: 650;
-    margin: 0;
-  }
-  .account-register p {
-    font-size: 0.9rem;
-    margin: 0.4rem 0 0.85rem;
-    color: var(--fl-muted, #b5b4ad);
-  }
-  .account-register nav {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem 1.25rem;
-    border-top: 1px solid var(--fl-line, #3b3d41);
-    padding-top: 0.65rem;
-  }
+  .account-register { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(160px,.75fr); gap:20px 44px; max-width:850px; padding:clamp(22px,4vw,44px); background:var(--fl-surface); border:1px solid var(--fl-line); border-radius:var(--fl-radius,16px); color:var(--fl-ink); }
+  .register-title svg { width:34px; height:34px; fill:none; stroke:var(--fl-accent); stroke-width:1.8; stroke-linejoin:round; stroke-linecap:round; margin-bottom:16px; }
+  .register-title h3 { font:700 1.6rem/1.25 var(--fl-display); letter-spacing:-.03em; margin:0; }
+  .account-register p { font-size:.92rem; margin:.6rem 0 0; color:var(--fl-muted); }
+  .account-register nav { display:grid; align-content:center; min-width:0; }
+  .account-register nav a { display:flex; justify-content:space-between; align-items:center; min-height:44px; border-bottom:1px solid var(--fl-line); text-decoration:none; }
+  .account-register nav a:last-child { border:0; }
+  .account-register nav a::after { content:""; width:7px; height:7px; border:solid currentColor; border-width:1.5px 1.5px 0 0; transform:rotate(45deg); margin-right:3px; }
+  @media(max-width:620px) { .account-register { grid-template-columns:1fr; } .account-register nav { border-top:1px solid var(--fl-line); } }
   .account-register a,
   .setup-research {
     color: var(--fl-accent, #d5f65e);

@@ -246,7 +246,7 @@
         동결된 거래량 기록이 없습니다.
       </p>{/if}
     {#if candles}<p class="candle-key">
-        라임 양봉 · 코럴 음봉 · 꼬리는 고가와 저가
+        청록 양봉 · 산호색 음봉 · 꼬리는 고가와 저가
       </p>{/if}
     <details>
       <summary>거래일별 시세 · {series.length}건</summary>
@@ -279,7 +279,7 @@
     background: var(--fl-chart-bg, #131415);
     color: var(--fl-ink);
     padding: clamp(15px, 2vw, 23px);
-    border-radius: 0;
+    border-radius: var(--fl-radius,16px);
     height: 100%;
     box-sizing: border-box;
     font-variant-numeric: tabular-nums;
@@ -294,9 +294,7 @@
     fill: var(--fl-accent);
   }
   .chart .type {
-    border-left: 1px solid var(--fl-line);
-    padding-left: 10px;
-    margin-right: auto;
+    margin-left: auto;
   }
   .bar-values {
     display: flex;
@@ -328,7 +326,7 @@
   }
   .volume-bar {
     opacity: 1;
-    fill: #6b6c5c;
+    fill: var(--fl-chart-volume, #79978d);
   }
   .candle-key,
   .volume-note {
@@ -337,7 +335,10 @@
   .chart header > div {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 1px;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--fl-surface-subtle);
   }
   .chart button:focus-visible {
     outline: 2px solid var(--fl-chart-line, #d5f65e);
@@ -381,14 +382,14 @@
     background: none;
     color: var(--fl-muted);
     font: 600 0.78rem var(--fl-font, sans-serif);
-    border-radius: 6px;
+    border-radius: 999px;
     min-width: 32px;
     min-height: 30px;
     cursor: pointer;
   }
   button[aria-pressed="true"] {
     background: var(--fl-accent);
-    color: var(--fl-on-accent, #171912);
+    color: var(--fl-on-accent, white);
   }
   .interactive {
     position: relative;
@@ -406,7 +407,7 @@
     stroke-linejoin: round;
   }
   svg .area {
-    fill: #d5f65e0d;
+    fill: color-mix(in srgb,var(--fl-chart-line) 11%, transparent);
     stroke: none;
   }
   circle {

@@ -46,7 +46,7 @@
 
 <section class="forecast-reports" aria-label="확률 예측 리포트">
   <header class="forecast-heading">
-    <h3>확률 예측</h3>
+    <div><h3>확률 예측</h3>{#if !busy && !error}<p class="forecast-counter">{visible.length}개 종목 · 종목별 최근 발행</p>{/if}</div>
     <RefreshButton label="확률 예측 새로고침" {busy} on:click={() => load(true)} />
   </header>
   {#if visible.length}
@@ -91,11 +91,12 @@
         0.45fr
       );
     gap: 0.75rem;
-    padding: 0.45rem 1rem;
+    padding: .6rem clamp(14px,2.5vw,28px);
     background: var(--fl-surface-subtle, #27282b);
     color: var(--fl-muted, #b5b4ad);
     font-size: 0.8rem;
   }
+  .forecast-counter { color:var(--fl-muted); font-size:.85rem; margin:6px 0 0; }
   .subject {
     display: grid;
     gap: 0.25rem;
@@ -108,7 +109,7 @@
   .forecast-reports {
     margin-block: 1rem 1.5rem;
     border: 1px solid var(--fl-line, #3b3d41);
-    border-radius: 0.25rem;
+    border-radius: var(--fl-radius, 16px);
     overflow: hidden;
     background: var(--fl-surface, #202124);
   }
@@ -117,11 +118,12 @@
     align-items: center;
     justify-content: space-between;
     gap: .75rem;
-    padding: .2rem .45rem .2rem 1rem;
+    padding: clamp(18px, 2.5vw, 30px);
   }
   h3 {
     margin: 0;
-    font-size: 1.08rem;
+    font-size: clamp(1.35rem, 2.3vw, 2rem);
+    letter-spacing: -.035em;
   }
   a {
     display: grid;
@@ -131,7 +133,7 @@
       );
     align-items: center;
     gap: 0.75rem;
-    padding: 0.85rem 1rem;
+    padding: 1rem clamp(14px,2.5vw,28px);
     border-top: 1px solid var(--fl-line, #3b3d41);
     text-decoration: none;
     color: var(--fl-ink, #f4f2e9);

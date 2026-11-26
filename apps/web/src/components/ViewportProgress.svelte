@@ -66,8 +66,8 @@
   .viewport-progress {
     display:none; position:fixed; inset:0; margin:auto; width:36px; height:36px;
     border:0; border-radius:50%; padding:0; z-index:11001; pointer-events:none;
-    background:var(--fl-surface, #202124); color:var(--fl-accent, #d5f65e);
-    box-shadow:0 2px 8px #0004; align-items:center; justify-content:center;
+    background:var(--fl-glass-raised,var(--fl-surface)); color:var(--fl-accent, #d5f65e);
+    box-shadow:var(--fl-glass-shadow); align-items:center; justify-content:center;
   }
   .viewport-progress.visible { display:flex; }
   .viewport-progress::backdrop { background:transparent; pointer-events:none; }

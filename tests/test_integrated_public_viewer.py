@@ -16,6 +16,24 @@ CHROME = next((x for x in (os.environ.get("CHROME_BIN"), shutil.which("chromium"
     shutil.which("google-chrome"), r"C:\Program Files\Google\Chrome\Application\chrome.exe") if x and Path(x).is_file()), None)
 
 
+def bundle_base():
+    shell = DIST / "index.html"
+    if shell.is_file() and 'src="/v4/assets/' in shell.read_text(encoding="utf8"):
+        return "/v4/"
+    return "/"
+
+
+DIST_BASE = bundle_base()
+
+
+class BundleHandler(SimpleHTTPRequestHandler):
+    """Serve the same static bundle at its production mount point."""
+    def translate_path(self, path):
+        if DIST_BASE != "/" and path.startswith(DIST_BASE):
+            path = "/" + path[len(DIST_BASE):]
+        return super().translate_path(path)
+
+
 @unittest.skipUnless(os.environ.get("FORECAST_PUBLIC_UI_DIST") and CHROME and (DIST / "index.html").exists(), "requires Chromium and a built Forecast Lab bundle")
 class IntegratedPublicViewerTests(unittest.TestCase):
     def test_anonymous_reads_with_stale_admin_state(self):
@@ -26,6 +44,15 @@ class IntegratedPublicViewerTests(unittest.TestCase):
           async function wait(test) {for(let i=0;i<100;i++){if(test())return;await new Promise(r=>setTimeout(r,25));}throw Error(location.hash+' '+test);}
           async function visit(hash,test){location.hash=hash;await wait(test);}
           function check(ok,label){if(!ok)errors.push(label);}
+          function material(token) {
+            const node=document.createElement('span');
+            node.style.background='var('+token+')';
+            document.body.append(node);
+            const css=getComputedStyle(node);
+            const value=[css.backgroundColor,css.backgroundImage];
+            node.remove();
+            return value;
+          }
           try {
             await wait(()=>document.querySelector('.workspace'));
             await wait(()=>document.querySelector('#page-reports'));
@@ -60,7 +87,9 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             await wait(()=>document.querySelectorAll('.register a').length===3);
             const picker=document.querySelector('.research-desk dialog');
             check(!picker.open,'compact picker initially closed');
-            document.querySelector('.choose').click();check(picker.open && getComputedStyle(picker).backgroundColor==='rgb(32, 33, 36)' && getComputedStyle(picker).colorScheme==='dark','native dark picker opens');
+            document.querySelector('.choose').click();
+            check(picker.open && getComputedStyle(picker).backgroundColor===material('--fl-surface')[0] &&
+              getComputedStyle(picker).colorScheme==='light','light reading surface in picker');
             const marketPicker=picker.querySelector('[role="combobox"]');
             const press=async (control,key)=>{
               control.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
@@ -70,7 +99,9 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             await press(marketPicker,'Enter');
             const marketList=picker.querySelector('[role="listbox"]');
             check(marketList?.matches(':popover-open') && marketList.querySelector('[aria-selected="true"]') &&
-              getComputedStyle(marketList).opacity==='1' && getComputedStyle(marketList).backgroundColor==='rgb(32, 33, 36)', 'opaque market selection inside dialog');
+              getComputedStyle(marketList).opacity==='1' &&
+              getComputedStyle(marketList).backgroundColor===material('--fl-glass-raised')[0] &&
+              getComputedStyle(marketList).backgroundImage===material('--fl-glass-raised')[1], 'raised market selection inside dialog');
             await press(marketPicker,'End');
             check(marketPicker.getAttribute('aria-activedescendant')===marketList.lastElementChild.id,'End focuses last market');
             await press(marketPicker,'Escape');
@@ -88,9 +119,10 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             candle.click();await Promise.resolve();
             check(chart.querySelectorAll('g.candle').length===1 && chart.querySelectorAll('.volume-bar').length===1 &&
               chart.querySelector('.bar-values').textContent.includes('12,345주'), 'frozen OHLC and actual volume only');
-            check(getComputedStyle(document.querySelector('.analysis-board')).backgroundColor==='rgb(32, 33, 36)' &&
-              getComputedStyle(document.querySelector('.track i')).backgroundColor==='rgb(195, 169, 255)' &&
-              getComputedStyle(chart.querySelector('.candle.rising rect')).fill==='rgb(213, 246, 94)', 'distinct price and model colors');
+            const priceColor = getComputedStyle(chart.querySelector('.candle.rising rect')).fill;
+            const modelColor = getComputedStyle(document.querySelector('.track i')).backgroundColor;
+            check(modelColor===material('--fl-forecast')[0] && priceColor===material('--fl-chart-line')[0] &&
+              priceColor!==modelColor, 'distinct price and model colors');
             check(document.querySelector('.range-summary')?.textContent.includes('50.0%–61.0%') && document.querySelector('.range-summary')?.textContent.includes('11.0%p'), 'published model range');
             check(document.querySelector('.comparison').textContent.includes('61.0%') && document.querySelector('.axis').textContent.includes('50%'), 'common probability axis');
             [...document.querySelectorAll('.compare-row')].find(el=>el.textContent.includes('역할 토론')).click();
@@ -159,7 +191,7 @@ class IntegratedPublicViewerTests(unittest.TestCase):
           const o=document.createElement('output');o.id='result';o.textContent=errors.join('/')||'passed';document.body.replaceChildren(o);
         })()
         """
-        class Handler(SimpleHTTPRequestHandler):
+        class Handler(BundleHandler):
             def log_message(self, *_):
                 pass
 
@@ -167,7 +199,7 @@ class IntegratedPublicViewerTests(unittest.TestCase):
                 path = urlsplit(self.path).path
                 if self.headers.get("Authorization") or "/events" in path or "retry-candidates" in path or path.startswith("/ws/"):
                     forbidden.append(path)
-                if path == "/":
+                if path == DIST_BASE:
                     html = (DIST / "index.html").read_text(encoding="utf8").replace("<head>", '<head><meta name="forecast-console-access" content="public-readonly"><script>localStorage.setItem("gant_admin_token","stale-test-only");window.socketCalls=0;window.WebSocket=class{constructor(){window.socketCalls++}}</script>')
                     gate = """<script>
                     const directoryGate=new Promise(done=>window.releaseDirectory=done);
@@ -230,7 +262,7 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as root:
                 for width in [360,393,1440]:
                     with self.subTest(width=width):
-                        url=f"http://127.0.0.1:{server.server_port}/"
+                        url=f"http://127.0.0.1:{server.server_port}{DIST_BASE}"
                         dom=subprocess.run([CHROME,"--headless=new","--disable-gpu","--no-first-run","--no-proxy-server",
                             "--virtual-time-budget=12000",f"--window-size={width},900",f"--user-data-dir={root}/{width}",
                             "--dump-dom",url],capture_output=True,encoding="utf8",errors="replace",timeout=35,check=True).stdout

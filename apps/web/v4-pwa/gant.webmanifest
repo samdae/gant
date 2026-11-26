@@ -1,0 +1,37 @@
+{
+  "id": "/v4/",
+  "name": "GANT v4 리포트",
+  "short_name": "GANT v4",
+  "lang": "ko",
+  "start_url": "/v4/#/reports",
+  "scope": "/v4/",
+  "display": "standalone",
+  "theme_color": "#eaf1ee",
+  "background_color": "#eaf1ee",
+  "icons": [
+    {
+      "src": "/v4/gant-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/v4/gant-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/v4/gant-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/v4/gant-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

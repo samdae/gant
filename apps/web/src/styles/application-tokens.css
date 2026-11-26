@@ -1,37 +1,43 @@
-/* Bundle with the application so a deployment switches layout and tokens together. */
+/* A single set of semantic colors is shared by charts, reports, and navigation. */
 html.gant-workspace {
-  --fl-control-height: 40px;
-  --fl-control-radius: 7px;
-  --fl-control-padding-inline: 12px;
+  --fl-control-height: 42px;
+  --fl-control-radius: 12px;
+  --fl-control-padding-inline: 13px;
   --fl-control-gap: 8px;
-  --fl-tap-highlight: rgb(213 246 94 / 15%);
-  --fl-bg: #18191b;
-  --fl-backdrop: #131415;
-  --fl-surface: #202124;
-  --fl-surface-subtle: #27282b;
-  --fl-ink: #f4f2e9;
-  --fl-muted: #b5b4ad;
-  --fl-line: #3b3d41;
-  --fl-accent: #d5f65e;
-  --fl-on-accent: #171912;
-  --fl-accent-hover: #e1ff81;
-  --fl-accent-soft: #313621;
-  --fl-forecast: #c3a9ff;
-  --fl-forecast-soft: #332c41;
-  --fl-nav: #151617;
+  --fl-tap-highlight: rgb(7 95 91 / 14%);
+  --fl-bg: #eaf1ee;
+  --fl-backdrop: #f1f5f1;
+  --fl-surface: #fcfdfb;
+  --fl-surface-subtle: #eaf0ed;
+  --fl-ink: #162e32;
+  --fl-muted: #4d6264;
+  --fl-line: #c7d4cf;
+  --fl-accent: #075f5b;
+  --fl-on-accent: #fff;
+  --fl-accent-hover: #034945;
+  --fl-accent-soft: #d3eae3;
+  --fl-forecast: #82426f;
+  --fl-forecast-soft: #f3e6ee;
+  --fl-nav: #edf4f0;
   --fl-nav-ink: var(--fl-ink);
-  --fl-nav-muted: #aaa9a1;
-  --fl-chart-bg: var(--fl-backdrop);
-  --fl-chart-line: var(--fl-accent);
-  --fl-down: #ff9a85;
-  --fl-positive: var(--fl-accent);
-  --fl-negative: var(--fl-down);
-  --fl-font: Inter, "Noto Sans KR", "Apple SD Gothic Neo", system-ui,
-    "Malgun Gothic", sans-serif;
+  --fl-nav-muted: var(--fl-muted);
+  --fl-chart-bg: #f4f8f5;
+  --fl-chart-line: #147371;
+  --fl-positive: #0b695a;
+  --fl-negative: #a33d35;
+  --fl-down: var(--fl-negative);
+  --fl-sell: var(--fl-negative);
+  --fl-negative-soft: #f8e5de;
+  --fl-glass: #e9f1ee;
+  --fl-glass-raised: #f6faf7;
+  --fl-glass-edge: rgb(255 255 255 / 88%);
+  --fl-glass-blur: none;
+  --fl-glass-shadow: inset 0 1px 1px #fff, inset 0 -1px 1px rgb(56 92 84 / 12%), 0 8px 28px -12px rgb(19 63 56 / 27%);
+  --fl-font: Inter, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, "Malgun Gothic", sans-serif;
   --fl-display: var(--fl-font);
   --fl-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  --fl-radius: 8px;
-  --fl-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  --fl-radius: 16px;
+  --fl-shadow: 0 4px 16px -8px rgb(39 72 65 / 16%);
   --bg: var(--fl-bg);
   --bg-card: var(--fl-surface);
   --bg-header: var(--fl-surface);
@@ -43,63 +49,53 @@ html.gant-workspace {
   --text-dim: var(--fl-muted);
   --primary: var(--fl-accent);
   --primary-hover: var(--fl-accent-hover);
-  --primary-border: #626c37;
+  --primary-border: #85aba4;
   --primary-bg: var(--fl-accent-soft);
   --border: var(--fl-line);
   --border-light: var(--fl-line);
-  --bg-modal: rgb(0 0 0 / 66%);
-  --fl-sell: #acd0df;
-  color-scheme: dark;
+  --bg-modal: rgb(26 47 48 / 30%);
+  color-scheme: light;
+  color: var(--fl-ink);
   background: var(--fl-bg);
-  scroll-padding-bottom: max(76px, env(safe-area-inset-bottom));
+  caret-color: var(--fl-accent);
+  scrollbar-color: #8bafa7 transparent;
+  scroll-padding-top: 80px;
+  scroll-padding-bottom: calc(88px + env(safe-area-inset-bottom));
 }
-@media (max-width: 767px) {
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   html.gant-workspace {
-    --fl-control-height: 44px;
+    --fl-glass: linear-gradient(132deg, rgb(255 255 255 / 81%), rgb(240 251 247 / 56%) 58%, rgb(222 238 233 / 67%));
+    --fl-glass-raised: linear-gradient(148deg, rgb(255 255 255 / 95%), rgb(238 248 244 / 88%));
+    --fl-glass-blur: saturate(145%) blur(20px);
   }
 }
-
-/* Navigation should reveal the destination immediately, especially under the fixed mobile tabs. */
-.gant-workspace .workspace .page {
-  animation: none;
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  html.gant-workspace {
+    --fl-glass: #eef4f0;
+    --fl-glass-raised: #fcfdfb;
+    --fl-glass-edge: #97aba4;
+    --fl-glass-blur: none;
+    --fl-glass-shadow: none;
+  }
+}
+@media (max-width: 767px) {
+  html.gant-workspace { --fl-control-height: 44px; }
 }
 
-html.gant-workspace :is(input, select, textarea) {
-  color-scheme: dark;
-  accent-color: var(--fl-accent);
+html.gant-workspace { scrollbar-width: thin; }
+html.gant-workspace body { padding-top: 0; background: var(--fl-bg); }
+html.gant-workspace :is(input,select,textarea) { color-scheme: light; accent-color: var(--fl-accent); }
+html.gant-workspace .workspace .page { animation: none; }
+html.gant-workspace ::selection { background: #b9ded2; color: var(--fl-ink); }
+html.gant-workspace :focus-visible { outline-color: var(--fl-accent); }
+html.gant-workspace .workspace :is(.btn-primary,.op-primary,.modal-footer .btn-primary) {
+  background: var(--fl-accent); color: var(--fl-on-accent); border-color: var(--fl-accent);
 }
-html.gant-workspace select option {
-  background: var(--fl-surface);
-  color: var(--fl-ink);
+html.gant-workspace .workspace :is(.input,.modal .form-group input) {
+  background: var(--fl-backdrop); color: var(--fl-ink); border-color: var(--fl-line);
 }
-html.gant-workspace ::selection {
-  background: #53642d;
-  color: var(--fl-ink);
-}
-html.gant-workspace :focus-visible {
-  outline-color: var(--fl-accent);
-}
-html.gant-workspace
-  .workspace
-  :is(.btn-primary, .op-primary, .modal-footer .btn-primary) {
-  background: var(--fl-accent);
-  border-color: var(--fl-accent);
-  color: var(--fl-on-accent);
-}
-html.gant-workspace
-  .workspace
-  :is(.input, .select-trigger, .select-panel, .modal .form-group input) {
-  color: var(--fl-ink);
-  background: var(--fl-backdrop);
-  border-color: var(--fl-line);
-}
-html.gant-workspace .workspace input::placeholder,
-html.gant-workspace .workspace textarea::placeholder {
-  color: var(--fl-muted);
-  opacity: 0.9;
-}
-html.gant-workspace .workspace :is(.modal, .retro-modal, .select-panel) {
-  background: var(--fl-surface);
-  color: var(--fl-ink);
-  border-color: var(--fl-line);
+html.gant-workspace .workspace :is(input,textarea)::placeholder { color: var(--fl-muted); opacity: 1; }
+html.gant-workspace .workspace :is(.modal,.retro-modal) {
+  background: var(--fl-surface); color: var(--fl-ink); border-color: var(--fl-line);
 }

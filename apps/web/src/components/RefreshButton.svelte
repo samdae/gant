@@ -22,9 +22,9 @@
     block-size: var(--fl-control-height, 44px);
     margin: 0;
     padding: 0;
-    border: 0;
-    border-radius: var(--fl-control-radius);
-    background: transparent;
+    border: 1px solid var(--fl-line);
+    border-radius: 50%;
+    background: var(--fl-surface);
     color: var(--fl-muted);
     cursor: pointer;
   }

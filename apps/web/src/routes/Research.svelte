@@ -315,7 +315,7 @@
   }
   button {
     border: 1px solid var(--fl-line);
-    border-radius: 4px;
+    border-radius: var(--fl-control-radius);
     background: var(--fl-surface);
     padding: 8px 12px;
   }
@@ -323,7 +323,7 @@
     cursor: pointer;
   }
   dialog {
-    color-scheme: dark;
+    color-scheme: light;
     background: var(--fl-surface);
   }
   button:focus-visible,
@@ -348,11 +348,11 @@
     border: 1px solid var(--fl-line);
     border-radius: 16px;
     color: var(--fl-ink);
-    box-shadow: 0 16px 55px #0008;
+    box-shadow: 0 24px 80px rgb(30 62 56 / .22);
     overflow: auto;
   }
   dialog::backdrop {
-    background: #000a;
+    background: rgb(18 44 42 / .32);
   }
   dialog header,
   .row-meta {
@@ -380,10 +380,10 @@
     padding: 12px;
     border: 1px solid var(--fl-line);
     color: inherit;
-    border-radius: 4px;
+    border-radius: var(--fl-control-radius);
   }
   .register a.selected {
-    background: #303427;
+    background: var(--fl-accent-soft);
     border-color: var(--fl-accent);
   }
   .row-meta {

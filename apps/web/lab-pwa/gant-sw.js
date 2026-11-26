@@ -5,7 +5,7 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 self.addEventListener("fetch", (event) => {
   if (event.request.mode !== "navigate" || event.request.method !== "GET") return;
   const url = new URL(event.request.url);
-  if (url.origin === self.location.origin && url.pathname === "/") {
+  if (url.origin === self.location.origin && url.pathname === new URL(self.registration.scope).pathname) {
     event.respondWith(fetch(event.request, { cache: "no-store" }));
   }
 });

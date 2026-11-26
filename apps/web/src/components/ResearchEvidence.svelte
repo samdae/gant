@@ -92,14 +92,49 @@
   <div class="analysis-board">
     <header class="company">
       <div class="company-row">
-        <h2>{catalogParts?.[1] || displayName || data.ticker}</h2>
-        <slot />
+        <div class="issuer-heading">
+          <h2>{catalogParts?.[1] || displayName || data.ticker}</h2>
+          <p class="context">
+            {#if displayName}<b>{data.ticker}</b> · {/if}{#if catalogParts}{catalogParts[2]} · {/if}{marketName(data.market)} 시장
+          </p>
+        </div>
+        <div class="pick-tools"><slot /><slot name="rounds" /></div>
       </div>
-      <div class="context">
-        {#if displayName}{data.ticker} ·
-        {/if}{#if catalogParts}{catalogParts[2]} ·
-        {/if}{marketName(data.market)} 시장 · 관측 기준일 {data.data_session}
+      <div class="issue-line">
+        <p>관측 기준일 <time>{data.data_session}</time></p>
+      {#if data.last30days || news}
+        <button class="sources-link" on:click={() => sourcesHeading.focus()}>
+          당시 출처 보기 · last30days {sources.archives
+            ? sources.archives.items.length + "건"
+            : "기록 없음"} · {news?.provenance === "v3_archive_as_of" ? "뉴스" : "동결 목록"} {news
+            ? news.items.length + "건"
+            : "기록 없음"}
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"
+            ><path
+              d="M8 2v11m-4-4 4 4 4-4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+            /></svg
+          >
+        </button>
+      {/if}
       </div>
+    </header>
+
+    <div class="spread">
+      <div class="plot">
+        <ResearchPriceChart
+          bars={snap.bars || []}
+          {currency}
+          volumeUnit={["equity", "etf"].includes(
+            snap.classification?.asset_class || "",
+          )
+            ? "주"
+            : ""}
+        />
+      </div>
+      <div class="model-panel">
       <div class="headline">
         <div>
           <span>단일 모델 상승 확률</span><strong
@@ -123,38 +158,7 @@
             >{/if}
         </div>
       </div>
-      {#if data.last30days || news}
-        <button class="sources-link" on:click={() => sourcesHeading.focus()}>
-          당시 출처 보기 · last30days {sources.archives
-            ? sources.archives.items.length + "건"
-            : "기록 없음"} · {news?.provenance === "v3_archive_as_of" ? "뉴스" : "동결 목록"} {news
-            ? news.items.length + "건"
-            : "기록 없음"}
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"
-            ><path
-              d="M8 2v11m-4-4 4 4 4-4"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.6"
-            /></svg
-          >
-        </button>
-      {/if}
-      <slot name="rounds" />
-    </header>
 
-    <div class="spread">
-      <div class="plot">
-        <ResearchPriceChart
-          bars={snap.bars || []}
-          {currency}
-          volumeUnit={["equity", "etf"].includes(
-            snap.classification?.asset_class || "",
-          )
-            ? "주"
-            : ""}
-        />
-      </div>
       <section class="comparison">
         <h3>모델별 상승 확률</h3>
         {#if spreadRange}
@@ -234,6 +238,7 @@
           </dl>
         </div>
       </section>
+      </div>
     </div>
   </div>
   <section class="sources">
@@ -402,50 +407,20 @@
   dd {
     margin: 0;
   }
-  .analysis-board {
-    background: var(--fl-surface, #202124);
-    border-block: 1px solid var(--fl-line, #3b3d41);
-  }
-  .company {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 4px clamp(18px, 3vw, 48px);
-    align-items: center;
-    padding: clamp(16px, 2.4vw, 32px);
-    border-bottom: 1px solid var(--fl-line);
-  }
-  .company-row {
-    display: contents;
-  }
-  .company h2 {
-    grid-column: 1;
-    grid-row: 1;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    font: 760 clamp(2rem, 3.8vw, 3.65rem) / 1.08 var(--fl-font, sans-serif);
-    letter-spacing: -0.04em;
-  }
-  .company-row :global(.choose) {
-    grid-column: 3;
-    grid-row: 1 / 3;
-  }
-  .context {
-    grid-column: 1;
-    grid-row: 2;
-    font-size: 0.8rem;
-    color: var(--fl-muted);
-  }
-  .headline {
-    grid-column: 2;
-    grid-row: 1 / 3;
-    display: flex;
-    align-items: baseline;
-    gap: 22px;
-  }
-  .headline > div {
-    display: grid;
-    gap: 4px;
-  }
+  .analysis-board { margin-bottom: 24px; }
+  .company { padding: 8px 2px 18px; }
+  .company-row,.issue-line,.pick-tools { display:flex; align-items:center; justify-content:space-between; gap:12px 20px; }
+  .issuer-heading { min-width:0; }
+  .issuer-heading h2 { font:730 clamp(2.15rem,4vw,3.5rem)/1.15 var(--fl-display); letter-spacing:-.04em; overflow-wrap:anywhere; }
+  .context { color:var(--fl-muted); font-size:.85rem; margin-top:7px; overflow-wrap:anywhere; }
+  .context b { color:var(--fl-ink); font-weight:650; }
+  .pick-tools { flex-wrap:wrap; justify-content:flex-end; gap:6px 12px; }
+  .issue-line { flex-wrap:wrap; margin-top:14px; }
+  .issue-line p { color:var(--fl-muted); font-size:.82rem; }
+  .issue-line time { color:var(--fl-ink); font-weight:620; }
+  .model-panel { display:flex; flex-direction:column; }
+  .headline { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; gap:12px; margin:0 clamp(16px,2.2vw,30px) 18px; padding:clamp(16px,2.2vw,30px) 0 16px; border-bottom:1px solid var(--fl-line); }
+  .headline > div { display:grid; align-content:start; gap:5px; }
   .headline span,
   dt,
   small,
@@ -479,7 +454,14 @@
   }
   .spread {
     display: grid;
-    grid-template-columns: minmax(0, 1.64fr) minmax(240px, 1fr);
+    grid-template-columns: minmax(0, 1.62fr) minmax(270px, 1fr);
+    gap:16px;
+  }
+  .plot,.model-panel {
+    background: var(--fl-surface);
+    min-width:0;
+    border:1px solid var(--fl-line);
+    border-radius:var(--fl-radius,16px);
   }
   .plot,
   .comparison,
@@ -490,9 +472,9 @@
   }
   .comparison {
     display: flex;
+    flex:1;
     flex-direction: column;
-    padding: clamp(16px, 2.2vw, 30px);
-    border-left: 1px solid var(--fl-line);
+    padding:0 clamp(16px, 2.2vw, 30px) clamp(16px, 2.2vw, 30px);
     --columns: minmax(4.2em, 1fr) minmax(50px, 1.3fr) 3.7em 13px;
   }
   h3 {
@@ -503,12 +485,6 @@
     display: flex;
     align-items: center;
     gap: 9px;
-  }
-  .comparison h3:before {
-    content: "";
-    height: 0.83em;
-    width: 4px;
-    background: var(--fl-forecast);
   }
   .range-summary {
     display: flex;
@@ -559,7 +535,7 @@
   }
   .compare-row:hover,
   .compare-row:focus-visible {
-    background: #312c39;
+    background: var(--fl-forecast-soft);
   }
   .compare-row:focus-visible,
   .unpublished button:focus-visible {
@@ -568,7 +544,7 @@
   .track {
     position: relative;
     height: 3px;
-    background: #48434e;
+    background: var(--fl-line);
   }
   .track:before {
     content: "";
@@ -576,7 +552,7 @@
     left: 50%;
     top: -6px;
     height: 15px;
-    border-left: 1px dashed #a69bb5;
+    border-left: 1px dashed var(--fl-muted);
   }
   .track i {
     position: absolute;
@@ -584,7 +560,8 @@
     height: 10px;
     width: 10px;
     background: var(--fl-forecast);
-    transform: translate(-50%, -50%) rotate(45deg);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
   }
   .unpublished {
     display: flex;
@@ -636,7 +613,7 @@
     flex-wrap: wrap;
     gap: 4px 12px;
     padding: 4px 0 5px 14px;
-    border-left: 1px solid #77777a;
+    border-left: 1px solid var(--fl-line);
   }
   .timeline dl div:last-child {
     border-color: transparent;
@@ -649,25 +626,25 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #a4a49d;
+    background: var(--fl-accent);
   }
   .timeline dd {
     font-size: 0.82rem;
     font-weight: 570;
   }
   .sources-link {
-    display: none;
-    text-align: left;
-    color: var(--fl-accent);
-    padding: 6px 0;
-    font-size: 0.82rem;
+    display:inline-flex; align-items:center; gap:6px; text-align:start;
+    color:var(--fl-accent); padding:4px 0; font-size:.82rem;
   }
   .sources {
     display: grid;
     grid-template-columns: minmax(160px, 0.78fr) repeat(2, minmax(0, 1.2fr));
     gap: 0 clamp(16px, 2vw, 30px);
-    padding: 24px 0;
-    border-bottom: 1px solid var(--fl-line);
+    padding: clamp(16px, 2.5vw, 28px);
+    border-radius:var(--fl-radius,16px);
+    border:1px solid var(--fl-line);
+    background:var(--fl-surface);
+    margin-top:16px;
   }
   .journal-heading {
     grid-row: span 2;
@@ -679,8 +656,11 @@
   }
   .sheet,
   .judgments {
-    padding: 24px 0;
-    border-bottom: 1px solid var(--fl-line);
+    padding: clamp(16px, 2.5vw, 28px);
+    border-radius:var(--fl-radius,16px);
+    border:1px solid var(--fl-line);
+    background:var(--fl-surface);
+    margin-top:16px;
   }
   .facts {
     gap: 12px 34px;
@@ -717,82 +697,28 @@
     color: var(--fl-forecast);
     white-space: nowrap;
   }
-  @media (max-width: 920px) {
-    .headline {
-      gap: 12px;
-    }
-    .company {
-      column-gap: 16px;
-    }
-    .sources {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .journal-heading {
-      grid-row: auto;
-      grid-column: 1/-1;
-      margin-bottom: 12px;
-    }
-    .journal-heading .muted {
-      max-width: none;
-    }
+  @media (max-width: 1050px) {
+    .sources { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .journal-heading { grid-row:auto; grid-column:1/-1; margin-bottom:12px; }
+    .journal-heading .muted { max-width:none; }
   }
-  @media (max-width: 760px) {
-    .company {
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 5px 8px;
-      padding: 16px 12px 8px;
-    }
-    .company-row :global(.choose) {
-      grid-column: 2;
-      grid-row: 1;
-    }
-    .context {
-      grid-column: 1/-1;
-    }
-    .headline {
-      grid-column: 1/-1;
-      grid-row: 3;
-      flex-wrap: wrap;
-      gap: 5px 15px;
-      margin-top: 4px;
-    }
-    .headline > div {
-      display: flex;
-      align-items: baseline;
-      gap: 5px;
-    }
-    .headline small,
-    .timeline {
-      display: none;
-    }
-    .headline span {
-      font-size: 0.77rem;
-    }
-    .sources-link {
-      grid-column: 1/-1;
-      display: block;
-    }
-    .spread,
-    .sources {
-      grid-template-columns: 1fr;
-    }
-    .comparison {
-      border-left: 0;
-      border-top: 1px solid var(--fl-line);
-      padding: 16px 12px;
-    }
-    .sources {
-      padding: 20px 0 8px;
-    }
-    .journal-heading {
-      margin-bottom: 0;
-    }
-    .journal-heading .muted {
-      margin: 4px 0 7px;
-    }
-    .sheet,
-    .judgments {
-      padding: 20px 0;
-    }
+  @media (max-width: 790px) {
+    .spread { display:flex; flex-direction:column; gap:14px; }
+    .model-panel { display:contents; }
+    .headline { order:-1; margin:0; padding:12px 2px 16px; border-top:1px solid var(--fl-line); border-bottom:0; }
+    .comparison { padding:clamp(16px,2.6vw,24px); background:var(--fl-surface); border:1px solid var(--fl-line); border-radius:var(--fl-radius,16px); }
+    .timeline { margin-top:8px; }
+    .sources { grid-template-columns:minmax(0,1fr); }
+    .journal-heading { margin-bottom:0; }
+    .journal-heading .muted { margin:4px 0 7px; }
+  }
+  @media (max-width: 600px) {
+    .company { padding:4px 0 14px; }
+    .company-row { align-items:flex-start; flex-wrap:wrap; }
+    .issuer-heading { flex:1 1 135px; }
+    .issue-line { margin-top:8px; gap:2px 10px; }
+    .pick-tools { display:contents; }
+    .pick-tools :global(.forecast-rounds) { flex:1 0 100%; }
+    .sources-link { max-width:100%; }
   }
 </style>

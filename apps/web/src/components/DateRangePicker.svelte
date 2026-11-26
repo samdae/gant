@@ -244,7 +244,7 @@
     align-items: center;
     gap: 8px;
     text-align: left;
-    background: var(--fl-surface-subtle);
+    background: var(--fl-surface);
     border: 1px solid var(--fl-line);
     border-radius: var(--fl-control-radius, 7px);
     min-height: var(--fl-control-height, 40px);
@@ -264,15 +264,17 @@
     max-height: calc(100dvh - 18px);
     overflow: auto;
     margin: auto;
-    padding: 16px;
-    background: var(--fl-surface);
-    border: 1px solid var(--fl-line);
-    border-radius: 12px;
-    box-shadow: 0 10px 40px #0009;
-    color-scheme: dark;
+    padding: 18px;
+    background: var(--fl-glass-raised);
+    border: 1px solid var(--fl-glass-edge);
+    border-radius: 22px;
+    box-shadow: var(--fl-glass-shadow);
+    -webkit-backdrop-filter: var(--fl-glass-blur);
+    backdrop-filter: var(--fl-glass-blur);
+    color-scheme: light;
   }
   .range-dialog::backdrop {
-    background: #0008;
+    background: var(--bg-modal);
   }
   .range-dialog header,
   .range-dialog footer,
@@ -297,7 +299,7 @@
     color: inherit;
     background: transparent;
     border: 0;
-    border-radius: 5px;
+    border-radius: 12px;
     font: inherit;
     cursor: pointer;
   }
@@ -365,6 +367,11 @@
     border-radius: 0;
     background: var(--fl-accent-soft, #313621);
   }
+  .days button[aria-current="date"] { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+  .range-dialog .navigation {
+    margin-block: 7px 4px; padding: 2px; border-radius: 14px; background: var(--fl-surface-subtle); font-weight: 650;
+  }
+  .year input { border-radius: 9px; }
   .days .preview-end {
     box-shadow: inset 0 0 0 1px var(--fl-accent);
   }

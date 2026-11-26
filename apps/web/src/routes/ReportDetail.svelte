@@ -240,11 +240,26 @@
 
 <section class="page" id="page-report-detail">
   <div class="page-container">
-    <div class="page-header">
-      {#if isForecastLab}<a class="archive-back" href="#/reports">리포트 목록</a>
-      {:else}<button class="back-btn" aria-label="이전 화면" on:click={() => history.back()}>&larr;</button>{/if}
-      <h2><InstrumentLabel ticker={report?.ticker || ticker} name={report?.display_name} inline /> {isForecastLab ? "분석 리포트" : "AI분석"}</h2>
-    </div>
+    {#if isForecastLab}
+      <header class="report-heading">
+        <a class="archive-back" href="#/reports"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 5-5 5 5 5m-5-5h9"/></svg>리포트 목록</a>
+        <div class="report-identity">
+          <h2><InstrumentLabel ticker={report?.ticker || ticker} name={report?.display_name} /></h2>
+          {#if report && !loading && !error}<p>분석 리포트 <span>·</span> <time datetime={report.created_at}>{formatDateTime(report.created_at)}</time></p>{/if}
+        </div>
+        {#if report && !loading && !error}
+          <div class="round-select"><label for="cycle-select">발행 회차</label>
+            <SelectMenu id="cycle-select" value={selectedReportId} options={reportOptions} placeholder="회차 선택"
+              on:change={(event) => handleReportChange(event.detail)} />
+          </div>
+        {/if}
+      </header>
+    {:else}
+      <div class="page-header">
+        <button class="back-btn" aria-label="이전 화면" on:click={() => history.back()}>&larr;</button>
+        <h2><InstrumentLabel ticker={report?.ticker || ticker} name={report?.display_name} inline /> AI분석</h2>
+      </div>
+    {/if}
 
     {#if loading}
       <div class="card" style="padding:16px"><PendingState label="분석 리포트 조회 중"/></div>
@@ -253,7 +268,7 @@
     {:else if !report}
       <div class="card" style="padding:16px"><InstrumentLabel {ticker} inline /> AI분석이 없습니다.</div>
     {:else}
-      {#if reports.length > 0}
+      {#if !isForecastLab && reports.length > 0}
         <div class="form-label"><label for="cycle-select">회차</label>
             <SelectMenu id="cycle-select"
             value={selectedReportId}
@@ -271,8 +286,8 @@
         {:else}
           <span class="decision-badge decision-unknown">—</span>
         {/if}
-        <span class="report-date">{formatDateTime(report.created_at)}</span>
-        {#if report.scheduled_cycle}
+        {#if !isForecastLab}<span class="report-date">{formatDateTime(report.created_at)}</span>{/if}
+        {#if !isForecastLab && report.scheduled_cycle}
           <span class="report-date">{report.scheduled_cycle} 회차</span>
         {/if}
         {#if !isForecastLab && report.portfolio_action}
@@ -298,7 +313,7 @@
               on:click={() => toggle(String(field.key))}
             >
               <span class="accordion-title">{field.label}</span>
-              <span class="accordion-chevron">{openSections[field.key] ? '▾' : '▸'}</span>
+              <svg class="disclose" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
             </button>
             {#if openSections[field.key]}
               <div class="report-content markdown-body">
@@ -317,7 +332,7 @@
                   on:click={() => toggle(String(child.key))}
                 >
                   <span class="accordion-title">{child.label}</span>
-                  <span class="accordion-chevron">{openSections[child.key] ? '▾' : '▸'}</span>
+                  <svg class="disclose" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
                 </button>
                 {#if openSections[child.key]}
                   <div class="report-content markdown-body child-content">
@@ -339,5 +354,27 @@
 </section>
 
 <style>
-  .archive-back { display:inline-flex; align-items:center; color:var(--fl-accent, #d5f65e); font-size:.85rem; font-weight:600; }
+  .report-heading { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:14px 22px; padding-bottom:22px; }
+  .archive-back { grid-column:1/-1; display:inline-flex; align-items:center; gap:6px; width:fit-content; color:var(--fl-accent); font-size:.85rem; font-weight:650; text-decoration:none; }
+  .archive-back svg,.disclose { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+  .archive-back:hover { text-decoration:underline; }
+  .report-identity h2 { margin:0; font:730 clamp(2rem,4vw,3.5rem)/1.15 var(--fl-display); letter-spacing:-.04em; }
+  .report-identity p { margin:8px 0 0; color:var(--fl-muted); font-size:.82rem; }
+  .report-identity p span { padding-inline:3px; }
+  .round-select { display:flex; align-items:center; justify-content:flex-end; gap:8px; font-size:.82rem; color:var(--fl-muted); min-width:0; }
+  .round-select label { white-space:nowrap; flex-shrink:0; }
+  .round-select :global(.select-menu) { min-width:0; max-width:100%; }
+  .disclose { flex-shrink:0; width:15px; height:15px; transition:transform .16s ease; }
+  .open .disclose { transform:rotate(180deg); }
+  :global(.workspace) #page-report-detail .report-meta { background:var(--fl-surface); border:1px solid var(--fl-line); border-radius:var(--fl-radius,16px); margin-bottom:20px; padding:clamp(16px,2.3vw,24px); }
+  :global(.workspace) #page-report-detail .report-group { border:1px solid var(--fl-line); border-radius:var(--fl-radius,16px); overflow:hidden; }
+  :global(.workspace) #page-report-detail .report-group-label { color:var(--fl-ink); background:var(--fl-surface-subtle); padding:12px 18px; }
+  :global(.workspace) #page-report-detail .report-content { padding:4px clamp(15px,3vw,35px) 22px; }
+  :global(.workspace) #page-report-detail .report-content :global(p) { max-width:72ch; line-height:1.72; }
+  @media(max-width:670px) {
+    .report-heading { grid-template-columns:minmax(0,1fr); gap:12px; }
+    .round-select { display:grid; grid-template-columns:minmax(0,1fr); justify-content:start; gap:5px; }
+    .round-select :global(.select-menu) { width:100%; }
+  }
+  @media(prefers-reduced-motion:reduce) { .disclose { transition:none; } }
 </style>

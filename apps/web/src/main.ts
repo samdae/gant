@@ -20,7 +20,8 @@ if (target) {
 }
 
 if (isForecastLab && import.meta.env.PROD && "serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/gant-sw.js", { scope: "/", updateViaCache: "none" }).catch((error) => {
+  const scope = import.meta.env.BASE_URL;
+  navigator.serviceWorker.register(scope + "gant-sw.js", { scope, updateViaCache: "none" }).catch((error) => {
     console.warn("GANT 설치 등록 실패", error);
   });
 } else if (!isForecastLab && import.meta.env.PROD && "serviceWorker" in navigator) {

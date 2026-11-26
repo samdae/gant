@@ -110,6 +110,24 @@
   $: visibleTickers = published.filter((t) =>
     !normalizedQuery || t.ticker.toLowerCase().includes(normalizedQuery)
     || instrumentName(t.ticker, $tickerNames, t.display_name).toLowerCase().includes(normalizedQuery));
+  function latestDecision(item: TickerSummary) {
+    return normalizeDecision((item.stored_decision_position === undefined
+      ? item.decision_position : item.stored_decision_position) || "");
+  }
+  const signals = [
+    {key: "BUY", label: "매수"}, {key: "HOLD", label: "관망"},
+    {key: "SELL", label: "매도"}, {key: "", label: "미기록"},
+  ];
+  $: counts = signals.map(signal => ({
+    ...signal, count: visibleTickers.filter(item => latestDecision(item) === signal.key).length,
+  })).filter(signal => signal.key || signal.count);
+  const dayFormat = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric" });
+  const timeFormat = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false });
+  function issuedTime(value: string) {
+    const dt = new Date(value);
+    return Number.isNaN(dt.valueOf()) ? {day: "발행일 미기록", time: "미기록"} : {day: dayFormat.format(dt), time: timeFormat.format(dt)};
+  }
+  $: totalReports = visibleTickers.reduce((sum, row) => sum + row.report_count, 0);
 </script>
 
 <section class="page" id="page-reports">
@@ -128,35 +146,56 @@
         </div>
         <label class="desk-search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
-            <input type="search" bind:value={query} aria-label="티커 또는 종목명 검색" placeholder="티커 또는 종목명 검색" />
+            <input type="search" bind:value={query} aria-label="티커 또는 종목명 검색" placeholder="회사명 또는 티커 검색" />
           </label></div>
       {#if kind === "forecast"}
       <ForecastReportList {query} />
       {:else}
       <section class="desk-panel report-directory" aria-label="종목별 리포트">
-        <header class="desk-toolbar">
-          <div class="desk-heading"><h3>매매 분석 리포트</h3>{#if !loading && !error}<span>{published.length}종목</span>{/if}</div>
-
+        <header class="publication-header">
+          <div>
+            <h3>매매 분석 리포트</h3>
+            {#if !loading && !error}<p>{visibleTickers.length}개 종목 <span aria-hidden="true">·</span> 발행 {totalReports.toLocaleString("ko-KR")}건</p>{/if}
+          </div>
+          {#if !loading && !error && visibleTickers.length}
+            <figure class="signal-distribution" aria-label="종목별 최근 판단 분포">
+              <figcaption>최근 판단 분포</figcaption>
+              <div class="distribution-track" aria-hidden="true">
+                {#each counts as signal}
+                  {#if signal.count}<i class={'distribution-' + signal.key.toLowerCase()} style:flex-grow={signal.count}></i>{/if}
+                {/each}
+              </div>
+              <div class="distribution-legend">
+                {#each counts as signal}<span><i class={'distribution-' + signal.key.toLowerCase()}></i>{signal.label} <b>{signal.count}</b></span>{/each}
+              </div>
+            </figure>
+          {/if}
         </header>
         {#if loading || error || !visibleTickers.length}
-          <div class="desk-state" role="status">{#if loading}<PendingState label="분석 리포트 조회 중"/>{:else}{error || (query ? "검색 결과가 없습니다." : "발행된 분석 리포트가 없습니다.")}{/if}</div>
+          <div class="desk-state" role="status">
+            {#if loading}<PendingState label="분석 리포트 조회 중"/>
+            {:else if error}{error} <button on:click={loadTickers}>다시 조회</button>
+            {:else}{query ? "검색 결과가 없습니다." : "발행된 분석 리포트가 없습니다."}{/if}
+          </div>
         {:else}
-          <div class="desk-report-row desk-report-head" aria-hidden="true"><span>종목</span><span>최근 판단</span><span>리포트 수</span><span>최근 발행</span><span></span></div>
-          {#each visibleTickers as item}
-            {@const action = (item.stored_decision_position === undefined ? item.decision_position : item.stored_decision_position) || ""}
-            <a href={`#/reports/${encodeURIComponent(item.ticker.toLowerCase())}`} class="desk-report-row">
-              <span class="desk-instrument"><InstrumentLabel ticker={item.ticker} name={item.display_name} /></span>
-              <span class="desk-report-decision"><span class="mobile-report-label">최근 판단</span><DecisionBadge value={action} /></span>
-              <span class="report-metadata">
-                <span class="desk-report-count"><span class="mobile-report-label">리포트 </span>{item.report_count}건</span>
-                <time datetime={item.latest_at}><span class="mobile-report-label">최근 발행 </span>{formatDateTime(item.latest_at)}</time>
-              </span>
-              <span aria-hidden="true" class="desk-arrow">›</span>
-            </a>
-            <div class="round-picker">
-              <button aria-expanded={roundsTicker === item.ticker} on:click={() => roundsTicker = roundsTicker === item.ticker ? "" : item.ticker}>
-                {roundsTicker === item.ticker ? "회차 목록 닫기" : "회차별 조회"}
-              </button>
+          {#each visibleTickers as item, index (item.ticker)}
+            {@const issued = issuedTime(item.latest_at)}
+            {#if index === 0 || issued.day !== issuedTime(visibleTickers[index - 1].latest_at).day}
+              <h4 class="edition"><span>{issued.day}</span><span>발행 · 한국시간</span></h4>
+            {/if}
+            <div class="publication">
+              <a href={`#/reports/${encodeURIComponent(item.ticker.toLowerCase())}`} class="publication-link">
+                <span class="publication-company"><InstrumentLabel ticker={item.ticker} name={item.display_name} /></span>
+                <span class="publication-decision"><DecisionBadge value={latestDecision(item)} /></span>
+                <time datetime={item.latest_at} title={formatDateTime(item.latest_at)}>{issued.time}</time>
+              </a>
+              <div class="round-picker">
+                <button type="button" aria-expanded={roundsTicker === item.ticker} aria-label={item.ticker + " 회차별 조회"}
+                  on:click={() => roundsTicker = roundsTicker === item.ticker ? "" : item.ticker}>
+                  <span>회차 {item.report_count}건</span>
+                  <svg class:opened={roundsTicker === item.ticker} viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="m3 4.8 3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </div>
             </div>
             {#if roundsTicker === item.ticker}<ReportRounds ticker={item.ticker} />{/if}
           {/each}
@@ -199,13 +238,45 @@
 </section>
 
 <style>
-  .report-filter {display:flex; justify-content:space-between; flex-wrap:wrap; align-items:end; gap:.75rem; margin:.8rem 0 1rem; border-bottom:1px solid var(--fl-line);}
-  .report-kind {display:flex; align-items:stretch; gap:.2rem;}
-  .report-kind button,.round-picker button {font:inherit; font-size:.86rem; color:var(--fl-muted); border:0; background:transparent; cursor:pointer; padding:.65rem .8rem;}
-  .report-kind button {border-bottom:2px solid transparent;}
-  .report-kind button[aria-pressed="true"] {border-color:var(--fl-accent); color:var(--fl-accent); font-weight:700;}
-  .report-filter label {margin-bottom:.35rem;}
-  .round-picker {display:flex; justify-content:flex-end; padding:0 .6rem .3rem;}
-  .round-picker button {color:var(--fl-accent); text-decoration:underline; text-underline-offset:.2em;}
-  @media(max-width:550px) { .report-filter {align-items:stretch;} .report-filter label {flex-basis:100%; margin-bottom:.6rem;} }
+  .report-filter { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 22px; margin:8px 0 22px; }
+  .report-kind { display:inline-flex; align-items:center; gap:2px; padding:3px; border-radius:999px; background:var(--fl-glass, #f1f6f2); border:1px solid var(--fl-glass-edge, #b7cdc5); }
+  .report-kind button { cursor:pointer; color:var(--fl-muted); background:transparent; border:0; font:650 .89rem var(--fl-font); padding:0 18px; }
+  .report-kind button[aria-pressed="true"] { background:var(--fl-accent); color:var(--fl-on-accent); }
+  .publication-header { display:grid; grid-template-columns:1fr minmax(210px,.55fr); align-items:center; gap:24px; padding:clamp(19px,3.2vw,38px); }
+  .publication-header h3 { color:var(--fl-ink); font:720 clamp(1.35rem,2.3vw,2rem)/1.22 var(--fl-display); letter-spacing:-.035em; margin:0; }
+  .publication-header p { margin:9px 0 0; color:var(--fl-muted); font-size:.86rem; }
+  .publication-header p span { padding:0 4px; }
+  .signal-distribution { margin:0; min-width:0; }
+  .signal-distribution figcaption { color:var(--fl-ink); font-weight:680; font-size:.8rem; margin-bottom:8px; }
+  .distribution-track { display:flex; gap:2px; height:7px; overflow:hidden; border-radius:6px; }
+  .distribution-track i { flex-basis:0; }
+  .distribution-legend { display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:7px; }
+  .distribution-legend span { display:inline-flex; align-items:center; gap:4px; color:var(--fl-muted); font-size:.76rem; white-space:nowrap; }
+  .distribution-legend i { width:6px; height:6px; border-radius:50%; margin-right:1px; }
+  .distribution-legend b { color:var(--fl-ink); font-weight:650; }
+  .distribution-buy { background:var(--fl-accent); } .distribution-sell { background:var(--fl-down); }
+  .distribution-hold { background:#71837d; } .distribution- { background:#acbbb4; }
+  .edition { margin:0; padding:10px clamp(14px,2.5vw,28px); display:flex; justify-content:space-between; align-items:baseline; color:var(--fl-muted); background:var(--fl-surface-subtle); font-size:.78rem; font-weight:600; }
+  .edition span + span { font-size:.74rem; font-weight:450; }
+  .publication { display:flex; align-items:center; gap:clamp(10px,2vw,26px); margin:0 clamp(14px,2.5vw,28px); border-bottom:1px solid var(--fl-line); }
+  .publication:last-child { border-bottom:0; }
+  .publication-link { flex:1; min-width:0; display:grid; grid-template-columns:minmax(0,1fr) 76px 56px; align-items:center; gap:clamp(8px,2vw,24px); padding-block:15px; color:var(--fl-ink); text-decoration:none; }
+  .publication-company { min-width:0; font-size:1.03rem; }
+  .publication-link:hover .publication-company { color:var(--fl-accent); }
+  .publication-link time { text-align:right; color:var(--fl-muted); font-size:.83rem; }
+  .round-picker button { display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:0 10px; font:630 .79rem var(--fl-font); border:0; cursor:pointer; background:var(--fl-surface-subtle); color:var(--fl-accent); white-space:nowrap; }
+  .round-picker svg { width:12px; height:12px; transition:transform .18s ease; }
+  .round-picker .opened { transform:rotate(180deg); }
+  .desk-state button { font:inherit; color:var(--fl-accent); }
+  @media(max-width:620px) {
+    .report-filter { gap:10px; margin-bottom:16px; }
+    .report-filter label { flex:1 1 180px; }
+    .publication-header { grid-template-columns:minmax(0,1fr); gap:18px; }
+    .publication-link { grid-template-columns:minmax(0,1fr) auto; column-gap:8px; row-gap:4px; padding-block:11px; }
+    .publication-company { grid-row:1 / span 2; }
+    .publication-link time { grid-column:2; font-size:.73rem; }
+    .publication-decision { justify-self:end; }
+    .round-picker button { padding-inline:6px; font-size:.75rem; }
+  }
+  @media(prefers-reduced-motion:reduce) { .round-picker svg { transition:none; } }
 </style>

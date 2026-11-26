@@ -224,7 +224,7 @@
     margin-left: auto;
     align-self: center;
     height: 5px;
-    background: #49464c;
+    background: var(--fl-line);
   }
   .scale i {
     background: var(--fl-forecast);

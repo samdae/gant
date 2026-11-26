@@ -7,9 +7,9 @@ import subprocess
 import tempfile
 import threading
 import unittest
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
 
-from test_integrated_public_viewer import CHROME, DIST
+from test_integrated_public_viewer import BundleHandler, CHROME, DIST, DIST_BASE
 
 
 @unittest.skipUnless(
@@ -96,8 +96,8 @@ class ReportingBrowserTests(unittest.TestCase):
             if(document.querySelectorAll('.forecast-reports a').length!==2 || q('.forecast-reports').textContent.includes('더 보기'))throw Error('ticker directory');
             if(selected()!=='확률 예측' || q('.report-directory'))throw Error('mixed report types');
             const ledger=q('.forecast-reports'), estimate=q('.forecast-reports .figure strong');
-            if(getComputedStyle(ledger).backgroundColor!=='rgb(32, 33, 36)' ||
-              getComputedStyle(estimate).color!=='rgb(195, 169, 255)') throw Error('forecast ledger theme');
+            if(getComputedStyle(ledger).backgroundColor!=='rgb(252, 253, 251)' ||
+              getComputedStyle(estimate).color!=='rgb(130, 66, 111)') throw Error('forecast ledger theme');
             q('.forecast-reports button[aria-label="확률 예측 새로고침"]').click();
             await wait(()=>directoryRequests===2 && !q('.forecast-reports .refresh').disabled);
             q('.forecast-reports a').click();
@@ -122,10 +122,10 @@ class ReportingBrowserTests(unittest.TestCase):
             await wait(()=>selected()==='확률 예측' && q('.forecast-reports a'));
             reportTabs()[0].click();
             await wait(()=>q('.round-picker button'));
-            const expectedControlHeight = matchMedia('(max-width: 767px)').matches ? 44 : 40;
+            const expectedControlHeight = matchMedia('(max-width: 767px)').matches ? 44 : 42;
             for (const selector of ['.desk-search','.report-kind button','.round-picker button']) {
               const element=q(selector), box=element.getBoundingClientRect();
-              if (Math.abs(box.height-expectedControlHeight)>1 || getComputedStyle(element).borderRadius!=='7px')
+              if (Math.abs(box.height-expectedControlHeight)>1 || parseFloat(getComputedStyle(element).borderRadius)<12)
                 throw Error(selector+' control '+box.height+' / '+getComputedStyle(element).borderRadius);
             }
             q('.round-picker button').click();
@@ -216,9 +216,9 @@ class ReportingBrowserTests(unittest.TestCase):
         })();
         """
 
-        class Handler(SimpleHTTPRequestHandler):
+        class Handler(BundleHandler):
             def do_GET(self):
-                if self.path != "/":
+                if self.path != DIST_BASE:
                     return super().do_GET()
                 page = (DIST / "index.html").read_text(encoding="utf8")
                 page = page.replace(
@@ -258,7 +258,7 @@ class ReportingBrowserTests(unittest.TestCase):
                         f"--window-size={width},900",
                         f"--user-data-dir={profile}",
                         "--dump-dom",
-                        f"http://127.0.0.1:{server.server_port}/",
+                        f"http://127.0.0.1:{server.server_port}{DIST_BASE}",
                     ]
                     dom = subprocess.run(
                         args,
