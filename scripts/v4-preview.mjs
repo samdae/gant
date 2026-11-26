@@ -3,6 +3,7 @@ import { link, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/p
 import { createServer } from "node:http";
 import { basename, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pulsePath, pulseMiddleware } from "./v4-report-pulse.mjs";
 
 const prefix = "/v4/";
 const assetName = /^[\w.-]+-[\w-]{8,}\.(?:js|css|svg|png|webp|avif|woff2)$/;
@@ -86,7 +87,8 @@ export async function publish(runtime, dist) {
   return revision;
 }
 
-export function previewServer(runtime) {
+export function previewServer(runtime, readPulse) {
+  const servePulse = pulseMiddleware(readPulse);
   return createServer(async (req, res) => {
     res.setHeaders(new Headers(securityHeaders));
     res.setHeader("Cache-Control", "no-store");
@@ -96,6 +98,7 @@ export function previewServer(runtime) {
       return stop(405);
     }
     const path = req.url.split("?", 1)[0];
+    if (path === pulsePath) return servePulse(req, res);
     if (path === "/v4") { res.setHeader("Location", prefix); return stop(308); }
     if (!path.startsWith(prefix)) return stop(404);
     const relative = path.slice(prefix.length) || "index.html";

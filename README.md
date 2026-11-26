@@ -6,7 +6,7 @@
 
 [리포트 열기](https://v3.daehun.app/v4/#/reports) · [연구 사례](https://v3.daehun.app/v4/#/research) · [대시보드](https://v3.daehun.app/v4/#/dashboard)
 
-이 브랜치 `codex/gant-v4`는 v3의 `gant-v3-preview.10`에서 분기했다. 새 탐색 도구와 본문 배치로 기존 리포트, 예측, 매매 기록을 읽을 수 있다. 자료와 인용은 v3의 공개 조회 경로에서 가져오며, 예측 발행과 모의매매 예약은 v2에서 실행한다. 제품 변경과 함께 기획·설계 및 배포 절차를 유지한다. [제품 기획](PRODUCT.md) · [화면 설계](DESIGN.md) · [Windows 배포](docs/v4/OPERATIONS.md)
+이 브랜치 `codex/gant-v4`는 v3의 `gant-v3-preview.10`에서 분기했다. 리포트를 열면 직전 회차와 판단이 달라진 종목을 먼저 볼 수 있다. 관심 회사를 골라 두 회차의 판단과 이번 근거를 읽거나 해당 회차의 원문으로 이동한다. 연구·대시보드·모의계좌와 나머지 기능은 탐색 막대와 전체 메뉴에서 연다. 자료와 인용은 v3의 공개 조회 경로에서 가져오며, 예측 발행과 모의매매 예약은 v2에서 실행한다. 제품 변경과 함께 기획·설계 및 배포 절차를 유지한다. [제품 기획](PRODUCT.md) · [화면 설계](DESIGN.md) · [Windows 배포](docs/v4/OPERATIONS.md)
 
 ## GANT v3 · 이전 버전
 

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { defineConfig, loadEnv } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { VitePWA } from "vite-plugin-pwa";
+import { pulseMiddleware } from "../../scripts/v4-report-pulse.mjs";
 
 export default defineConfig(({ mode }) => {
   const v4 = mode === "v4";
@@ -31,6 +32,12 @@ export default defineConfig(({ mode }) => {
     } : undefined,
     plugins: [
       {
+        name: "v4-report-pulse",
+        apply: () => v4,
+        configureServer(server) { server.middlewares.use(pulseMiddleware()); },
+        configurePreviewServer(server) { server.middlewares.use(pulseMiddleware()); },
+      },
+      {
         name: "forecast-lab-document",
         enforce: "pre",
         apply: () => lab,
@@ -53,7 +60,7 @@ export default defineConfig(({ mode }) => {
         },
         transformIndexHtml(html) {
           const iconBase = v4 ? "/v4/" : "/";
-          const tint = v4 ? "#eaf1ee" : "#18191b";
+          const tint = v4 ? "#f4f1ec" : "#18191b";
           const scheme = v4 ? "light" : "dark";
           const access = v4 ? '<meta name="forecast-console-access" content="public-readonly">' : "";
           return html

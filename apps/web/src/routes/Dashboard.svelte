@@ -1,6 +1,7 @@
 <script lang="ts">
   import PendingState from "../components/PendingState.svelte";
   import InstrumentLabel from "../components/InstrumentLabel.svelte";
+  import ScheduleOverview from "../components/ScheduleOverview.svelte";
   import PortfolioSummary from "../components/PortfolioSummary.svelte";
   import DecisionBadge from "../components/DecisionBadge.svelte";
   import { onMount } from "svelte";
@@ -216,7 +217,10 @@
       <PortfolioSummary config={portfolioConfig} />
     {/if}
 
-    {#if isForecastLab && (reportStatus !== "ready" || recentReports.length)}
+    {#if isForecastLab}
+      <div class="desk-opening" class:solo={reportStatus === "ready" && !recentReports.length}>
+        <ScheduleOverview summary={scheduleSummary} {loading} {error} />
+        {#if reportStatus !== "ready" || recentReports.length}
       <section class="desk-panel desk-recent" aria-label="최근 발행 리포트">
         <header class="desk-toolbar"><h3>최근 발행 리포트</h3><a href="#/reports">전체 보기 <span aria-hidden="true">→</span></a></header>
         {#if recentReports.length}
@@ -234,13 +238,15 @@
         {/if}
       </section>
     {/if}
+      </div>
+    {/if}
     {#if quietAccount}
       <section class="quiet-account">
         <header><h3>보유·거래 현황</h3><a href="#/positions">포지션 명세</a></header>
         <h4>보유 중인 모의 자산이 없습니다</h4>
         <p>선택한 통화에 체결 기록이 없어 손익률을 집계할 수 없습니다.</p>
         <div class="quiet-actions"><a href="#/research">발행된 예측 확인</a><a href="#/reports">분석 리포트</a></div>
-        <dl><div><dt>오늘 분석 실행</dt><dd><a href="#/schedules">실행 없음 · 일정 보기</a></dd></div>
+        <dl>
             <div><dt>분석 대기열</dt><dd><a href="#/live">대기 없음 · 실시간 보기</a></dd></div>
             <div><dt>AI 회고 평가</dt><dd><button on:click={() => accuracyHelp.showModal()}>표본 없음 · 채점 기준</button></dd></div></dl>
       </section>
@@ -267,9 +273,7 @@
         {:else}<p class="folio-empty-head">보유 자산 없음</p><p>선택한 계좌·통화에 남아 있는 모의 포지션이 없습니다.</p>{/if}
       </section>
     {/if}
-    {#if isForecastLab && !loading && !error && todayRunsTotal === 0}
-      <section class="operation-line"><div><h3>오늘의 분석 실행</h3><p>기록된 실행이 없습니다.</p></div><a href="#/schedules">분석 예약 보기</a></section>
-    {:else}
+    {#if !isForecastLab}
     <button class="card summary-banner" type="button" on:click={goArchive}>
       <div class="summary-header">
         <div>
@@ -279,13 +283,6 @@
           {todayRunsTotal ?? "-"}
         </div>
       </div>
-      {#if isForecastLab && scheduleSummary}
-        <div class="desk-progress" aria-hidden="true">
-          {#each [scheduleSummary.done,scheduleSummary.skipped,scheduleSummary.failed,scheduleSummary.running] as n,index}
-            {#if n > 0}<span class={`run-${index}`} style={`flex:${n}`}></span>{/if}
-          {/each}
-        </div>
-      {/if}
       <div class="summary-metrics">
         <div class="summary-item">
           <span class="summary-label">완료</span>
@@ -558,13 +555,18 @@
 </section>
 
 <style>
-  .latest-edition { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,175px),1fr)); }
-  .latest-story { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:9px 12px; min-width:0; padding:16px 20px; text-decoration:none; color:var(--fl-ink); border-inline-end:1px solid var(--fl-line); }
+  .desk-opening { grid-column:1/-1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; }
+  .desk-opening.solo { grid-template-columns:1fr; }
+  .latest-edition { display:grid; }
+  :global(.workspace #page-dashboard) .desk-opening .desk-recent { margin:0; border-radius:20px; }
+  .desk-opening :global(.desk-toolbar) { padding:15px 20px 8px; border-bottom:0; }
+  @media(max-width:730px) { .desk-opening { grid-template-columns:1fr; gap:13px; } }
+  .latest-story { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:3px 12px; min-width:0; margin-inline:20px; padding:9px 0; text-decoration:none; color:var(--fl-ink); border-bottom:1px solid var(--fl-line); }
   .latest-story:last-child { border:0; }
-  .latest-story :global(.instrument) { flex:1 1 58%; }
+  .latest-story :global(.instrument) { grid-column:1; }
   .latest-story:hover { background:var(--fl-surface-subtle); }
-  .latest-story time { width:100%; color:var(--fl-muted); font-size:.77rem; }
-  @media(max-width:640px) { .latest-edition { grid-template-columns:1fr; } .latest-story { border-inline-end:0; border-bottom:1px solid var(--fl-line); padding:13px 16px; } .latest-story time { width:auto; } }
+  .latest-story time { grid-column:1/-1; color:var(--fl-muted); font-size:.74rem; }
+
   .quiet-account {grid-column:1/-1; background:var(--fl-surface, #202124); color:var(--fl-ink, #f4f2e9); border:1px solid var(--fl-line, #3b3d41); border-radius:.7rem; padding:1.1rem 1.25rem;}
   .quiet-account header,.quiet-account dl div,.quiet-actions {display:flex; justify-content:space-between; align-items:center; gap:.75rem;}
   .quiet-account header {border-bottom:1px solid var(--fl-line, #3b3d41); padding-bottom:.75rem;}
@@ -577,11 +579,10 @@
   .quiet-actions {justify-content:flex-start;}
   .quiet-account dl {margin:1rem 0 0;} .quiet-account dl div {border-top:1px solid var(--fl-line, #3b3d41); padding:.55rem 0;}
   .quiet-account dd {margin:0;text-align:right;}
-  .operation-line,.performance-note { padding:1rem 1.15rem; border:1px solid var(--fl-line, #3b3d41); border-radius:.65rem; background:var(--fl-surface, #202124); color:var(--fl-ink, #f4f2e9);}
-  .operation-line {display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.75rem;}
-  .operation-line h3,.performance-note h3 {margin:0; font-size:1rem;}
-  .operation-line p,.performance-note p {margin:.35rem 0; color:var(--fl-muted, #b5b4ad);}
-  .operation-line a,.performance-note a {color:var(--fl-accent, #d5f65e); font-weight:600; font-size:.87rem;}
+  .performance-note { padding:1rem 1.15rem; border:1px solid var(--fl-line, #3b3d41); border-radius:.65rem; background:var(--fl-surface, #202124); color:var(--fl-ink, #f4f2e9);}
+  .performance-note h3 {margin:0; font-size:1rem;}
+  .performance-note p {margin:.35rem 0; color:var(--fl-muted, #b5b4ad);}
+  .performance-note a {color:var(--fl-accent, #d5f65e); font-weight:600; font-size:.87rem;}
   .performance-note {margin-block:1rem;}
 
   .accuracy-label { display: flex; align-items: center; gap: 4px; }

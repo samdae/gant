@@ -27,12 +27,13 @@
     <div>
       <h1>서비스 소개</h1>
       <p>
-        개장 전 발행한 상승 확률을 다섯 거래일 뒤의 시세와 대조합니다. 각
-        사례에서 당시 가격, 검증 조건과 최근 30일 이슈를 함께 읽을 수 있습니다.
-        예측과 매매 분석 예약은 v2에서 실행하고, 이 v3 화면에서 기록을 조회합니다.
+        리포트에서 종목별 매매 판단과 근거를 읽고, 연구 사례에서 개장 전 발행한 상승 확률을 다섯 거래일 뒤의 시세와 대조할 수 있습니다.
+        분석 예약과 가상매매는 같은 운영 시스템의 기록을 사용합니다.
       </p>
     </div>
-    <a class="op-primary" href="#/research">예측 사례 보기 →</a>
+    <nav class="guide-start" aria-label="서비스 둘러보기">
+      <a class="op-primary" href="#/reports">발행 리포트</a><a href="#/research">연구 사례 →</a>
+    </nav>
   </header>
   <section class="op-panel methodology">
     <h2>예측이 기록되고 검증되는 순서</h2>
@@ -131,6 +132,9 @@
 </section>
 
 <style>
+  .guide-start { display:flex; flex:none; flex-wrap:wrap; align-items:center; gap:16px; }
+  .guide-start a { min-height:44px; display:inline-flex; align-items:center; font-weight:650; }
+  .guide-start a:not(.op-primary) { color:var(--fl-accent); }
   .methodology nav {
     display: flex;
     flex-wrap: wrap;

@@ -6,7 +6,7 @@
   --surface-hover: var(--fl-surface-subtle);
   --border: var(--fl-line);
   --border-hover: var(--fl-line);
-  --border-strong: #97ada8;
+  --border-strong: #ad98a3;
   --text-secondary: var(--fl-ink);
   --text-dim: var(--fl-muted);
   --primary-hover: var(--fl-accent-hover);
@@ -24,13 +24,13 @@
 .workspace :is(.page .page-header h2, .op-page .op-title h1) {
   color: var(--fl-ink);
   font-family: var(--fl-display);
-  font-size: clamp(27px, 3.2vw, 45px);
+  font-size: clamp(26px, 2.45vw, 36px);
   line-height: 1.22;
   letter-spacing: -0.035em;
 }
 .workspace :is(.page-header, .op-title) {
-  border-bottom: 1px solid var(--fl-line);
-  padding-bottom: 15px;
+  border-bottom: 0;
+  padding-bottom: 4px;
 }
 .workspace
   :is(.page .card, .desk-panel, .op-panel, .review-register, .review-empty) {
@@ -248,7 +248,7 @@
 }
 .workspace #page-dashboard .folio-overview {
   grid-column: 1/-1;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: 1fr;
   margin: 0;
 }
 .folio-deck {

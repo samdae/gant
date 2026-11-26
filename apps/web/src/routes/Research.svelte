@@ -303,9 +303,9 @@
 <style>
   .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
   .research-desk {
-    max-width: 1440px;
+    max-width: var(--content-max);
     margin: auto;
-    padding: 18px clamp(14px, 2.5vw, 36px) 52px;
+    padding: var(--content-top) var(--content-gutter) 52px;
     color: var(--fl-ink);
   }
 
@@ -401,7 +401,7 @@
   }
   @media (max-width: 600px) {
     .research-desk {
-      padding: 10px 12px 42px;
+      padding: 14px var(--content-gutter) 42px;
     }
     dialog {
       margin: auto auto 0;

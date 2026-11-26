@@ -6,8 +6,8 @@
   "start_url": "/v4/#/reports",
   "scope": "/v4/",
   "display": "standalone",
-  "theme_color": "#eaf1ee",
-  "background_color": "#eaf1ee",
+  "theme_color": "#f4f1ec",
+  "background_color": "#f4f1ec",
   "icons": [
     {
       "src": "/v4/gant-192.png",

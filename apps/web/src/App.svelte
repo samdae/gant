@@ -96,11 +96,9 @@
     width: min(100vw, 480px); left: 50%; right: auto; transform: translateX(-50%);
   }
   .workspace {
-    --frame-gap: 16px;
-    --rail-width: clamp(212px, 16vw, 239px);
-    --content-max: 1440px;
-    --content-gutter: clamp(22px, 3vw, 52px);
-    --content-top: clamp(24px, 2.4vw, 38px);
+    --content-max: 1320px;
+    --content-gutter: clamp(20px, 3.5vw, 54px);
+    --content-top: clamp(20px, 2vw, 30px);
     min-height: 100dvh;
     width: 100%;
     font-family: var(--fl-font);
@@ -109,21 +107,8 @@
     background: var(--fl-bg);
     isolation: isolate;
   }
-  /* The pale field sits behind floating navigation. Data keeps a still reading plane. */
-  .workspace::before {
-    content: "";
-    position: fixed;
-    z-index: -1;
-    inset: 0;
-    pointer-events: none;
-    background:
-      radial-gradient(ellipse 52% 50% at 2% 6%, #a5cfc1 0%, transparent 88%),
-      radial-gradient(ellipse 56% 41% at 96% -8%, #d6d1da 0%, transparent 90%),
-      radial-gradient(ellipse 28% 44% at -4% 74%, #c1d7cf, transparent 90%),
-      linear-gradient(155deg, #d9e8e1 0%, #eff3ed 51%, #e3ede9 100%);
-  }
-  .workspace-body { margin-left: var(--rail-width); min-width: 0; }
-  .workspace .main-content { padding: 0; outline: none; }
+  .workspace-body { min-width:0; }
+  .workspace .main-content { max-width:var(--content-max); margin-inline:auto; padding:0; outline:none; }
   .skip {
     position: fixed; top: -64px; left: 12px; z-index: 160;
     padding: 10px 15px; border-radius: 12px; background: var(--fl-surface); color: var(--fl-accent);
@@ -132,14 +117,5 @@
   @media (max-width: 900px) {
     .workspace { --content-gutter: clamp(14px, 3.5vw, 30px); --content-top: 23px; }
     .workspace-body { margin-left: 0; padding-bottom: calc(83px + env(safe-area-inset-bottom)); }
-    .workspace::before {
-      background:
-        radial-gradient(ellipse 94% 39% at -12% -1%, #afd7c7, transparent 86%),
-        radial-gradient(ellipse 67% 39% at 100% -6%, #ddd4db, transparent 85%),
-        linear-gradient(153deg, #e7eeea, #eff4ef 55%, #dcebe5);
-    }
-  }
-  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
-    .workspace::before { display: none; }
   }
 </style>

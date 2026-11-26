@@ -5,7 +5,7 @@
 | 구성 | 위치 및 책임 |
 |---|---|
 | 소스 | Windows의 `C:\Users\samda\dev\TradingAgents-V4`, 브랜치 `codex/gant-v4` |
-| 화면 서버 | Node.js 기본 HTTP, `127.0.0.1:8035/v4/`, 정적 파일 GET·HEAD |
+| 화면 서버 | Node.js 기본 HTTP, `127.0.0.1:8035/v4/`, 정적 화면·설치 파일 및 최근 판단 비교 조회 |
 | 게시 디렉터리 | `%LOCALAPPDATA%\TradingAgentsV4\web`, 현재 릴리스는 `current` 한 줄 |
 | 자동 기동 | Windows 작업 스케줄러의 `TradingAgents V4 Preview`, 현재 사용자 로그인 시 실행 |
 | 공개 입구 | 기존 Cloudflare Tunnel의 `v3.daehun.app`에서 `/v4` 경로만 8035로 전달 |
@@ -19,7 +19,12 @@ Windows PowerShell에서 v4 체크아웃으로 이동한다. Git, Node.js 22 이
 Set-Location C:/Users/samda/dev/TradingAgents-V4
 npm --prefix apps/web ci
 npm --prefix apps/web run check
-node --test apps/web/tests/v4-preview.test.mjs
+Push-Location apps/web
+try {
+    $specs = (Get-ChildItem tests -Filter '*.test.mjs').FullName
+    node --test $specs
+    if ($LASTEXITCODE -ne 0) { throw 'v4 tests failed' }
+} finally { Pop-Location }
 npm --prefix apps/web run build:v4
 if ($LASTEXITCODE -ne 0) { throw 'v4 build failed' }
 
@@ -40,6 +45,14 @@ Stop-ScheduledTask -TaskName 'TradingAgents V4 Preview'
 Get-NetTCPConnection -State Listen -LocalPort 8035 -ErrorAction SilentlyContinue
 .\scripts\start-v4-preview.ps1
 ~~~
+
+## 판단 변화 조회
+
+리포트 첫 화면의 `GET /v4/data/report-pulse`는 8035에서 처리한다. 같은 종목의 이번 회차와 바로 앞 회차를 읽고 발행 시각, 회차 ID, 저장된 판단과 이번 최종 판단의 짧은 발췌문을 제공한다. 가상 체결 내역과 확률 예측은 각자의 상세 화면에서 조회한다.
+
+Windows 뷰어는 고정된 주소 `127.0.0.1:8025`의 공개 리포트 목록과 종목별 최근 두 회차만 조회한다. 일반 상태에서는 5분간 한 번 만든 응답을 재사용하고, 변경이 없는 종목의 비교 결과도 재사용한다. 회차 자료가 일치하지 않거나 일부 읽기에 실패하면 해당 종목을 다시 조회할 수 있도록 비교 불가 상태로 반환한다. 시간이나 결정값이 비어 있는 자료는 방향이 바뀐 것으로 계산하지 않는다.
+
+릴리스에서 `scripts/v4-preview.mjs` 또는 `scripts/v4-report-pulse.mjs`가 바뀌면 8035의 실행 파일·작업 소유자를 먼저 확인하고 위 절차로 v4 작업을 다시 기동한다. 연동 확인은 새 자료를 먼저 제공한 뒤 번들을 게시하는 순서로 진행한다. `/v4/data/report-pulse`의 티커·두 리포트 ID를 `/workspace-api/reports?ticker=WMT&limit=2` 등으로 대조하고, 화면에서 최신 회차의 링크를 눌러 같은 ID인지 확인한다. 8025는 조회에 사용하며 예약 실행과 DB 권한은 v2의 기존 설정을 따른다.
 
 ## 터널 라우팅
 
@@ -76,3 +89,11 @@ node scripts/v4-preview.mjs activate <이전-64자리-릴리스-ID>
 2026년 11월 27일 배포한 버전은 `gant-v4-preview.1`이다. 빌드의 정적 릴리스 ID는 `ff3b1176488dabe391e7cd1dd7892ec35e0c572740814e7bb347113dc3fbac69`다. 공개 주소에서 JS·CSS와 설치 파일 8개의 바이트를 로컬 배포본과 대조했고, v2 메인과 v3 루트의 기존 JS·CSS도 확인했다.
 
 Chromium에서 320·393·768·1440px로 실제 공개 데이터가 있는 화면 16개를 검사했다. 외부 URL에서는 393·1440px에서 같은 16개 화면을 다시 열었고, WebKit에서도 393px로 리포트·상세·연구·대시보드·포트폴리오의 표시를 확인했다. 월마트 검색 및 회차 열람, 출처 펼침, 엔비디아 차트 전환과 가격 표, 사례 선택, 설치 범위, 키보드와 메뉴 터치도 확인했다. Python 회귀 167개와 Node 테스트 10개가 통과했고 Svelte 진단의 오류·경고는 0개였다.
+
+## 두 번째 배포 검증
+
+2026년 11월 27일 `gant-v4-preview.2`의 정적 릴리스 `cd775e4c0d4efb78ad37431eb942dd831a6eb07cffe0b6659e32aaaf3d9358df`를 게시했다. 8035의 v4 작업을 다시 기동해 새 읽기 경로를 확인한 뒤 정적 릴리스를 전환했다. 공개 JS·CSS·설치 파일을 로컬 빌드와 바이트 단위로 대조했다. v2 메인과 v3 루트의 JS·CSS 참조도 이전 배포와 일치했다.
+
+공개 비교 결과 24종목의 회차 ID와 판단을 각각 원본에서 확인했다. 직전 대비 변경은 8종목, 유지는 16종목이었다. 월마트의 직전 1276번과 최신 1300번, SK이노베이션의 직전 1284번과 최신 1308번을 확인했다. 이 수치는 배포 시점 기록이며 이후 회차 발행에 따라 달라진다.
+
+공개 주소의 16개 화면을 393·1440px에서 열었고, 리포트는 Chromium 320·393·768·1440px 및 WebKit 393px에서 두 회차 조회를 점검했다. 종목 검색, 회차 변경, 출처, 예측·가격 차트, 기간 선택, 탐색, PWA 설치 범위를 확인했다. 비교 조회 장애는 별도 후보 환경에서 재현해 기존 디렉터리와 재시도 동작을 검증했다. Python 회귀 167개와 Node 테스트 16개가 통과했으며 Svelte 진단은 오류·경고 0개였다.

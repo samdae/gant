@@ -51,7 +51,8 @@
     } };
   }
 
-  function showMenu() {
+  function showMenu(event: MouseEvent) {
+    opener = event.currentTarget as HTMLButtonElement;
     if (dialog.open) return;
     viaLink = false;
     delete dialog.dataset.motion;
@@ -200,7 +201,7 @@
   onMount(() => {
     const desktop = window.matchMedia("(min-width: 901px)");
     const resize = () => {
-      if (desktop.matches && dialog.open) finish(true);
+      if (dialog.open) finish(true);
     };
     const navigate = () => {
       if (dialog.open) finish(true);
@@ -215,19 +216,15 @@
   });
 </script>
 
-<aside class="desktop-rail" use:glassRim><WorkspaceRail /></aside>
 <header class="context-bar">
-  <div class="context-inner" use:glassRim class:dense={denseControls}>
-    <a
-      href="#/dashboard"
-      class="mobile-brand"
-      aria-label="GANT 대시보드"><GantMark size={30} /><b>GANT</b></a
-    >
-    <nav aria-label="현재 위치" class="crumb">
-      <span>{context.section.name}</span><WorkspaceIcon
-        name="chevron"
-        size={12}
-      /><strong>{context.page.label}</strong>
+  <div class="context-inner" class:dense={denseControls}>
+    <a href="#/dashboard" class="mobile-brand" aria-label="GANT 대시보드">
+      <GantMark size={32} /><b>GANT</b>
+    </a>
+    <nav class="desk-tabs" aria-label="주 탐색">
+      {#each [tabs[2], tabs[1], tabs[0], tabs[3]] as tab}
+        <a href={"#" + tab.href} aria-current={tab === activeTab ? "location" : undefined}>{tab.label}</a>
+      {/each}
     </nav>
     <div class="actions"><slot /></div>
     <div class="access" title={isPublicViewer ? "공개 열람" : "운영 콘솔"}>
@@ -236,9 +233,12 @@
         >{isPublicViewer ? "공개 열람" : "운영 콘솔"}</span
       >
     </div>
+    <button class="desktop-menu" type="button" aria-label="전체 메뉴 열기" aria-controls="workspace-drawer" aria-expanded={open} on:click={showMenu}>
+      <WorkspaceIcon name="menu" size={20} /><span>전체 메뉴</span>
+    </button>
   </div>
 </header>
-<nav class="phone-tabs" style:--tab-index={open || !activeTab ? 4 : tabs.indexOf(activeTab)} aria-label="모바일 주 탐색">
+<nav class="phone-tabs" use:glassRim style:--tab-index={open || !activeTab ? 4 : tabs.indexOf(activeTab)} aria-label="모바일 주 탐색">
   {#each tabs as tab}<a
       href={"#" + tab.href}
       aria-current={!open && tab === activeTab ? "location" : undefined}
@@ -246,7 +246,6 @@
     >{/each}
   <button
     type="button"
-    bind:this={opener}
     aria-controls="workspace-drawer"
     aria-expanded={open}
     aria-label="전체 메뉴 열기"
@@ -272,60 +271,41 @@
 </dialog>
 
 <style>
-  .desktop-rail, .phone-tabs, dialog, .context-inner {
-    border: 1px solid var(--fl-glass-edge);
-    background: var(--fl-glass);
-    box-shadow: var(--fl-glass-shadow);
-    -webkit-backdrop-filter: var(--fl-glass-blur);
-    backdrop-filter: var(--fl-glass-blur);
-  }
-  .desktop-rail {
-    position: fixed;
-    z-index: 40;
-    top: var(--frame-gap);
-    bottom: var(--frame-gap);
-    left: var(--frame-gap);
-    width: calc(var(--rail-width) - var(--frame-gap));
-    border-radius: 25px;
-    overflow: hidden;
-  }
   .context-bar {
-    position: sticky; top: 0;
-    z-index: 45;
-    max-width: var(--content-max);
-    margin-inline: auto;
-    padding: var(--frame-gap) var(--content-gutter) 0;
+    position:sticky; top:0; z-index:45; background:var(--fl-glass);
+    border-bottom:1px solid var(--fl-line);
+    backdrop-filter:var(--fl-glass-blur); -webkit-backdrop-filter:var(--fl-glass-blur);
   }
   .context-inner {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    min-height: 54px;
-    padding: 4px 8px 4px 19px;
-    border-radius: 20px;
+    max-width:var(--content-max); padding:7px var(--content-gutter); margin-inline:auto;
+    display:flex; align-items:center; min-height:68px; gap:clamp(10px,1.7vw,25px);
   }
-  .crumb, .access, .mobile-brand { display: inline-flex; align-items: center; white-space: nowrap; }
-  .crumb, .access { gap: 7px; color: var(--fl-muted); }
-  .crumb { font-size: .82rem; }
-  .crumb strong { font-weight: 660; color: var(--fl-ink); }
-  .actions { margin-left: auto; }
-  .actions:empty { display: none; }
-  .access { margin-left: auto; padding-inline: 8px; font-size: .76rem; font-weight: 620; }
-  .public-lamp {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex: none;
-    background: #258358;
-    box-shadow: 0 0 0 3px rgb(47 137 91 / 13%);
+  .mobile-brand,.desk-tabs,.desk-tabs a,.access,.desktop-menu { display:inline-flex; align-items:center; white-space:nowrap; }
+  .mobile-brand {
+    gap:9px; min-height:44px; color:var(--fl-ink); text-decoration:none;
   }
-  .actions:not(:empty) + .access {
-    margin-left: 0;
-    padding-left: 14px;
-    border-left: 1px solid var(--fl-line);
+  .mobile-brand b { font:800 22px/1 var(--fl-font); letter-spacing:-.065em; }
+  .desk-tabs { align-self:stretch; gap:2px; }
+  .desk-tabs a {
+    position:relative; padding:0 clamp(9px,1.3vw,18px); color:var(--fl-muted); font-size:.88rem;
+    font-weight:620; text-decoration:none; border-radius:9px;
   }
-  .mobile-brand, .phone-tabs { display: none; }
+  .desk-tabs a[aria-current] { color:var(--fl-accent); }
+  .desk-tabs a[aria-current]::after {
+    content:""; position:absolute; left:14%; right:14%; height:3px; border-radius:3px; bottom:0; background:currentColor;
+  }
+  .desk-tabs a:hover,.desktop-menu:hover { background:var(--fl-accent-soft); color:var(--fl-accent-hover); }
+  .actions { margin-left:auto; }
+  .actions:empty { display:none; }
+  .access { margin-left:auto; gap:8px; color:var(--fl-muted); font-size:.77rem; font-weight:650; }
+  .actions:not(:empty)+.access { margin-left:0; }
+  .public-lamp { flex:none; width:7px; height:7px; border-radius:50%; background:#278265; box-shadow:0 0 0 3px rgb(31 129 86 / 12%); }
+  .desktop-menu {
+    padding:0 12px; gap:7px; min-height:42px; cursor:pointer; font:650 .8rem var(--fl-font);
+    color:var(--fl-ink); background:var(--fl-surface); border:1px solid var(--fl-line); border-radius:12px;
+  }
+  .phone-tabs { display:none; }
+  dialog { border:1px solid var(--fl-glass-edge); box-shadow:var(--fl-glass-shadow); backdrop-filter:var(--fl-glass-blur); }
   dialog {
     position: fixed;
     inset: max(9px, env(safe-area-inset-top)) max(9px, env(safe-area-inset-right)) max(9px, env(safe-area-inset-bottom)) auto;
@@ -351,18 +331,10 @@
     dialog:global([data-motion="dragging"]), dialog:global([data-motion="dragging"])::backdrop { transition: none; }
   }
   @media (max-width: 900px) {
-    .desktop-rail, .crumb { display: none; }
-    .context-bar { position: relative; padding-top: max(9px, env(safe-area-inset-top)); }
-    .context-inner { min-height: 52px; gap: 8px; padding: 4px 8px; border-radius: 19px; }
-    .mobile-brand {
-      display: inline-flex;
-      min-height: 44px;
-      gap: 7px;
-      color: var(--fl-ink);
-      text-decoration: none;
-    }
-    .mobile-brand b { font: 760 16px/1 var(--fl-font); letter-spacing: -.04em; }
-    .actions:not(:empty) + .access { margin-left: 0; padding-inline: 7px; }
+    .desk-tabs,.desktop-menu { display:none; }
+    .context-inner { min-height:57px; padding-block: max(5px,env(safe-area-inset-top)) 5px; gap:10px; }
+    .mobile-brand { gap:7px; }
+    .mobile-brand b { font-size:20px; }
     .phone-tabs {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -373,17 +345,23 @@
       bottom: max(9px, env(safe-area-inset-bottom));
       max-width: 468px;
       margin-inline: auto;
-      padding: 4px;
-      border-radius: 30px;
+      padding: 5px;
+      border-radius: 29px;
+      color:#fcf6fa;
+      border:1px solid rgb(255 232 242 / 36%);
+      background:#422e42;
+      background:linear-gradient(145deg,rgb(74 45 68 / 83%),rgb(45 32 50 / 87%));
+      backdrop-filter:var(--fl-glass-blur); -webkit-backdrop-filter:var(--fl-glass-blur);
+      box-shadow:inset 0 1px 1px rgb(255 250 244 / 44%),inset 0 -1px 2px rgb(225 173 201 / 24%),0 7px 24px -8px rgb(48 26 46 / 52%);
     }
     .phone-tabs::before {
       content: "";
       position: absolute;
       pointer-events: none;
-      inset: 4px auto 4px 4px;
-      width: calc((100% - 8px) / 5);
+      inset: 5px auto 5px 5px;
+      width: calc((100% - 10px) / 5);
       border-radius: 23px;
-      background: var(--fl-accent-soft);
+      background: #f3e3ed;
       box-shadow: inset 0 1px 1px rgb(255 255 255 / 85%);
       transform: translateX(calc(var(--tab-index) * 100%));
     }
@@ -403,14 +381,14 @@
       white-space: nowrap;
       border: 0;
       border-radius: 23px;
-      color: var(--fl-muted);
+      color: #f4eaf0;
       background: transparent;
       font: 580 .68rem/1.2 var(--fl-font);
       text-decoration: none;
       cursor: pointer;
     }
     .phone-tabs :is([aria-current],.active) {
-      color: var(--fl-accent-hover);
+      color: #52263f;
       font-weight: 760;
     }
     .phone-tabs :is([aria-current],.active) :global(svg) { stroke-width: 2; }
@@ -431,18 +409,21 @@
   }
   @media (hover: hover) and (prefers-reduced-motion: no-preference) and (prefers-contrast: no-preference) {
     @supports (mask-composite: exclude) {
-      :is(.desktop-rail,.context-inner)::after {
+      .phone-tabs::after {
         content: "";
         position: absolute;
         pointer-events: none;
         inset: 0;
         padding: 1px;
         border-radius: inherit;
-        background: radial-gradient(120px at var(--rim-x, 15%) var(--rim-y, 0px), #fff 10%, rgb(210 254 238 / 80%) 38%, transparent);
+        background: radial-gradient(120px at var(--rim-x, 15%) var(--rim-y, 0px), #fff 10%, rgb(255 215 233 / 80%) 38%, transparent);
         mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
         mask-composite: exclude;
       }
     }
+  }
+  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    .phone-tabs { background:#372638; backdrop-filter:none; }
   }
   @media (forced-colors: active) {
     .phone-tabs :is([aria-current],.active), .public-lamp { outline: 2px solid Highlight; outline-offset: -2px; }

@@ -25,6 +25,7 @@ class ReportingBrowserTests(unittest.TestCase):
         window.caseQueries=[];
         window.roundQueries=[];
         window.directoryRequests=0;
+        window.pulseRequests=0;
         window.releaseFirst=()=>resolveFirst?.();
         const json=(value)=>new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});
         const row={ticker:'NVDA',market:'us',id:1,data_session:'2026-11-24',status:'pending',forecast_probabilities:{single:.39}};
@@ -34,6 +35,16 @@ class ReportingBrowserTests(unittest.TestCase):
         const report=id=>({ticker:'NVDA',id,created_at:'2026-11-24T03:00:00Z',scheduled_cycle:id,final_trade_decision:'회차 판단 '+id});
         window.fetch=async (url, options)=>{
           const u=new URL(url,location.href),p=u.pathname;
+          if(p==='/v4/data/report-pulse') {
+            window.pulseRequests++;
+            const here='2026-11-24T03:00:00Z', prior='2026-11-20T03:00:00Z';
+            const pair=(ticker,id,status,a,b,at)=>({ticker,report_count:2,latest_at:at,status,
+              previous:{id:id-1,at:prior,cycle:1,decision:a},current:{id,at,cycle:2,decision:b},
+              reason:ticker+' 이번 회차 근거'});
+            return json({as_of:here,rows:[pair('NVDA',8,'changed','HOLD','BUY',here),
+              pair('WMT',9,'changed','HOLD','SELL','2026-11-23T03:00:00Z'),
+              pair('MSFT',12,'unchanged','HOLD','HOLD','2026-11-22T03:00:00Z')]});
+          }
           if(p==='/api/forecast-tickers'){window.directoryRequests++;return json([directoryRequests>=3 ? added : latest,other]);}
           if(p==='/api/cases') {
             if(u.searchParams.has('ticker')){
@@ -91,13 +102,35 @@ class ReportingBrowserTests(unittest.TestCase):
             const selected=()=>q('.report-kind [aria-pressed=true]')?.textContent;
             if(reportTabs().map(b=>b.textContent).join('|')!=='분석 리포트|확률 예측' ||
                selected()!=='분석 리포트' || q('.forecast-reports') || caseQueries.length || directoryRequests)throw Error('report list default');
+            if(location.pathname.startsWith('/v4/')){
+              const focus=()=>q('.feature'), list=()=>[...document.querySelectorAll('.publication-link')];
+              if(pulseRequests!==1 || !focus()?.innerText.includes('NVDA 이번 회차 근거') ||
+                !q('.feature a[href="#/reports/nvda?report=8"]') || !q('.feature a[href="#/reports/nvda?report=7"]') ||
+                q('.reading.prior strong').textContent!=='관망' || q('.reading.now strong').textContent!=='매수')throw Error('verified pair missing');
+              document.querySelectorAll('.switch-items button')[1].click();
+              await wait(()=>q('.reading.now strong')?.textContent==='매도' && q('.feature a[href="#/reports/wmt?report=9"]'));
+              const filters=[...document.querySelectorAll('.comparison-filter button')];
+              filters[2].click();
+              await wait(()=>list().length===1 && list()[0].hash==='#/reports/msft');
+              filters[0].click();
+              const search=q('.desk-search input');
+              search.value='MSFT';search.dispatchEvent(new Event('input',{bubbles:true}));
+              await wait(()=>focus()?.innerText.includes('이번 회차 판단 유지') && q('.steady') && !q('.switchboard'));
+              search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));
+              await wait(()=>list().length===3);
+              if(pulseRequests!==1 || directoryRequests)throw Error('filters fetched data');
+            }
             reportTabs()[1].click();
             await wait(()=>q('.forecast-reports a[href="#/research/201"]')?.textContent.includes('39.0%'));
             if(document.querySelectorAll('.forecast-reports a').length!==2 || q('.forecast-reports').textContent.includes('더 보기'))throw Error('ticker directory');
             if(selected()!=='확률 예측' || q('.report-directory'))throw Error('mixed report types');
             const ledger=q('.forecast-reports'), estimate=q('.forecast-reports .figure strong');
-            if(getComputedStyle(ledger).backgroundColor!=='rgb(252, 253, 251)' ||
-              getComputedStyle(estimate).color!=='rgb(130, 66, 111)') throw Error('forecast ledger theme');
+            const swatch=document.createElement('span');
+            swatch.style.cssText='color:var(--fl-forecast);background-color:var(--fl-surface)';
+            ledger.append(swatch);
+            if(getComputedStyle(ledger).backgroundColor!==getComputedStyle(swatch).backgroundColor ||
+              getComputedStyle(estimate).color!==getComputedStyle(swatch).color) throw Error('forecast ledger theme');
+            swatch.remove();
             q('.forecast-reports button[aria-label="확률 예측 새로고침"]').click();
             await wait(()=>directoryRequests===2 && !q('.forecast-reports .refresh').disabled);
             q('.forecast-reports a').click();

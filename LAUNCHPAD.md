@@ -4,7 +4,7 @@
 
 ## v4 체크아웃에서 시작할 때
 
-브랜치 `codex/gant-v4`에서는 [v4 배포 런치패드](docs/v4/OPERATIONS.md)를 따른다. 공개 주소는 https://v3.daehun.app/v4/ 이고, 정적 번들의 Windows 기동과 기존 공개 API의 연결을 따로 확인한다.
+브랜치 `codex/gant-v4`에서는 [v4 배포 런치패드](docs/v4/OPERATIONS.md)를 따른다. 공개 주소는 https://v3.daehun.app/v4/ 이고, Windows 뷰어 기동 후 /v4/data/report-pulse와 기존 공개 API를 각각 확인한다.
 
 ## v3 체크아웃에서 시작할 때
 

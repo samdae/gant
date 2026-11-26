@@ -302,7 +302,9 @@
 
       {#each orderedGroups as group}
         <div class="report-group" class:desk-conclusion={isForecastLab && group === conclusion}>
-          <div class="report-group-label">{group.name}</div>
+          {#if !isForecastLab || group !== conclusion}
+            <div class="report-group-label">{group.name}</div>
+          {/if}
 
           {#each group.items as field}
             <button
@@ -354,7 +356,7 @@
 </section>
 
 <style>
-  .report-heading { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:14px 22px; padding-bottom:22px; }
+  .report-heading { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:10px 22px; padding-bottom:8px; }
   .archive-back { grid-column:1/-1; display:inline-flex; align-items:center; gap:6px; width:fit-content; color:var(--fl-accent); font-size:.85rem; font-weight:650; text-decoration:none; }
   .archive-back svg,.disclose { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
   .archive-back:hover { text-decoration:underline; }
@@ -366,11 +368,16 @@
   .round-select :global(.select-menu) { min-width:0; max-width:100%; }
   .disclose { flex-shrink:0; width:15px; height:15px; transition:transform .16s ease; }
   .open .disclose { transform:rotate(180deg); }
-  :global(.workspace) #page-report-detail .report-meta { background:var(--fl-surface); border:1px solid var(--fl-line); border-radius:var(--fl-radius,16px); margin-bottom:20px; padding:clamp(16px,2.3vw,24px); }
+  :global(.workspace) #page-report-detail .report-meta { background:var(--fl-forecast-soft); border:1px solid var(--fl-line); border-radius:var(--fl-radius,16px); margin:12px 0 16px; padding:clamp(14px,1.7vw,20px); }
   :global(.workspace) #page-report-detail .report-group { border:1px solid var(--fl-line); border-radius:var(--fl-radius,16px); overflow:hidden; }
   :global(.workspace) #page-report-detail .report-group-label { color:var(--fl-ink); background:var(--fl-surface-subtle); padding:12px 18px; }
   :global(.workspace) #page-report-detail .report-content { padding:4px clamp(15px,3vw,35px) 22px; }
   :global(.workspace) #page-report-detail .report-content :global(p) { max-width:72ch; line-height:1.72; }
+  :global(.workspace) #page-report-detail .desk-conclusion { background:var(--fl-surface); border-top:3px solid var(--fl-accent); }
+  :global(.workspace) #page-report-detail .desk-conclusion .report-accordion { width:100%; margin:0; min-height:48px; padding:14px clamp(16px,2.8vw,34px); border-radius:0; font-size:1.05rem; font-weight:720; color:var(--fl-ink); background:transparent; }
+  :global(.workspace) #page-report-detail .desk-conclusion .report-accordion:hover { background:var(--fl-forecast-soft); }
+  :global(.workspace) #page-report-detail .desk-conclusion .report-content { margin:0; border-radius:0; background:transparent; padding:0 clamp(16px,2.8vw,34px) 22px; font-size:.95rem; }
+  :global(.workspace) #page-report-detail .desk-conclusion .report-content :global(p:first-child) { margin-top:0; }
   @media(max-width:670px) {
     .report-heading { grid-template-columns:minmax(0,1fr); gap:12px; }
     .round-select { display:grid; grid-template-columns:minmax(0,1fr); justify-content:start; gap:5px; }

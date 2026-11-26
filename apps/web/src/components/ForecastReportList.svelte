@@ -46,15 +46,16 @@
 
 <section class="forecast-reports" aria-label="확률 예측 리포트">
   <header class="forecast-heading">
-    <div><h3>확률 예측</h3>{#if !busy && !error}<p class="forecast-counter">{visible.length}개 종목 · 종목별 최근 발행</p>{/if}</div>
+    <div><h3>확률 예측</h3>{#if !busy && !error}<p class="forecast-counter">{visible.length}개 종목 · 단일 모델의 최근 예측</p>{/if}</div>
     <RefreshButton label="확률 예측 새로고침" {busy} on:click={() => load(true)} />
   </header>
   {#if visible.length}
     <div class="list-columns" aria-hidden="true">
-      <span>회사 · 최근 예측</span><span>상승 확률</span><span>관측일</span>
+      <span>회사 · 최근 예측</span><span>5거래일 상승 확률</span><span>관측일</span>
     </div>
   {/if}
   {#each visible as row (row.id)}
+    {@const estimate = probability(row.forecast_probabilities?.single)}
     <a href={"#/research/" + row.id}>
       <span class="subject"
         ><InstrumentLabel ticker={row.ticker} /><small
@@ -62,10 +63,9 @@
         ></span
       >
       <span class="figure"
-        ><small>단일 모델 상승 확률</small><strong
-          >{probability(row.forecast_probabilities?.single)}</strong
-        ></span
-      >
+        ><small>5거래일 상승 확률</small><strong>{estimate}</strong>
+        {#if estimate !== "미발행"}<span class="probability-scale" aria-hidden="true"><i style:width={estimate}></i></span>{/if}
+      </span>
       <span class="day"
         ><small>관측일</small><time>{row.data_session}</time></span
       >
@@ -162,6 +162,10 @@
     letter-spacing: -0.025em;
     line-height: 1.3;
   }
+  .probability-scale {display:block;position:relative;max-width:92px;height:4px;margin:5px 0 0 auto;border-radius:9px;background:var(--fl-line);}
+  .probability-scale::after {content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--fl-muted);}
+  .probability-scale i {display:block;height:100%;border-radius:inherit;background:var(--fl-forecast);}
+  @media(max-width:520px){.probability-scale{margin-inline-start:0;}}
   @media (min-width: 521px) {
     .figure,
     .day,

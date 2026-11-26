@@ -319,10 +319,10 @@
     fill: var(--fl-down, #ff9a85);
   }
   .candle.rising line {
-    stroke: var(--fl-chart-line, #d5f65e);
+    stroke: var(--fl-positive);
   }
   .candle.rising rect {
-    fill: var(--fl-chart-line, #d5f65e);
+    fill: var(--fl-positive);
   }
   .volume-bar {
     opacity: 1;

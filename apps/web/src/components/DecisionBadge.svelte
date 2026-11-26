@@ -42,8 +42,8 @@
     background: currentColor;
   }
   .buy {
-    color: var(--fl-accent, #075f5b);
-    background: var(--fl-accent-soft, #dcefe9);
+    color: var(--fl-positive, #075f5b);
+    background: #e0efe7;
   }
   .buy::before {
     clip-path: polygon(50% 0, 100% 100%, 0 100%);
@@ -56,8 +56,8 @@
     clip-path: polygon(0 0, 100% 0, 50% 100%);
   }
   .hold {
-    color: var(--fl-muted, #b5b4ad);
-    background: var(--fl-surface-subtle, #eaf0ec);
+    color: #73571d;
+    background: #f3ebd8;
   }
   .hold::before {
     height: 2px;

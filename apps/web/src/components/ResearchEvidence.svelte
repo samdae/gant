@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { instrumentName, tickerNames } from "../stores/tickerNames";
   import catalog from "../../../../packages/tradingagents/forecast_lab/web/instrument-names.json";
   import ResearchPriceChart from "./ResearchPriceChart.svelte";
@@ -24,6 +25,37 @@
   export let data: ResearchCase;
   let sourcesHeading: HTMLHeadingElement;
   let judgments: ResearchJudgments;
+  const panels = [
+    { id: "forecast", label: "가격·예측" },
+    { id: "judgments", label: "모델 근거" },
+    { id: "sources", label: "발행 자료" },
+  ] as const;
+  type Panel = typeof panels[number]["id"];
+  let selectedPanel: Panel = "forecast";
+  let shownCase = data.id;
+  $: if (data.id !== shownCase) {
+    shownCase = data.id;
+    selectedPanel = "forecast";
+  }
+  function tabKeys(event: KeyboardEvent, index: number) {
+    const next = event.key === "ArrowRight" ? (index + 1) % panels.length
+      : event.key === "ArrowLeft" ? (index + panels.length - 1) % panels.length
+      : event.key === "Home" ? 0 : event.key === "End" ? panels.length - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    selectedPanel = panels[next].id;
+    document.getElementById("case-tab-" + selectedPanel)?.focus();
+  }
+  async function showMethod(key: string) {
+    selectedPanel = "judgments";
+    await tick();
+    judgments.openMethod(key);
+  }
+  async function showSources() {
+    selectedPanel = "sources";
+    await tick();
+    sourcesHeading.focus();
+  }
   const catalogNames: Record<string, string> = catalog;
   $: displayName = instrumentName(data.ticker, $tickerNames);
   $: catalogParts =
@@ -103,7 +135,7 @@
       <div class="issue-line">
         <p>관측 기준일 <time>{data.data_session}</time></p>
       {#if data.last30days || news}
-        <button class="sources-link" on:click={() => sourcesHeading.focus()}>
+        <button class="sources-link" on:click={showSources}>
           당시 출처 보기 · last30days {sources.archives
             ? sources.archives.items.length + "건"
             : "기록 없음"} · {news?.provenance === "v3_archive_as_of" ? "뉴스" : "동결 목록"} {news
@@ -120,26 +152,14 @@
         </button>
       {/if}
       </div>
-    </header>
-
-    <div class="spread">
-      <div class="plot">
-        <ResearchPriceChart
-          bars={snap.bars || []}
-          {currency}
-          volumeUnit={["equity", "etf"].includes(
-            snap.classification?.asset_class || "",
-          )
-            ? "주"
-            : ""}
-        />
-      </div>
-      <div class="model-panel">
       <div class="headline">
-        <div>
+        <div class="probability-cell">
           <span>단일 모델 상승 확률</span><strong
             >{probability(single?.probability)}</strong
           >
+          {#if typeof single?.probability === "number" && single.probability >= 0 && single.probability <= 1}
+            <i class="probability-line" aria-hidden="true"><i style:width={single.probability * 100 + "%"}></i></i>
+          {/if}
         </div>
         <div>
           <span>5거래일 검증 결과</span>
@@ -157,8 +177,33 @@
               )}</small
             >{/if}
         </div>
+        {#if typeof snap.features?.volatility_20d === "number"}
+          <div class="risk"><span>최근 20거래일 일간 변동성</span><strong>{percentChange(snap.features.volatility_20d)}</strong></div>
+        {/if}
       </div>
-
+    </header>
+    <div class="case-tabs" role="tablist" aria-label="선택 종목 연구 보기">
+      {#each panels as panel, index}
+        <button id={"case-tab-" + panel.id} type="button" role="tab"
+          aria-selected={selectedPanel === panel.id} aria-controls={"case-panel-" + panel.id}
+          tabindex={selectedPanel === panel.id ? 0 : -1}
+          on:click={() => selectedPanel = panel.id} on:keydown={event => tabKeys(event,index)}>{panel.label}</button>
+      {/each}
+    </div>
+    <div id="case-panel-forecast" role="tabpanel" aria-labelledby="case-tab-forecast" hidden={selectedPanel !== "forecast"} tabindex="0">
+    <div class="spread">
+      <div class="plot">
+        <ResearchPriceChart
+          bars={snap.bars || []}
+          {currency}
+          volumeUnit={["equity", "etf"].includes(
+            snap.classification?.asset_class || "",
+          )
+            ? "주"
+            : ""}
+        />
+      </div>
+      <div class="model-panel">
       <section class="comparison">
         <h3>모델별 상승 확률</h3>
         {#if spreadRange}
@@ -184,7 +229,7 @@
           {#if arm?.status === "published" && typeof arm.probability === "number" && arm.probability >= 0 && arm.probability <= 1}
             <button
               class="compare-row"
-              on:click={() => judgments.openMethod(key)}
+              on:click={() => showMethod(key)}
               aria-label={methodName(key) +
                 " " +
                 probability(arm.probability) +
@@ -209,7 +254,7 @@
         {#if unpublishedMethods.length}
           <div class="unpublished">
             {#each unpublishedMethods as key}
-              <button on:click={() => judgments.openMethod(key)}
+              <button on:click={() => showMethod(key)}
                 >{methodName(key)} · {stateName(
                   arms.find((a) => a.method === key)?.status || "unpublished",
                 )}</button
@@ -240,7 +285,9 @@
       </section>
       </div>
     </div>
+    </div>
   </div>
+  <div id="case-panel-sources" role="tabpanel" aria-labelledby="case-tab-sources" hidden={selectedPanel !== "sources"} tabindex="0">
   <section class="sources">
     <header class="journal-heading">
       <h3 bind:this={sourcesHeading} tabindex="-1">당시 확인된 30일 출처</h3>
@@ -388,9 +435,12 @@
         이 사례에는 발행 시점에 동결한 가격 조건이 없습니다.
       </p>{/if}
   </section>
+  </div>
+  <div id="case-panel-judgments" role="tabpanel" aria-labelledby="case-tab-judgments" hidden={selectedPanel !== "judgments"} tabindex="0">
   <section class="judgments" tabindex="-1" aria-label="모델별 판단 근거">
     <ResearchJudgments bind:this={judgments} {data} />
   </section>
+  </div>
 </article>
 
 <style>
@@ -407,8 +457,11 @@
   dd {
     margin: 0;
   }
-  .analysis-board { margin-bottom: 24px; }
-  .company { padding: 8px 2px 18px; }
+  .analysis-board { margin: 0; }
+  .company {
+    padding:clamp(18px,2.4vw,32px); border-radius:24px; border:1px solid #d8c7ce;
+    background:radial-gradient(ellipse at 94% 0%, #f5d6ca,transparent 45%),linear-gradient(115deg,#f5e8e9,#ede3e8 75%);
+  }
   .company-row,.issue-line,.pick-tools { display:flex; align-items:center; justify-content:space-between; gap:12px 20px; }
   .issuer-heading { min-width:0; }
   .issuer-heading h2 { font:730 clamp(2.15rem,4vw,3.5rem)/1.15 var(--fl-display); letter-spacing:-.04em; overflow-wrap:anywhere; }
@@ -419,7 +472,19 @@
   .issue-line p { color:var(--fl-muted); font-size:.82rem; }
   .issue-line time { color:var(--fl-ink); font-weight:620; }
   .model-panel { display:flex; flex-direction:column; }
-  .headline { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; gap:12px; margin:0 clamp(16px,2.2vw,30px) 18px; padding:clamp(16px,2.2vw,30px) 0 16px; border-bottom:1px solid var(--fl-line); }
+  .headline { display:flex; flex-wrap:wrap; align-items:stretch; gap:14px clamp(16px,3.4vw,56px); margin:16px 0 0; padding-top:16px; border-top:1px solid #d9c7cf; }
+  .headline > div + div { padding-left:clamp(12px,2.4vw,32px); border-left:1px solid #d8c4cd; }
+  .probability-cell { min-width:min(150px,100%); }
+  .probability-line { display:block; width:100%; position:relative; height:4px; margin-top:3px; border-radius:5px; background:#d8c4d0; }
+  .probability-line > i { display:block; height:100%; border-radius:inherit; background:var(--fl-forecast); }
+  .probability-line::after { content:""; position:absolute; left:50%; top:-2px; height:8px; border-left:1px solid #755e6b; }
+  .case-tabs { display:flex; gap:4px; padding:4px; width:fit-content; max-width:100%; margin:16px 0; background:var(--fl-surface-subtle); border:1px solid var(--fl-line); border-radius:14px; }
+  .case-tabs button { min-width:82px; min-height:38px; padding:6px 15px; cursor:pointer; color:var(--fl-muted); border:0; border-radius:10px; background:transparent; font:640 .86rem var(--fl-font); }
+  .case-tabs button[aria-selected=true] { color:var(--fl-accent-hover); background:var(--fl-surface); box-shadow:0 1px 4px #67495926; }
+  .case-tabs button:hover { color:var(--fl-accent); }
+  [role=tabpanel]:focus:not(:focus-visible) { outline:0; }
+  .headline .risk strong { font-size:clamp(1.15rem,1.7vw,1.6rem); color:var(--fl-ink); }
+  .headline .outcome,.headline .risk strong { align-self:center; }
   .headline > div { display:grid; align-content:start; gap:5px; }
   .headline span,
   dt,
@@ -474,7 +539,7 @@
     display: flex;
     flex:1;
     flex-direction: column;
-    padding:0 clamp(16px, 2.2vw, 30px) clamp(16px, 2.2vw, 30px);
+    padding:clamp(16px, 2.2vw, 30px);
     --columns: minmax(4.2em, 1fr) minmax(50px, 1.3fr) 3.7em 13px;
   }
   h3 {
@@ -705,7 +770,6 @@
   @media (max-width: 790px) {
     .spread { display:flex; flex-direction:column; gap:14px; }
     .model-panel { display:contents; }
-    .headline { order:-1; margin:0; padding:12px 2px 16px; border-top:1px solid var(--fl-line); border-bottom:0; }
     .comparison { padding:clamp(16px,2.6vw,24px); background:var(--fl-surface); border:1px solid var(--fl-line); border-radius:var(--fl-radius,16px); }
     .timeline { margin-top:8px; }
     .sources { grid-template-columns:minmax(0,1fr); }
@@ -713,7 +777,14 @@
     .journal-heading .muted { margin:4px 0 7px; }
   }
   @media (max-width: 600px) {
-    .company { padding:4px 0 14px; }
+    .company { padding:15px; border-radius:18px; }
+    .headline { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 7px; margin-top:10px; padding-top:12px; }
+    .headline .risk { grid-column:1/-1; display:flex; align-items:baseline; flex-wrap:wrap; gap:9px; border:0; padding:0; }
+    .headline .risk strong { font-size:.9rem; }
+    .probability-cell { min-width:0; }
+    .probability-line { max-width:125px; }
+    .case-tabs { margin:12px 0; width:100%; }
+    .case-tabs button { flex:1; min-height:42px; min-width:0; }
     .company-row { align-items:flex-start; flex-wrap:wrap; }
     .issuer-heading { flex:1 1 135px; }
     .issue-line { margin-top:8px; gap:2px 10px; }

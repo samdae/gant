@@ -14,9 +14,9 @@
     place-items: center;
     flex: none;
     border-radius: 30%;
-    color: #f3fff6;
-    background: linear-gradient(145deg, #418f87 1%, #176863 46%, #114641 100%);
-    box-shadow: inset 0 1px 1px #a0d6c7, inset 0 -1px 1px #104843;
+    color: #fff6eb;
+    background: linear-gradient(145deg, #aa7592 1%, #7c4266 46%, #422b43 100%);
+    box-shadow: inset 0 1px 1px #d6a8bf, inset 0 -1px 1px #40263c;
   }
   svg { width: 79%; height: 79%; }
 </style>

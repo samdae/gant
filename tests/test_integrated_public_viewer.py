@@ -66,8 +66,10 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             const box=indicator.getBoundingClientRect();
             check(Math.abs(box.x+box.width/2-innerWidth/2)<1 && Math.abs(box.y+box.height/2-innerHeight/2)<1 &&
               !indicator.contains(document.elementFromPoint(innerWidth/2,innerHeight/2)), 'centered click-through progress');
-            if(matchMedia('(max-width:900px)').matches){
-              const menu=document.querySelector('.phone-tabs button');
+            {
+              const mobile=matchMedia('(max-width:900px)').matches;
+              const menu=document.querySelector(mobile ? '.phone-tabs button' : '.desktop-menu');
+              check(menu.getBoundingClientRect().width>0 && (document.querySelector('.desk-tabs').getBoundingClientRect().width > 0) === !mobile,'responsive task navigation');
               const drawer=document.getElementById('workspace-drawer');
               menu.click();
               await wait(()=>drawer.open && !indicator.classList.contains('visible'));
@@ -81,7 +83,7 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             check(document.querySelector('.public-lamp') && getComputedStyle(document.querySelector('.access')).display!=='none' &&
               document.querySelector('.access').textContent.trim()==='공개 열람', 'visible public access status');
             check(document.querySelector('.phone-tabs a[href="#/research"]'), 'research tab retained');
-            check(!document.querySelector('.desktop-rail a[href="#/auth"]'),'admin menu');
+            check(!document.querySelector('#workspace-drawer a[href="#/auth"]'),'admin menu');
             await visit('#/research/29',()=>document.querySelector('.evidence h2')?.textContent.includes('삼성전자'));
             check(document.querySelector('.headline').textContent.includes('61.0%'),'published probability');
             await wait(()=>document.querySelectorAll('.register a').length===3);
@@ -121,12 +123,13 @@ class IntegratedPublicViewerTests(unittest.TestCase):
               chart.querySelector('.bar-values').textContent.includes('12,345주'), 'frozen OHLC and actual volume only');
             const priceColor = getComputedStyle(chart.querySelector('.candle.rising rect')).fill;
             const modelColor = getComputedStyle(document.querySelector('.track i')).backgroundColor;
-            check(modelColor===material('--fl-forecast')[0] && priceColor===material('--fl-chart-line')[0] &&
+            check(modelColor===material('--fl-forecast')[0] && priceColor===material('--fl-positive')[0] &&
               priceColor!==modelColor, 'distinct price and model colors');
             check(document.querySelector('.range-summary')?.textContent.includes('50.0%–61.0%') && document.querySelector('.range-summary')?.textContent.includes('11.0%p'), 'published model range');
             check(document.querySelector('.comparison').textContent.includes('61.0%') && document.querySelector('.axis').textContent.includes('50%'), 'common probability axis');
             [...document.querySelectorAll('.compare-row')].find(el=>el.textContent.includes('역할 토론')).click();
-            check(document.querySelector('.model[open] > summary')?.textContent.includes('역할 토론') && document.activeElement===document.querySelector('.model[open] > summary'),'model-specific judgment focus');
+            await wait(()=>document.activeElement===document.querySelector('.model[open] > summary'));
+            check(!document.getElementById('case-panel-judgments').hidden && document.querySelector('.model[open] > summary')?.textContent.includes('역할 토론') && document.activeElement===document.querySelector('.model[open] > summary'),'model-specific judgment focus');
             check(document.querySelector('.condition').textContent.includes('75,000원') &&
               document.querySelector('.condition').textContent.includes('충족'),'frozen condition');
             check(document.querySelector('.sources').textContent.includes('당시 확인된 공시') &&
@@ -140,6 +143,13 @@ class IntegratedPublicViewerTests(unittest.TestCase):
               document.querySelectorAll('.sources a[href="https://example.org/post"]').length===1 &&
               [...document.querySelectorAll('.sources .feed')].some(el=>el.textContent.includes('수집 경로 미확인') && el.textContent.includes('수집 단계 미상')),
               'mixed sources attributed and deduplicated');
+            const sourceTab=document.getElementById('case-tab-sources');
+            sourceTab.click();
+            await wait(()=>!document.getElementById('case-panel-sources').hidden);
+            await press(sourceTab,'Home');
+            check(document.activeElement===document.getElementById('case-tab-forecast') && !document.getElementById('case-panel-forecast').hidden,'research keyboard views');
+            document.querySelector('.sources-link').click();
+            await wait(()=>document.activeElement===document.querySelector('.journal-heading h3'));
             const [community,rss,unmatched]=document.querySelectorAll('.sources .feed');
             const header=feed=>feed.querySelector('h4 > button[aria-expanded]');
             const articles=feed=>feed.querySelectorAll('.news').length;
@@ -205,12 +215,15 @@ class IntegratedPublicViewerTests(unittest.TestCase):
                     const directoryGate=new Promise(done=>window.releaseDirectory=done);
                     const fetchWithoutGate=window.fetch;
                     window.fetch=async (...args)=>{
-                      if(String(args[0]?.url||args[0]).includes('/reports/tickers')) await directoryGate;
+                      if(['/reports/tickers','/v4/data/report-pulse'].some(path=>String(args[0]?.url||args[0]).includes(path))) await directoryGate;
                       return fetchWithoutGate(...args);
                     };
                     </script>"""
                     raw = html.replace("<head>", "<head>"+gate).replace("</body>", "<script>"+checks+"</script></body>").encode()
                     content = "text/html; charset=utf-8"
+                elif path == "/v4/data/report-pulse":
+                    raw=json.dumps({"rows":[]}).encode()
+                    content="application/json"
                 elif path.startswith("/api/cases"):
                     row=dict(id=29,ticker="005930.KS",market="kr",data_session="2026-11-02",status="matured",forecast_probabilities={"single":0.61})
                     detail={**row,"arms":[{"method":"single","status":"published","probability":.61},{"method":"debate","status":"published","probability":.5,"rationale":"**참고**","audit":{"debate":[{"role":"create_bull_researcher","output":"**근거**"}]}}],
