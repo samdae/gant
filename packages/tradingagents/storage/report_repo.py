@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
+from psycopg.types.json import Jsonb
 
 from .database import Database
 
@@ -75,10 +76,10 @@ class ReportRepository:
                 investment_plan, final_trade_decision, decision_position,
                 portfolio_action, portfolio_shares, portfolio_rationale,
                 pa_opinion, pipeline_strategy,
-                rag_used, rag_docs,
+                rag_used, rag_docs, news_evidence,
                 created_at
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                      %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -104,6 +105,7 @@ class ReportRepository:
                 pipeline_strategy,
                 summaries.get("rag_used", False),
                 rag_docs_raw,
+                Jsonb(summaries["news_evidence"]) if summaries.get("news_evidence") is not None else None,
                 created_at,
             ),
         )

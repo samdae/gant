@@ -19,6 +19,10 @@
 
 ### 예약 분석의 last30days 수집
 
+예약 매매 뉴스 입력은 같은 수집기 체크아웃의 읽기 명령 `tradingagents.forecast_lab.trade_news`를 사용한다. 조회 계정은 기존 v3 아카이브 읽기 계정이다. 연결이 끊겨도 수집 상태를 기록하고 매매 분석을 계속한다. 모의체결가의 시각과 자료 최초 관측 시각을 비교하는 규칙은 [설계](DESIGN.md)에 있다.
+
+공유 뷰어와 함께 배포할 때는 콘솔 DB의 `public.reports`에 NULL 허용 `news_evidence jsonb` 열을 추가하고 `gant_v3_shared_reader`에 이 열의 SELECT를 부여한다. 기존 리포트는 갱신하지 않는다. 8014의 분석과 큐가 유휴일 때 v2를 갱신하고 8024·8025 및 v3 정적 번들을 갱신한다. [v3 운영 문서](https://github.com/samdae/gant/blob/codex/gant-v3/docs/v3/OPERATIONS.md)
+
 운영 `%LOCALAPPDATA%\TradingAgentsForecastLab\lab.env`의 `GANT_LAST30DAYS_COLLECTOR_ROOT=C:/Users/samda/dev/TradingAgents-V3`가 v3 수집기 경로다. v2의 새 예측과 종목별 매매 분석에서 실제 실행이 필요한 경우에만 이 경로의 수집기를 호출한다. 수집 장애 시에도 본래 분석은 계속된다. v3 웹 프로세스에는 분석 예약이 없다. 보호된 설정 파일의 해당 한 줄을 제거하고 8014를 재기동하면 수집 연동만 해제된다.
 
 설정 적용 전 `/api/status`의 progress.phase가 idle이고 `/workspace-api/queue`의 running이 null, total이 0인지 확인한다. 8014의 loopback 리스너가 이 체크아웃의 `lab.env`와 `serve --console`을 사용하는지 식별한 후 그 리스너만 재기동한다. `scripts/start-forecast-lab.ps1`로 시작해 `/ready`, `/api/status`와 원래의 예약 목록을 확인한다. 수집기 설치 및 점검 절차는 v3 브랜치의 [이슈 수집 운영 문서](https://github.com/samdae/gant/blob/codex/gant-v3/docs/v3/ISSUES.md)를 따른다.

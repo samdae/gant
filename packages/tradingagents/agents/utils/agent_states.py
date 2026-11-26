@@ -58,6 +58,8 @@ class AgentState(MessagesState):
 
     # v7: Macro indicators + sector health (injected before pipeline)
     macro_context: Annotated[str, "Macro indicators and sector health context"]
+    news_evidence: NotRequired[dict]
+    news_analyst_cited: NotRequired[list[str]]
 
     # research step
     market_report: Annotated[str, "Report from the Market Analyst"]

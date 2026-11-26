@@ -185,7 +185,7 @@ class TradingAgentsGraph:
         }
 
     def propagate(self, company_name, trade_date, depth=None, current_position="",
-                  macro_context=""):
+                  macro_context="", news_evidence=None):
         """Run the trading agents graph for a company on a specific date.
 
         Args:
@@ -197,6 +197,7 @@ class TradingAgentsGraph:
             current_position: (DEPRECATED - FR-021) No longer used by 12 agents.
                              Keep for backward compatibility but value is ignored.
             macro_context: v7 macro indicators + sector health text for all agents.
+            news_evidence: Scheduled trade's time-bounded archive snapshot for the news analyst.
 
         Returns:
             Tuple of (final_state, (decision, strategy)):
@@ -210,6 +211,8 @@ class TradingAgentsGraph:
         init_agent_state = self.propagator.create_initial_state(
             company_name, trade_date, current_position, macro_context=macro_context,
         )
+        if news_evidence is not None:
+            init_agent_state["news_evidence"] = news_evidence
         if depth is not None:
             if not isinstance(depth, int) or depth < 1:
                 raise ValueError("depth must be a positive number of debate rounds")

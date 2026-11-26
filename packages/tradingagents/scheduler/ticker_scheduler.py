@@ -26,7 +26,7 @@ import threading
 import time
 import traceback
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -35,6 +35,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from tradingagents.errors import DataVendorError, DecisionParseError, AgentExecutionError
 from tradingagents.forecast_lab.scheduled_sources import collect_scheduled_issues
+from tradingagents.agents.utils.news_citations import cited_refs
+from tradingagents.scheduler.news_evidence import trade_news_for_close
 from tradingagents.runtime_context import set_schedule_context, reset_schedule_context
 from tradingagents.scheduler.portfolio_pipeline import PortfolioPipeline
 
@@ -619,7 +621,9 @@ class TickerScheduler:
         ticker_currency = cfg.get("currency", "USD")
         ticker_initial_capital = float(cfg.get("initial_capital", 5000))
 
-        raw_price, data_date = self._get_latest_close(ticker, schedule_job_id)
+        quote_metadata = {}
+        quote_requested_at = datetime.now(timezone.utc)
+        raw_price, data_date = self._get_latest_close(ticker, schedule_job_id, quote_metadata=quote_metadata)
         current_price = round(raw_price, 2)
         trade_date = data_date
 
@@ -692,11 +696,15 @@ class TickerScheduler:
 
             logger.info(f"{ticker}: Running G-ANT pipeline...")
             try:
+                news_evidence = trade_news_for_close(
+                    ticker, cfg.get("market", "us"), trade_date, quote_metadata, quote_requested_at,
+                )
                 final_state, (pipeline_decision, pipeline_strategy) = self.graph.propagate(
                     company_name=ticker,
                     trade_date=trade_date,
                     current_position=position_summary,
                     macro_context=macro_ctx,
+                    news_evidence=news_evidence,
                 )
             except (DecisionParseError, DataVendorError):
                 raise
@@ -768,6 +776,13 @@ class TickerScheduler:
 
             logger.info(f"{ticker}: Generating summaries...")
             summaries = self.summary_agent.summarize(final_state, pa_opinion)
+            if "news_analyst_cited" in final_state:
+                analyst_cited = final_state["news_analyst_cited"]
+                summaries["news_evidence"] = {
+                    **news_evidence,
+                    "analyst_cited": analyst_cited,
+                    "decision_cited": cited_refs(final_state["final_trade_decision"], analyst_cited),
+                }
             summaries["decision_position"] = pipeline_decision
             summaries["portfolio_action"] = action
             summaries["portfolio_shares"] = shares
@@ -1041,6 +1056,8 @@ class TickerScheduler:
         schedule_job_id: int,
         retries: int = 2,
         retry_delay: int = 30,
+        *,
+        quote_metadata: Optional[dict] = None,
     ) -> tuple[float, str]:
         """Return (close_price, data_date_iso) from yfinance.
 
@@ -1066,6 +1083,7 @@ class TickerScheduler:
                 price = float(history["Close"].iloc[-1])
 
                 latest_index = history.index[-1]
+                verified_date = True
                 try:
                     # Keep market-local calendar date (do NOT convert timezone).
                     # tz_convert(None) can shift KRX timestamps (+09:00) to previous day.
@@ -1075,9 +1093,17 @@ class TickerScheduler:
                         data_date = latest_index.date()
                     except Exception:
                         data_date = datetime.now().date()
+                        verified_date = False
 
                 if not math.isfinite(price) or price <= 0:
                     raise ValueError("Close price must be positive and finite")
+                if quote_metadata is not None and verified_date:
+                    # Use the metadata from this daily response. history_metadata may fetch a different chart.
+                    chart = getattr(getattr(ticker_obj, "_price_history", None), "_history_metadata", None)
+                    if isinstance(chart, dict):
+                        quote_metadata.update({k: chart.get(k) for k in (
+                            "symbol", "instrumentType", "currency", "exchangeName", "exchangeTimezoneName",
+                        )})
                 return price, data_date.isoformat()
 
             except Exception as e:

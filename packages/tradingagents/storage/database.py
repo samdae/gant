@@ -157,10 +157,12 @@ class Database:
             pipeline_strategy                 TEXT,
             rag_used                          BOOLEAN NOT NULL DEFAULT FALSE,
             rag_docs                          JSONB,
+            news_evidence                     JSONB,
             created_at                        TIMESTAMPTZ NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_reports_job ON reports(schedule_job_id);
         CREATE INDEX IF NOT EXISTS idx_reports_position ON reports(position_id);
+        ALTER TABLE reports ADD COLUMN IF NOT EXISTS news_evidence JSONB;
 
         CREATE TABLE IF NOT EXISTS trades (
             id          BIGSERIAL PRIMARY KEY,

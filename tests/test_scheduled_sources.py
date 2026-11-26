@@ -1,14 +1,49 @@
+import json
 import os
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from tradingagents.forecast_lab.scheduled_sources import (
-    COLLECTION_TIMEOUT, COLLECTOR_ROOT, collect_scheduled_issues,
+    COLLECTION_TIMEOUT, COLLECTOR_ROOT, READ_TIMEOUT, collect_scheduled_issues, read_trade_news,
 )
 
 
 class ScheduledSourcesTest(unittest.TestCase):
+    def test_read_validated_trade_news_or_fall_back_without_model_secrets(self):
+        cutoff = "2025-03-01T12:00:00+00:00"
+        item = {"ref": "N1", "source": "last30days agent export", "publisher": "hackernews",
+                "url": "https://news.ycombinator.com/item?id=1", "title": "테스트 자료",
+                "published_at": "2025-02-26T12:00:00+00:00", "first_seen_at": "2025-02-27T15:00:00+00:00",
+                "published_day": "2025-02-25"}
+        packet = {"version": 1, "status": "partial", "ticker": "WMT", "as_of": cutoff, "items": [item]}
+        fallback = {**packet, "status": "unavailable", "items": []}
+        root = str(Path.cwd())
+        with patch.dict(os.environ, {"SystemRoot": root, "FORECAST_LAB_DSN": "private"}, clear=True), patch(
+            "tradingagents.forecast_lab.scheduled_sources.bounded_run"
+        ) as run:
+            self.assertEqual(read_trade_news("WMT", "us", cutoff), fallback)
+            run.assert_not_called()
+            os.environ[COLLECTOR_ROOT] = root
+            run.return_value = json.dumps(packet)
+            self.assertEqual(read_trade_news("WMT", "us", cutoff), packet)
+            command, payload, timeout, _label = run.call_args.args
+            self.assertEqual(command[-5:], ["tradingagents.forecast_lab.trade_news", "--ticker", "WMT", "--as-of", cutoff])
+            self.assertEqual((payload, timeout), ("start\n", READ_TIMEOUT))
+            self.assertNotIn("FORECAST_LAB_DSN", run.call_args.kwargs["env"])
+            invalid_items = [
+                [{**item, "first_seen_at": cutoff}], [{**item, "published_at": "2025-01-01T00:00:00Z"}],
+                [{**item, "published_day": "2025-02-24"}], [{**item, "ref": "N77"}],
+                [item, {**item, "ref": "N2"}],
+            ]
+            for wrong in ([{**packet, "items": rows} for rows in invalid_items]
+                          + [{**packet, "ticker": "KO"}, {**packet, "as_of": "2025-03-02T12:00:00Z"}]):
+                with self.subTest(wrong=wrong):
+                    run.return_value = json.dumps(wrong)
+                    self.assertEqual(read_trade_news("WMT", "us", cutoff), fallback)
+            run.side_effect = TimeoutError
+            self.assertEqual(read_trade_news("WMT", "us", cutoff), fallback)
+
     def test_only_fixed_v3_command_and_clean_environment_reach_child(self):
         checkout = Path.cwd().resolve()
         parent = {COLLECTOR_ROOT: str(checkout), "SystemRoot": str(checkout),

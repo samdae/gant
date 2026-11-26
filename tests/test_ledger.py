@@ -175,7 +175,12 @@ class LedgerDatabaseTests(unittest.TestCase):
         signal = SignalProcessor(Mock()).process_signal(
             '```strategy_json\n{"action":"HOLD","forecast_5s":{"p_up":0.62}}\n```'
         )
-        scheduler.graph.propagate.return_value = ({}, signal)
+        snapshot = {"version": 1, "ticker": ticker, "as_of": "2026-01-02T21:00:00+00:00",
+                    "status": "available", "items": [{"ref": "N1"}, {"ref": "N2"}]}
+        scheduler.graph.propagate.return_value = (
+            {"news_analyst_cited": ["N1"], "final_trade_decision": "Material guidance [N1]. Unknown [N90]. [N2]"},
+            signal,
+        )
         scheduler.summary_agent = Mock()
         scheduler.summary_agent.summarize.return_value = {}
         scheduler.portfolio_agent = Mock()
@@ -192,6 +197,7 @@ class LedgerDatabaseTests(unittest.TestCase):
 
         with (
             patch("tradingagents.dataflows.macro_collector.collect_macro_context", return_value="") as macro,
+            patch("tradingagents.scheduler.ticker_scheduler.trade_news_for_close", return_value=snapshot) as read_news,
             patch("tradingagents.scheduler.ticker_scheduler.collect_scheduled_issues", side_effect=before_report) as collect,
         ):
             self.assertFalse(scheduler._run_analysis_cycle(ticker))
@@ -201,7 +207,13 @@ class LedgerDatabaseTests(unittest.TestCase):
             self.assertFalse(scheduler._run_analysis_cycle(ticker))
             collect.assert_called_once()
         macro.assert_called_once_with(ticker, "us", "2026-01-02")
+        read_news.assert_called_once()
+        self.assertEqual(scheduler.graph.propagate.call_args.kwargs["news_evidence"], snapshot)
         report = ReportRepository(self.db).get_by_job(job)
+        evidence = self.db.get_connection().execute(
+            "SELECT news_evidence FROM reports WHERE id=%s", (report["id"],)
+        ).fetchone()["news_evidence"]
+        self.assertEqual(evidence, {**snapshot, "analyst_cited": ["N1"], "decision_cited": ["N1"]})
         self.assertIsNone(report["position_id"])
         self.assertEqual(forecast_probability(report["pipeline_strategy"]), 0.62)
         self.assertEqual(json.loads(report["pipeline_strategy"])["forecast_5s"]["market_data_date"], "2026-01-02")
