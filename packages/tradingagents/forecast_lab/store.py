@@ -13,6 +13,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from .engine import DELAY, _valid_bar
+from .forecast_directory import published_tickers
 from . import hypothesis
 from .issue_collector import EXPORT, SOURCE as ISSUE_SOURCE, case_issues, init_issues
 from .sector_retrieval import sector_candidates, valid_classification
@@ -704,6 +705,10 @@ class Store:
                     (case_id,),
                 )
             return bool(row)
+
+    def forecast_tickers(self):
+        with self._connect() as conn:
+            return published_tickers(conn)
 
     def recent_cases(
         self,

@@ -1,23 +1,19 @@
 import { writable, derived } from "svelte/store";
+import { readPreference, writePreference } from "./preferences";
 
 export type CurrencyFilter = "ALL" | "KRW" | "USD";
 
 const STORAGE_KEY = "gant_currency";
 
 function getInitial(): CurrencyFilter {
-  if (typeof window === "undefined") return "ALL";
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = readPreference(STORAGE_KEY);
   if (stored === "KRW" || stored === "USD") return stored;
   return "ALL";
 }
 
 export const currencyFilter = writable<CurrencyFilter>(getInitial());
 
-currencyFilter.subscribe((v) => {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY, v);
-  }
-});
+currencyFilter.subscribe((v) => writePreference(STORAGE_KEY, v));
 
 export const currencySymbol = derived(currencyFilter, ($f) => {
   if ($f === "KRW") return "₩";

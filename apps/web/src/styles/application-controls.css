@@ -96,6 +96,18 @@ html.gant-workspace .workspace .desk-search input[type="search"] {
   background: transparent;
 }
 
+html.gant-workspace .workspace .desk-search:focus-within {
+  border-color: var(--fl-line);
+  box-shadow: none;
+  outline: 2px solid var(--fl-accent);
+  outline-offset: 2px;
+}
+
+html.gant-workspace .workspace .desk-search input[type="search"]:focus {
+  outline: none;
+  box-shadow: none;
+}
+
 html.gant-workspace .workspace :is(.modal-close, .op-cancel) {
   min-inline-size: var(--fl-control-height);
   padding: 0;
@@ -118,4 +130,27 @@ html.gant-workspace .workspace .report-filter .desk-search {
 /* Legacy full-width selects belong in forms. Toolbar selectors size to their column. */
 html.gant-workspace .workspace .filters > .select-menu {
   inline-size: auto;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html.gant-workspace :where(.workspace button, .workspace a, .workspace input, .select-option) {
+    transition: background-color 130ms ease, border-color 130ms ease, color 130ms ease;
+  }
+
+  html.gant-workspace :where(.select-trigger, .range-trigger, .report-kind button, .phone-tabs a, .phone-tabs button) {
+    transition: background-color 130ms ease, border-color 130ms ease, color 130ms ease, scale 120ms ease-out;
+  }
+
+  html.gant-workspace :where(.select-trigger, .range-trigger, .report-kind button, .phone-tabs a, .phone-tabs button):active {
+    scale: .97;
+  }
+
+  html.gant-workspace .select-trigger svg {
+    transition: transform 140ms ease-out;
+  }
+
+  @starting-style {
+    #workspace-drawer[open] { transform: translateX(100%); }
+    #workspace-drawer[open]::backdrop { opacity: 0; }
+  }
 }

@@ -881,6 +881,33 @@ class ForecastStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.stats(from_date="2026-02-01", to_date="2025-02-01")
 
+    def test_forecast_directory_uses_entire_archive_and_latest_eligible_session(self):
+        with self.store._connect() as conn:
+            conn.execute("""
+                INSERT INTO lab_cases(ticker, market, snapshot, experiment_version, data_session,
+                                      observed_at, created_at, entry_at, exit_at)
+                SELECT CASE n WHEN 1 THEN 'DORMANT' WHEN 2 THEN 'BASE' WHEN 3 THEN 'LATE' ELSE 'ACTIVE' END,
+                       'us','{"market":"us"}', n::text,
+                       date '2020-01-01' + CASE n WHEN 232 THEN 4 WHEN 230 THEN 229 ELSE n END,
+                       '2020-01-01','2020-01-01','2020-01-02','2020-01-03'
+                FROM generate_series(1,232) AS series(n) ORDER BY series.n
+            """)
+            conn.execute("""
+                INSERT INTO lab_arms(case_id, method, status, probability, published_at,
+                                     rationale, model, version, audit)
+                SELECT id, 'single', 'published', 0.0,
+                       CASE WHEN id IN (2,3,231) THEN entry_at ELSE observed_at END,
+                       'fixture','fixture','v','{}'::jsonb FROM lab_cases
+                UNION ALL
+                SELECT id, 'baseline', 'published', 0.8, observed_at,
+                       'fixture','fixture','v','{}'::jsonb FROM lab_cases WHERE id=2
+            """)
+        rows = self.store.forecast_tickers()
+        self.assertEqual([(r["ticker"], r["id"]) for r in rows],
+                         [("ACTIVE", 230), ("BASE", 2), ("DORMANT", 1)])
+        self.assertEqual([r["forecast_probabilities"] for r in rows],
+                         [{"single": 0.0}, {}, {"single": 0.0}])
+
     def test_store_rejects_future_benchmark_and_incomparable_settlement_basis(self):
         s = self.store
         snap = self.snapshot("QUALITY")

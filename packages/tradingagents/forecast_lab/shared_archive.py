@@ -8,6 +8,7 @@ import psycopg
 from fastapi import HTTPException
 from psycopg.rows import dict_row
 
+from .forecast_directory import published_tickers
 from .issue_collector import case_issues, SOURCE, EXPORT
 from .shared_view import empty_archive
 
@@ -43,6 +44,10 @@ class LocalSupplement:
             raise HTTPException(503, "Shared data temporarily unavailable") from None
         finally:
             self.slots.release()
+
+    def forecast_tickers(self):
+        with self.connect("v2_research") as conn:
+            return published_tickers(conn)
 
     def probabilities(self, ids):
         with self.connect("v2_research") as conn:

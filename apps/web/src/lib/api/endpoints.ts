@@ -45,8 +45,8 @@ export const createSchedule = (payload: ScheduleRequest) =>
 export const deleteSchedule = (ticker: string) =>
   deleteJson(`/schedules/${ticker}`);
 
-export const fetchReportsByTicker = (ticker: string, limit = 1) =>
-  getJson(`/reports?ticker=${encodeURIComponent(ticker)}&limit=${limit}`);
+export const fetchReportsByTicker = (ticker: string, limit = 1, options: {refresh?: boolean} = {}) =>
+  getJson(`/reports?ticker=${encodeURIComponent(ticker)}&limit=${limit}`, options);
 
 export const fetchReportTickers = () =>
   getJson("/reports/tickers");

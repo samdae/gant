@@ -1,7 +1,7 @@
 <script lang="ts">
   import { location } from "svelte-spa-router";
   import { isPublicViewer } from "../lib/workspace";
-  import { sections, currentPage, homeRoute } from "../lib/workspaceNavigation";
+  import { sections, currentPage } from "../lib/workspaceNavigation";
   import GantMark from "./GantMark.svelte";
   import WorkspaceIcon from "./WorkspaceIcon.svelte";
   export let drawer = false;
@@ -13,9 +13,9 @@
 <div class="rail-body" class:as-drawer={drawer}>
   <header class="rail-brand">
     <a
-      href={"#" + homeRoute}
+      href="#/dashboard"
       on:click={onNavigate}
-      aria-label="GANT 분석 리포트 홈"><GantMark size={31} /><b>GANT</b></a
+      aria-label="GANT 대시보드"><GantMark size={31} /><b>GANT</b></a
     >
     {#if drawer}<button aria-label="메뉴 닫기" type="button" on:click={dismiss}
         ><WorkspaceIcon name="close" /></button

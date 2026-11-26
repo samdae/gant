@@ -113,6 +113,22 @@ def iso_day(value):
         return None
 
 
+def forecast_ticker(raw):
+    if not isinstance(raw, dict) or not count(raw.get("id")):
+        return None
+    symbol = instrument(raw)
+    day = iso_day(raw.get("data_session"))
+    market = choice(raw.get("market"), ("us", "kr"))
+    if not symbol or not day or not market:
+        return None
+    values = raw.get("forecast_probabilities")
+    single = number(values.get("single"), 0, 1) if isinstance(values, dict) else None
+    return {
+        "id": raw["id"], "ticker": symbol["ticker"], "market": market, "data_session": day,
+        "forecast_probabilities": {"single": single} if single is not None else {},
+    }
+
+
 def prices(rows, cutoff):
     if not isinstance(rows, list):
         return []

@@ -39,6 +39,9 @@ def private_get(path):
 
 
 class RemoteSupplement:
+    def forecast_tickers(self):
+        return private_get("/api/forecast-tickers")
+
     def probabilities(self, ids):
         return private_get("/_shared/probabilities?" + urlencode({"ids": ",".join(map(str, ids))}))
 
@@ -53,6 +56,8 @@ class SharedReader:
 
     def __call__(self, path):
         route = urlsplit(path).path
+        if path == "/api/forecast-tickers":
+            return self.supplement.forecast_tickers()
         if match := re.fullmatch(r"/api/report-sources/([1-9][0-9]{0,15})", route):
             return self.supplement.evidence("report", int(match[1]))
         data = self.upstream(path)

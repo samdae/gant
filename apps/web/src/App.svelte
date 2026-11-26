@@ -24,6 +24,7 @@
   import Research from "./routes/Research.svelte";
   import Portfolio from "./routes/Portfolio.svelte";
   import WorkspaceNav from "./components/WorkspaceNav.svelte";
+  import ViewportProgress from "./components/ViewportProgress.svelte";
   import { isForecastLab, isPublicViewer } from "./lib/workspace";
 
   const routes = {
@@ -78,6 +79,7 @@
       <main class="main-content" id="workspace-content" tabindex="-1"><Router {routes} /></main>
     </div>
   </div>
+  <ViewportProgress />
 {:else}
   <div class="app-shell"><AppHeader /><main class="main-content"><Router {routes} /></main><BottomNav /></div>
 {/if}

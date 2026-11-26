@@ -2,7 +2,6 @@
   import PendingState from "./PendingState.svelte";
   import RefreshButton from "./RefreshButton.svelte";
   import { onDestroy, onMount } from "svelte";
-  import { isPublicViewer } from "../lib/workspace";
   import {
     researchGet,
     probability,
@@ -13,67 +12,46 @@
   import InstrumentLabel from "./InstrumentLabel.svelte";
 
   export let query = "";
-  let rows: CaseRow[] = [];
-  let busy = true,
-    error = false,
-    more = false,
-    mounted = false;
+  type ForecastTicker = Pick<CaseRow, "id" | "ticker" | "market" | "data_session" | "forecast_probabilities">;
+  let rows: ForecastTicker[] = [];
+  let busy = true, error = false;
   let current: AbortController;
-  let listRegion: string | undefined;
-  let pageCursor: number | undefined;
-  const size = 20;
   $: market =
     $currencyFilter === "USD" ? "us" : $currencyFilter === "KRW" ? "kr" : "";
-  $: if (mounted) load(market);
   $: needle = query.trim().toLowerCase();
-  $: visible = rows.filter((row) =>
+  $: visible = rows.filter((row) => (!market || row.market === market) &&
     [row.ticker, instrumentName(row.ticker, $tickerNames)].some((value) =>
       value.toLowerCase().includes(needle),
     ),
   );
 
-  async function load(region: string, before?: number) {
+  async function load(refresh = false) {
     current?.abort();
     const req = new AbortController();
     current = req;
     busy = true;
     error = false;
-    pageCursor = before;
-    if (region !== listRegion) {
-      listRegion = region;
-      rows = [];
-      more = false;
-    }
-    const params = new URLSearchParams({ limit: String(size + 1) });
-    if (!isPublicViewer) params.set("published_only", "true");
-    if (region) params.set("market", region);
-    if (before) params.set("before_id", String(before));
     try {
-      const data = await researchGet<CaseRow[]>("cases?" + params, req.signal);
-      if (req.signal.aborted) return;
-      const page = data.slice(0, size);
-      rows = before === undefined ? page : [...rows, ...page];
-      more = data.length > size;
+      const data = await researchGet<ForecastTicker[]>("forecast-tickers", req.signal, { refresh });
+      if (!req.signal.aborted) rows = data;
     } catch {
       if (!req.signal.aborted) error = true;
     } finally {
       if (!req.signal.aborted) busy = false;
     }
   }
-  onMount(() => {
-    mounted = true;
-  });
+  onMount(() => { load(); });
   onDestroy(() => current?.abort());
 </script>
 
 <section class="forecast-reports" aria-label="확률 예측 리포트">
   <header class="forecast-heading">
     <h3>확률 예측</h3>
-    <RefreshButton label="확률 예측 새로고침" {busy} on:click={() => load(market)} />
+    <RefreshButton label="확률 예측 새로고침" {busy} on:click={() => load(true)} />
   </header>
   {#if visible.length}
     <div class="list-columns" aria-hidden="true">
-      <span>회사 · 사례</span><span>상승 확률</span><span>관측일</span>
+      <span>회사 · 최근 예측</span><span>상승 확률</span><span>관측일</span>
     </div>
   {/if}
   {#each visible as row (row.id)}
@@ -94,8 +72,8 @@
     </a>
   {/each}
   {#if error}<p role="alert">
-      {pageCursor !== undefined ? "이전 예측을 불러오지 못했습니다." : rows.length ? "예측 목록을 갱신하지 못했습니다. 마지막 조회 결과입니다." : "예측 목록을 불러오지 못했습니다."}
-      <button on:click={() => load(market, pageCursor)}>다시 조회</button
+      {rows.length ? "예측 목록을 갱신하지 못했습니다. 마지막 조회 결과입니다." : "예측 목록을 불러오지 못했습니다."}
+      <button on:click={() => load(true)}>다시 조회</button
       >
     </p>
   {:else if !visible.length}<p role="status">
@@ -103,11 +81,6 @@
           ? "조회한 예측에서 일치하는 종목이 없습니다."
           : "발행된 확률 예측이 없습니다."}{/if}
     </p>{/if}
-  {#if more && !error}<button
-      disabled={busy}
-      on:click={() => load(market, rows[rows.length - 1].id)}
-      >{#if busy && pageCursor !== undefined}<PendingState label="이전 예측 조회 중" />{:else}이전 예측 더 보기{/if}</button
-    >{/if}
 </section>
 
 <style>

@@ -140,6 +140,7 @@
           >
         </button>
       {/if}
+      <slot name="rounds" />
     </header>
 
     <div class="spread">

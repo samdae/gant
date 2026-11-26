@@ -1,4 +1,5 @@
 import { isPublicViewer } from "./workspace";
+import { publicJson } from "./api/publicReads";
 export type Arm = {
   method: string;
   status: string;
@@ -232,17 +233,23 @@ export function articleUrl(value: string) {
 export async function researchGet<T>(
   path: string,
   signal: AbortSignal,
+  options: {refresh?: boolean} = {},
 ): Promise<T> {
+  const notFound = path.startsWith("report-sources/") ? "이 리포트를 찾을 수 없습니다." : "이 사례를 찾을 수 없습니다.";
+  const errorMessage = "연구 자료를 불러오지 못했습니다.";
+  if (isPublicViewer) {
+    return publicJson<T>("/api/" + path, { signal, ...options, notFoundMessage: notFound, errorMessage });
+  }
   const r = await fetch("/api/" + path, {
     signal,
-    credentials: isPublicViewer ? "omit" : "same-origin",
+    credentials: "same-origin",
     cache: "no-cache",
   });
   if (!r.ok)
     throw new Error(
       r.status === 404
-        ? (path.startsWith("report-sources/") ? "이 리포트를 찾을 수 없습니다." : "이 사례를 찾을 수 없습니다.")
-        : "연구 자료를 불러오지 못했습니다.",
+        ? notFound
+        : errorMessage,
     );
   return r.json();
 }

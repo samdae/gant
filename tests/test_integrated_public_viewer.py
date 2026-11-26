@@ -23,13 +23,34 @@ class IntegratedPublicViewerTests(unittest.TestCase):
         checks = """
         (async()=>{
           const errors=[];
-          async function wait(test) {for(let i=0;i<100;i++){if(test())return;await new Promise(r=>setTimeout(r,25));}throw Error(location.hash);}
+          async function wait(test) {for(let i=0;i<100;i++){if(test())return;await new Promise(r=>setTimeout(r,25));}throw Error(location.hash+' '+test);}
           async function visit(hash,test){location.hash=hash;await wait(test);}
           function check(ok,label){if(!ok)errors.push(label);}
           try {
             await wait(()=>document.querySelector('.workspace'));
-            check(location.hash==='#/reports' &&
-              [...document.querySelectorAll('.rail-brand a,.mobile-brand')].every(link=>link.hash==='#/reports'), 'consistent report home');
+            await wait(()=>document.querySelector('#page-reports'));
+            check(location.hash==='#/reports' && document.querySelector('#page-reports h2')?.textContent==='리포트', 'report home');
+            check([...document.querySelectorAll('.rail-brand a,.mobile-brand')].every(link=>link.hash==='#/dashboard' && link.getAttribute('aria-label')==='GANT 대시보드'), 'brand opens dashboard');
+            const search=document.querySelector('.desk-search input');
+            search.focus();
+            check(getComputedStyle(search).outlineStyle==='none' && getComputedStyle(search.closest('label')).outlineWidth==='2px', 'single search focus ring');
+            await wait(()=>document.querySelector('.viewport-progress.visible'));
+            const indicator=document.querySelector('.viewport-progress');
+            const box=indicator.getBoundingClientRect();
+            check(Math.abs(box.x+box.width/2-innerWidth/2)<1 && Math.abs(box.y+box.height/2-innerHeight/2)<1 &&
+              !indicator.contains(document.elementFromPoint(innerWidth/2,innerHeight/2)), 'centered click-through progress');
+            if(matchMedia('(max-width:900px)').matches){
+              const menu=document.querySelector('.phone-tabs button');
+              const drawer=document.getElementById('workspace-drawer');
+              menu.click();
+              await wait(()=>drawer.open && !indicator.classList.contains('visible'));
+              drawer.querySelector('button').click();
+              check(drawer.dataset.motion==='closing' || matchMedia('(prefers-reduced-motion: reduce)').matches, 'drawer dismiss transition');
+              await wait(()=>!drawer.open);
+              await wait(()=>indicator.classList.contains('visible'));
+            }
+            window.releaseDirectory();
+            await wait(()=>!indicator.classList.contains('visible'));
             check(document.querySelector('.public-lamp') && getComputedStyle(document.querySelector('.access')).display!=='none' &&
               document.querySelector('.access').textContent.trim()==='공개 열람', 'visible public access status');
             check(document.querySelector('.phone-tabs a[href="#/research"]'), 'research tab retained');
@@ -48,7 +69,8 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             marketPicker.focus();
             await press(marketPicker,'Enter');
             const marketList=picker.querySelector('[role="listbox"]');
-            check(marketList?.matches(':popover-open') && marketList.querySelector('[aria-selected="true"]'), 'market selection visible inside dialog');
+            check(marketList?.matches(':popover-open') && marketList.querySelector('[aria-selected="true"]') &&
+              getComputedStyle(marketList).opacity==='1' && getComputedStyle(marketList).backgroundColor==='rgb(32, 33, 36)', 'opaque market selection inside dialog');
             await press(marketPicker,'End');
             check(marketPicker.getAttribute('aria-activedescendant')===marketList.lastElementChild.id,'End focuses last market');
             await press(marketPicker,'Escape');
@@ -126,7 +148,15 @@ class IntegratedPublicViewerTests(unittest.TestCase):
                     forbidden.append(path)
                 if path == "/":
                     html = (DIST / "index.html").read_text(encoding="utf8").replace("<head>", '<head><meta name="forecast-console-access" content="public-readonly"><script>localStorage.setItem("gant_admin_token","stale-test-only");window.socketCalls=0;window.WebSocket=class{constructor(){window.socketCalls++}}</script>')
-                    raw = html.replace("</body>", "<script>"+checks+"</script></body>").encode()
+                    gate = """<script>
+                    const directoryGate=new Promise(done=>window.releaseDirectory=done);
+                    const fetchWithoutGate=window.fetch;
+                    window.fetch=async (...args)=>{
+                      if(String(args[0]?.url||args[0]).includes('/reports/tickers')) await directoryGate;
+                      return fetchWithoutGate(...args);
+                    };
+                    </script>"""
+                    raw = html.replace("<head>", "<head>"+gate).replace("</body>", "<script>"+checks+"</script></body>").encode()
                     content = "text/html; charset=utf-8"
                 elif path.startswith("/api/cases"):
                     row=dict(id=29,ticker="005930.KS",market="kr",data_session="2026-11-02",status="matured",forecast_probabilities={"single":0.61})

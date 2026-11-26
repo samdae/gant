@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { location } from "svelte-spa-router";
-  import { currentPage, homeRoute } from "../lib/workspaceNavigation";
+  import { currentPage } from "../lib/workspaceNavigation";
   import { isPublicViewer } from "../lib/workspace";
   import WorkspaceRail from "./WorkspaceRail.svelte";
   import WorkspaceIcon from "./WorkspaceIcon.svelte";
@@ -22,21 +22,41 @@
   let opener: HTMLButtonElement;
   let open = false;
   let viaLink = false;
+  let closeTimer: number | undefined;
   $: context = currentPage($location);
   $: activeTab = tabs.find((tab) => tab.href === context.page.route)
     ?? tabs.find((tab) => tab.group === context.section.name);
 
   function showMenu() {
+    if (dialog.open) return;
     viaLink = false;
+    delete dialog.dataset.motion;
     dialog.showModal();
     open = true;
     dialog.querySelector<HTMLButtonElement>("button")?.focus();
   }
   function finish(navigated = false) {
-    viaLink = navigated;
-    dialog.close();
+    viaLink ||= navigated;
+    if (!dialog.open || dialog.dataset.motion === "closing") return;
+    dialog.dataset.motion = "closing";
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      dialog.close();
+      return;
+    }
+    // Also complete if the browser cancels the transition during a resize.
+    closeTimer = window.setTimeout(() => { if (dialog.open) dialog.close(); }, 270);
+  }
+  function motionEnded(event: TransitionEvent) {
+    if (dialog.dataset.motion === "closing" && event.target === dialog
+        && !event.pseudoElement && event.propertyName === "transform" && dialog.open) {
+      dialog.close();
+    }
   }
   async function closed() {
+    clearTimeout(closeTimer);
+    delete dialog.dataset.motion;
+    dialog.style.removeProperty("--drawer-offset");
+    dialog.style.removeProperty("--drawer-shade");
     open = false;
     await tick();
     if (viaLink)
@@ -79,7 +99,7 @@
       backdropPointer = null;
     };
     function suppressClosedClick(event: MouseEvent) {
-      if (!node.open) {
+      if (!node.open || node.dataset.motion === "closing") {
         event.preventDefault();
         event.stopPropagation();
       }
@@ -87,14 +107,23 @@
     let touch: {
       x: number;
       y: number;
+      id: number;
       axis: "pending" | "horizontal" | "vertical";
     } | null = null;
+    function releaseDrag() {
+      touch = null;
+      if (node.dataset.motion === "dragging") delete node.dataset.motion;
+      node.style.removeProperty("--drawer-offset");
+      node.style.removeProperty("--drawer-shade");
+    }
     function beginTouch(event: TouchEvent) {
       const point = event.touches[0];
-      touch =
-        event.touches.length === 1
-          ? { x: point.clientX, y: point.clientY, axis: "pending" }
-          : null;
+      if (node.dataset.motion === "closing") return;
+      if (event.touches.length !== 1 || outside(point.clientX, point.clientY)) {
+        releaseDrag();
+        return;
+      }
+      touch = { x: point.clientX, y: point.clientY, id:point.identifier, axis:"pending" };
     }
     function moveTouch(event: TouchEvent) {
       if (!touch || event.touches.length !== 1) return;
@@ -103,27 +132,30 @@
         dy = point.clientY - touch.y;
       if (touch.axis === "pending" && Math.max(Math.abs(dx), Math.abs(dy)) > 10)
         touch.axis = dx > Math.abs(dy) * 1.5 ? "horizontal" : "vertical";
-      if (touch.axis === "horizontal" && event.cancelable)
-        event.preventDefault();
+      if (touch.axis === "horizontal" && node.dataset.motion !== "closing") {
+        if (event.cancelable) event.preventDefault();
+        const offset = Math.max(0, Math.min(node.offsetWidth, dx));
+        node.dataset.motion = "dragging";
+        node.style.setProperty("--drawer-offset", offset + "px");
+        node.style.setProperty("--drawer-shade", String(1 - offset / node.offsetWidth));
+      }
     }
     function endTouch(event: TouchEvent) {
-      if (
-        touch?.axis === "horizontal" &&
-        event.changedTouches[0].clientX - touch.x >= 64 &&
-        node.open
-      ) {
-        if (event.cancelable) event.preventDefault();
-        finish();
+      const point = event.changedTouches[0];
+      if (touch?.axis === "horizontal" && point.identifier === touch.id) {
+        if (event.cancelable) event.preventDefault(); // No link activation after a drag.
+        if (point.clientX - touch.x >= 64 && node.open) {
+          touch = null;
+          finish();
+          return;
+        }
       }
-      touch = null;
+      releaseDrag();
     }
-    const cancelTouch = () => {
-      touch = null;
-    };
     node.addEventListener("touchstart", beginTouch, { passive: true });
     node.addEventListener("touchmove", moveTouch, { passive: false });
     node.addEventListener("touchend", endTouch, { passive: false });
-    node.addEventListener("touchcancel", cancelTouch);
+    node.addEventListener("touchcancel", releaseDrag);
     node.addEventListener("pointerdown", down);
     node.addEventListener("pointerup", up);
     node.addEventListener("pointercancel", cancel);
@@ -133,7 +165,7 @@
         node.removeEventListener("touchstart", beginTouch);
         node.removeEventListener("touchmove", moveTouch);
         node.removeEventListener("touchend", endTouch);
-        node.removeEventListener("touchcancel", cancelTouch);
+        node.removeEventListener("touchcancel", releaseDrag);
         node.removeEventListener("pointerdown", down);
         node.removeEventListener("pointerup", up);
         node.removeEventListener("pointercancel", cancel);
@@ -152,6 +184,7 @@
     window.addEventListener("hashchange", navigate);
     desktop.addEventListener("change", resize);
     return () => {
+      clearTimeout(closeTimer);
       desktop.removeEventListener("change", resize);
       window.removeEventListener("hashchange", navigate);
     };
@@ -162,9 +195,9 @@
 <header class="context-bar">
   <div class="context-inner">
     <a
-      href={"#" + homeRoute}
+      href="#/dashboard"
       class="mobile-brand"
-      aria-label="GANT 분석 리포트 홈"><GantMark size={26} /><b>GANT</b></a
+      aria-label="GANT 대시보드"><GantMark size={26} /><b>GANT</b></a
     >
     <nav aria-label="현재 위치" class="crumb">
       <span>{context.section.name}</span><WorkspaceIcon
@@ -203,6 +236,8 @@
   aria-label="전체 메뉴"
   bind:this={dialog}
   use:drawerGestures
+  on:cancel|preventDefault={() => finish()}
+  on:transitionend={motionEnded}
   on:close={closed}
 >
   <WorkspaceRail
@@ -289,12 +324,20 @@
     padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
     color: var(--fl-ink);
     box-shadow: -10px 0 50px #0005;
+    transform:translateX(var(--drawer-offset, 0px));
   }
   :global(html:has(#workspace-drawer[open])) {
     overscroll-behavior-x: none;
   }
   dialog::backdrop {
     background: #0009;
+    opacity:var(--drawer-shade, 1);
+  }
+  dialog:global([data-motion="closing"]) { transform:translateX(100%); }
+  dialog:global([data-motion="closing"])::backdrop { opacity:0; }
+  @media (prefers-reduced-motion:no-preference) {
+    dialog, dialog::backdrop { transition:transform 220ms cubic-bezier(.22,.76,.22,1), opacity 220ms ease-out; }
+    dialog:global([data-motion="dragging"]), dialog:global([data-motion="dragging"])::backdrop { transition:none; }
   }
   @media (max-width: 900px) {
     .desktop-rail,

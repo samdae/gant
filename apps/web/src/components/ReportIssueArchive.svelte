@@ -20,7 +20,7 @@
   let error = "";
   let expanded: Record<string, boolean> = {};
   let controller: AbortController;
-  async function load() {
+  async function load(refresh = false) {
     controller?.abort();
     const req = new AbortController();
     controller = req;
@@ -29,6 +29,7 @@
       const data = await researchGet<Archive>(
         "report-sources/" + id,
         req.signal,
+        {refresh},
       );
       if (data.id !== id || data.ticker.toUpperCase() !== ticker.toUpperCase())
         throw Error();
@@ -51,7 +52,7 @@
 <section class="archive" aria-label="리포트 발행 시점의 30일 자료">
   <h3>발행 전 30일 자료</h3>
   {#if error}<p role="alert">
-      {error} <button on:click={load}>다시 조회</button
+      {error} <button on:click={() => load(true)}>다시 조회</button
       >
     </p>
   {:else if !archive}<p><PendingState label="수집 기록을 확인하는 중입니다."/></p>

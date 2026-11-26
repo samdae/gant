@@ -6,6 +6,7 @@
   import { isForecastLab, isPublicViewer } from "../lib/workspace";
   import { params, querystring } from "svelte-spa-router";
   import { fetchReportsByTicker } from "../lib/api/endpoints";
+  import { publicJson } from "../lib/api/publicReads";
   import { formatDateTime, formatErrorMessage } from "../lib/utils/format";
   import { renderNarrative } from "../lib/utils/researchMarkdown";
   import SelectMenu from "../components/SelectMenu.svelte";
@@ -187,13 +188,17 @@
       let symbol = t;
       const publicId = isPublicViewer && /^[1-9]\d*$/.test(t) ? t : "";
       if (publicId) {
-        const response = await fetch("/public-api/reports/" + publicId, { credentials: "omit" });
-        if (!response.ok) throw new Error("공개된 리포트를 찾을 수 없습니다.");
-        const item = await response.json();
+        const item = await publicJson<{ticker?: string}>("/public-api/reports/" + publicId, {
+          notFoundMessage: "공개된 리포트를 찾을 수 없습니다.",
+        });
         if (typeof item.ticker !== "string") throw new Error("리포트의 종목을 확인할 수 없습니다.");
         symbol = item.ticker;
       }
-      const result = (await fetchReportsByTicker(symbol, 20)) as Report[];
+      let result = (await fetchReportsByTicker(symbol, 20)) as Report[];
+      const requestedId = publicId || requested;
+      if (isPublicViewer && requestedId && !result.some(item => String(item.id) === requestedId) && request === loadSequence) {
+        result = (await fetchReportsByTicker(symbol, 20, {refresh: true})) as Report[];
+      }
       if (request !== loadSequence || ticker !== t) return;
       reports = result;
       if (reports && reports.length > 0) {

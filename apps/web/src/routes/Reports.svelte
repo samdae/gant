@@ -115,7 +115,7 @@
 <section class="page" id="page-reports">
   <div class="page-container">
     <div class="page-header">
-      <h2>{isForecastLab ? "분석 리포트" : "AI분석"}</h2>
+      <h2>{isForecastLab ? "리포트" : "AI분석"}</h2>
     </div>
     {#if !isForecastLab}<AnalysisTabs />{/if}
 

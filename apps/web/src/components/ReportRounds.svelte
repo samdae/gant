@@ -16,11 +16,11 @@
   let rows: Round[] = [],
     loading = true,
     failed = false;
-  async function load() {
+  async function load(refresh = false) {
     failed = false;
     loading = true;
     try {
-      rows = (await fetchReportsByTicker(ticker, 20)) as Round[];
+      rows = (await fetchReportsByTicker(ticker, 20, {refresh})) as Round[];
     } catch {
       failed = true;
     } finally {
@@ -35,7 +35,7 @@
 <div class="rounds">
   {#if loading}<p><PendingState label="회차 조회 중"/></p>
   {:else if failed}<p role="alert">
-      회차를 불러오지 못했습니다. <button on:click={load}>다시 조회</button>
+      회차를 불러오지 못했습니다. <button on:click={() => load(true)}>다시 조회</button>
     </p>
   {:else}
     <p>최근 발행 회차 · {rows.length}건</p>

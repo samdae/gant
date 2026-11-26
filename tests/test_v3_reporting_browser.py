@@ -23,17 +23,33 @@ class ReportingBrowserTests(unittest.TestCase):
         let resolveFirst;
         window.statsQueries=[];
         window.caseQueries=[];
+        window.roundQueries=[];
+        window.directoryRequests=0;
         window.releaseFirst=()=>resolveFirst?.();
         const json=(value)=>new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});
         const row={ticker:'NVDA',market:'us',id:1,data_session:'2026-11-24',status:'pending',forecast_probabilities:{single:.39}};
+        const latest={...row,id:201};
+        const added={...row,id:203,data_session:'2026-11-25'};
+        const other={...row,ticker:'WMT',id:202,data_session:'2026-11-21'};
         const report=id=>({ticker:'NVDA',id,created_at:'2026-11-24T03:00:00Z',scheduled_cycle:id,final_trade_decision:'회차 판단 '+id});
         window.fetch=async (url, options)=>{
           const u=new URL(url,location.href),p=u.pathname;
+          if(p==='/api/forecast-tickers'){window.directoryRequests++;return json([directoryRequests>=3 ? added : latest,other]);}
           if(p==='/api/cases') {
+            if(u.searchParams.has('ticker')){
+              window.roundQueries.push(Object.fromEntries(u.searchParams));
+              if(u.searchParams.get('ticker')==='WMT')return json([other]);
+              const rounds=Array.from({length:201},(_,i)=>({...latest,id:201-i}));
+              if(directoryRequests>=3)rounds.unshift(added);
+              return json(rounds.filter(r=>r.id < Number(u.searchParams.get('before_id') || Infinity)).slice(0,200));
+            }
             window.caseQueries.push(Object.fromEntries(u.searchParams));
             return json(u.searchParams.get('from_date')==='2026-11-05' ? [] : [row]);
           }
-          if(p==='/api/cases/1')return json({...row,arms:[],snapshot:{}});
+          if(p==='/api/cases/1' || p==='/api/cases/201' || p==='/api/cases/203'){
+            const id=Number(p.split('/').at(-1));
+            return json({...(id===203 ? added : row),id,arms:[{method:'single',status:'published',probability:id===1?.28:.39}],snapshot:{}});
+          }
           if(p==='/api/report-sources/8') await new Promise(r=>resolveFirst=r);
           if(p.startsWith('/api/report-sources/')) {
             const id=Number(p.split('/').at(-1)), date='2026-11-24T03:00:00Z';
@@ -70,15 +86,34 @@ class ReportingBrowserTests(unittest.TestCase):
             const reportTabs=()=>[...document.querySelectorAll('.report-kind button')];
             const selected=()=>q('.report-kind [aria-pressed=true]')?.textContent;
             if(reportTabs().map(b=>b.textContent).join('|')!=='분석 리포트|확률 예측' ||
-               selected()!=='분석 리포트' || q('.forecast-reports') || caseQueries.length)throw Error('report list default');
+               selected()!=='분석 리포트' || q('.forecast-reports') || caseQueries.length || directoryRequests)throw Error('report list default');
             reportTabs()[1].click();
-            await wait(()=>q('.forecast-reports a[href="#/research/1"]')?.textContent.includes('39.0%'));
+            await wait(()=>q('.forecast-reports a[href="#/research/201"]')?.textContent.includes('39.0%'));
+            if(document.querySelectorAll('.forecast-reports a').length!==2 || q('.forecast-reports').textContent.includes('더 보기'))throw Error('ticker directory');
             if(selected()!=='확률 예측' || q('.report-directory'))throw Error('mixed report types');
             const ledger=q('.forecast-reports'), estimate=q('.forecast-reports .figure strong');
             if(getComputedStyle(ledger).backgroundColor!=='rgb(32, 33, 36)' ||
               getComputedStyle(estimate).color!=='rgb(195, 169, 255)') throw Error('forecast ledger theme');
+            q('.forecast-reports button[aria-label="확률 예측 새로고침"]').click();
+            await wait(()=>directoryRequests===2 && !q('.forecast-reports .refresh').disabled);
             q('.forecast-reports a').click();
-            await wait(()=>q('.evidence h2')?.textContent.includes('엔비디아'));
+            await wait(()=>q('.evidence h2')?.textContent.includes('엔비디아') && q('#forecast-round')?.textContent.includes('201회차'));
+            q('#forecast-round').click();
+            await wait(()=>document.querySelectorAll('[role=option]').length===201);
+            const oldest=[...document.querySelectorAll('[role=option]')].at(-1);
+            if(oldest.textContent.trim()!=='1회차 · 2026-11-24' || !roundQueries.some(p=>p.before_id==='2' && p.ticker==='NVDA'))throw Error('full ticker-specific history');
+            oldest.click();
+            await wait(()=>location.hash==='#/research/1' && q('.headline strong')?.textContent.includes('28.0%') && q('#forecast-round')?.textContent.includes('1회차'));
+            history.back();
+            await wait(()=>location.hash==='#/research/201' && q('#forecast-round')?.textContent.includes('201회차') && q('.headline strong')?.textContent.includes('39.0%'));
+            history.back();
+            await wait(()=>selected()==='확률 예측' && q('.forecast-reports a'));
+            if(directoryRequests!==2 || roundQueries.length!==2)throw Error('fresh ticker directory or prior rounds refetched');
+            q('.forecast-reports .refresh').click();
+            await wait(()=>q('.forecast-reports a[href="#/research/203"]'));
+            q('.forecast-reports a').click();
+            await wait(()=>q('#forecast-round')?.textContent.includes('202회차 · 2026-11-25'));
+            if(roundQueries.length!==4 || roundQueries.at(-1)?.before_id!=='3')throw Error('new publication did not revalidate ticker history once');
             history.back();
             await wait(()=>selected()==='확률 예측' && q('.forecast-reports a'));
             reportTabs()[0].click();

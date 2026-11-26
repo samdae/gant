@@ -147,6 +147,10 @@ def application(
         validate_range(from_date, to_date)
         return store.stats(market=market, from_date=from_date, to_date=to_date)
 
+    @app.get("/api/forecast-tickers")
+    def forecast_tickers():
+        return store.forecast_tickers()
+
     @app.get("/api/cases")
     def cases(
         limit: int = Query(50, ge=1, le=200),

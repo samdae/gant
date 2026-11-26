@@ -16,7 +16,7 @@
 </script>
 
 {#if isForecastLab}<p role="status">
-    분석 리포트로 이동 중입니다.
+    리포트로 이동 중입니다.
   </p>{:else}<section class="page">
     <div class="page-container">
       <div class="card" style="padding:24px">

@@ -11,7 +11,7 @@ export const sections = [
   {
     name: "분석 기록",
     pages: [
-      { route: "/reports", label: "분석 리포트" },
+      { route: "/reports", label: "리포트" },
       { route: "/reflections", label: "매매 검증" },
       { route: "/retrospective", label: "회고 분석" },
     ],

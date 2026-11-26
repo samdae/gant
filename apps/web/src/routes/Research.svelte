@@ -20,6 +20,7 @@
   import ResearchFilters from "../components/ResearchFilters.svelte";
   import ResearchReview from "../components/ResearchReview.svelte";
   import ResearchEvidence from "../components/ResearchEvidence.svelte";
+  import ForecastRoundSelect from "../components/ForecastRoundSelect.svelte";
 
   import { readResearchFilters } from "../lib/researchDates";
   let market = "",
@@ -51,6 +52,7 @@
   let listRequest: AbortController, detailRequest: AbortController;
   let picker: HTMLDialogElement;
   let leavingDetail = false;
+  let roundTarget: number | undefined;
   const size = 8;
   $: archive = ["/results", "/performance", "/observe"].includes($location);
   $: explicit = $location.match(/^\/research\/([1-9]\d*)$/)?.[1];
@@ -64,6 +66,7 @@
     start: string,
     end: string,
     before?: number,
+    refresh = false,
   ) {
     listRequest?.abort();
     const req = new AbortController();
@@ -80,7 +83,7 @@
       if (start) query.set("from_date", start);
       if (end) query.set("to_date", end);
       if (before) query.set("before_id", String(before));
-      const items = await researchGet<CaseRow[]>("cases?" + query, req.signal);
+      const items = await researchGet<CaseRow[]>("cases?" + query, req.signal, { refresh });
       if (req.signal.aborted) return;
       more = items.length > size;
       rows = items.slice(0, size);
@@ -90,16 +93,17 @@
       if (!req.signal.aborted) busy = false;
     }
   }
-  async function loadCase(id?: number) {
+  async function loadCase(id?: number, refresh = false) {
     detailRequest?.abort();
     const req = new AbortController();
     detailRequest = req;
-    selected = null;
+    if (id !== roundTarget || !id) selected = null;
+    roundTarget = undefined;
     detailError = "";
     detailBusy = Boolean(id);
     if (!id) return;
     try {
-      const item = await researchGet<ResearchCase>("cases/" + id, req.signal);
+      const item = await researchGet<ResearchCase>("cases/" + id, req.signal, { refresh });
       if (!req.signal.aborted) selected = item;
     } catch (e) {
       if (!req.signal.aborted)
@@ -198,7 +202,7 @@
             {listError}
             <button
               on:click={() =>
-                loadList(market, from, to, cursors[cursors.length - 1])}
+                loadList(market, from, to, cursors[cursors.length - 1], true)}
               >다시 조회</button
             >
           </p>
@@ -254,10 +258,10 @@
         {/if}
       </dialog>
       <div class="detail-pane">
-        {#if detailBusy}<p><PendingState label="사례 근거를 불러오는 중입니다."/></p>
-        {:else if detailError}<p role="alert">
+        {#if detailBusy}<p><PendingState label="사례 근거를 불러오는 중입니다."/></p>{/if}
+        {#if detailError}<p role="alert">
             {detailError}
-            <button on:click={() => loadCase(selectedId)}>다시 조회</button>
+            <button on:click={() => loadCase(selectedId, true)}>다시 조회</button>
           </p>
         {:else if selected}<ResearchEvidence data={selected}
             ><button
@@ -275,10 +279,17 @@
                   stroke="currentColor"
                   stroke-width="1.7"
                 /></svg
-              ></button
-            ></ResearchEvidence
-          >
-        {:else if !busy && !listError}<section class="blank">
+              ></button>
+            <ForecastRoundSelect slot="rounds" ticker={selected.ticker} caseId={selected.id}
+              session={selected.data_session} published={selected.arms?.some(arm => arm.status === "published") ?? false}
+              on:change={e => {
+                if (selectedId !== e.detail) {
+                  roundTarget = e.detail;
+                  window.location.hash = "#/research/" + e.detail + suffix;
+                }
+              }} />
+          </ResearchEvidence>
+        {:else if !detailBusy && !busy && !listError}<section class="blank">
             <h2>아직 관측 사례가 없습니다</h2>
             <p>
               사례가 동결되면 당시 가격과 발행 확률을 여기서 확인할 수 있습니다.

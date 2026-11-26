@@ -27,6 +27,7 @@ from .pwa import REVALIDATE_PATHS, mount_install_assets
 from .public_projection import public_case, public_detail, public_report, public_stats
 from .public_research import (
     case_summary,
+    forecast_ticker,
     research_detail,
     research_stats,
     research_status,
@@ -85,7 +86,7 @@ def read_upstream(path, origin=ORIGIN):
         parts.scheme or parts.netloc or parts.fragment
     ):
         research_filters(parts.path, parts.query, internal=True)
-    elif path not in ("/api/status", REPORTS) and not re.fullmatch(
+    elif path not in ("/api/status", "/api/forecast-tickers", REPORTS) and not re.fullmatch(
         r"/api/(?:cases|report-sources)/[1-9][0-9]{0,15}", path
     ):
         raise ValueError("Invalid internal route")
@@ -353,6 +354,12 @@ def create_app(reader=read_upstream, *, dist=SHELL, workspace_reader=None, works
     @app.get("/api/status")
     def status():
         return cached("research-status", lambda: research_status(reader("/api/status")))
+
+    @app.get("/api/forecast-tickers")
+    def forecast_tickers():
+        return cached("forecast-tickers", lambda: [
+            item for row in rows("/api/forecast-tickers") if (item := forecast_ticker(row))
+        ])
 
     @app.get("/api/stats")
     @app.get("/api/cases")

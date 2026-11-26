@@ -23,6 +23,26 @@ def fixture_row(i=1):
 
 
 class SharedViewTests(unittest.TestCase):
+    def test_forecast_directory_reads_shared_data_and_exposes_only_public_fields(self):
+        supplement = Mock()
+        supplement.forecast_tickers.return_value = [
+            {**fixture_row(), "secret": "private", "forecast_probabilities": {"single": 0.0, "trace": "private"}},
+            {**fixture_row(2), "market": "invalid"},
+        ]
+        reader = SharedReader(supplement, Mock(side_effect=AssertionError))
+        client = TestClient(create_app(reader, shared_role="core"))
+        path = "/api/forecast-tickers"
+        expected = [{"id": 1, "ticker": "SPY", "market": "us", "data_session": "2026-01-12",
+                     "forecast_probabilities": {"single": 0.0}}]
+        self.assertEqual(client.get(path).json(), expected)
+        self.assertEqual(client.get(path).json(), expected)
+        supplement.forecast_tickers.assert_called_once_with()
+        self.assertEqual(client.get(path + "?ticker=SPY").status_code, 400)
+        self.assertEqual(client.post(path).status_code, 405)
+        with patch("tradingagents.forecast_lab.shared_view.private_get", return_value=expected) as core:
+            self.assertEqual(TestClient(build_shared_edge()).get(path).json(), expected)
+            core.assert_called_once_with(path)
+
     def test_only_batch_missing_probabilities_and_check_identity(self):
         rows = [fixture_row(i) for i in range(1, 101)]
         supplement = Mock()
