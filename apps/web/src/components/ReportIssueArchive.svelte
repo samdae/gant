@@ -1,5 +1,6 @@
 <script lang="ts">
   import PendingState from "./PendingState.svelte";
+  import SourceGroup from "./SourceGroup.svelte";
   import { onMount, onDestroy } from "svelte";
   import {
     articleUrl,
@@ -18,7 +19,6 @@
   };
   let archive: Archive | null = null;
   let error = "";
-  let expanded: Record<string, boolean> = {};
   let controller: AbortController;
   async function load(refresh = false) {
     controller?.abort();
@@ -64,14 +64,12 @@
     {#each [{ label: "last30days 조사 자료", data: archive.last30days }, { label: "뉴스", data: archive.issues }] as group}
       {@const items = group.data?.items || []}
       <section class="source">
-        <h4>
-          {group.label}
-          <span>{group.data ? items.length + "건" : "확인 불가"}</span>
-        </h4>
-        {#if notices[group.data?.status || ""]}<p>
-            {notices[group.data?.status || ""]}
-          </p>{/if}
-        {#each expanded[group.label] ? items : items.slice(0, 1) as item}
+        <SourceGroup title={group.label} {items} known={Boolean(group.data)} let:item>
+          <svelte:fragment slot="notice">
+            {#if notices[group.data?.status || ""]}
+              <p>{notices[group.data?.status || ""]}</p>
+            {/if}
+          </svelte:fragment>
           <div class="item">
             {#if articleUrl(item.url)}<a
                 href={articleUrl(item.url)}
@@ -86,21 +84,7 @@
               )}</small
             >
           </div>
-        {/each}
-        {#if items.length > 1}
-          <button
-            aria-expanded={Boolean(expanded[group.label])}
-            on:click={() =>
-              (expanded = {
-                ...expanded,
-                [group.label]: !expanded[group.label],
-              })}
-          >
-            {expanded[group.label]
-              ? "접기"
-              : "나머지 " + (items.length - 1) + "건 보기"}
-          </button>
-        {/if}
+        </SourceGroup>
       </section>
     {/each}
   {/if}
@@ -125,20 +109,16 @@
     line-height: 1.5;
   }
   .source {
-    padding: 0.5rem 0;
-    border-top: 1px solid var(--fl-line, #3b3d41);
-  }
-  h4 {
-    margin: 0;
-    font-weight: 600;
-  }
-  h4 span {
-    font-weight: normal;
+    padding-block-end: 0.5rem;
   }
   .item {
-    padding: 0.65rem 0;
+    padding: 0.25rem 0 0.65rem;
     max-width: 76ch;
     overflow-wrap: anywhere;
+  }
+  .item:not(:first-child) {
+    border-block-start: 1px solid var(--fl-line);
+    padding-block-start: 0.65rem;
   }
   a {
     color: var(--fl-forecast, #c3a9ff);

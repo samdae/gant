@@ -1,9 +1,9 @@
 <script lang="ts">
   import { articleUrl, timeLabel, type Issues } from "../lib/researchEvidence";
+  import SourceGroup from "./SourceGroup.svelte";
   export let feed: Issues | null | undefined;
   export let title: string;
   export let lead = false;
-  let expanded = false;
   $: items = feed?.items ?? [];
   $: note = !feed
     ? "당시 수집 기록이 없습니다."
@@ -18,12 +18,10 @@
 </script>
 
 <section class="feed" class:lead>
-  <header>
-    <h4>{title}</h4>
-    {#if feed}<small>{items.length}건</small>{/if}
-  </header>
-  {#if note}<p class="note">{note}</p>{/if}
-  {#each expanded ? items : items.slice(0, 1) as item}
+  <SourceGroup {title} {items} known={Boolean(feed)} let:item>
+    <svelte:fragment slot="notice">
+      {#if note}<p class="note">{note}</p>{/if}
+    </svelte:fragment>
     <article class="news">
       <small
         >{item.publisher || "매체 미기록"}{#if item.in_frozen_list && feed?.provenance !== "v3_archive_as_of"}
@@ -51,12 +49,7 @@
         </p>
       </details>
     </article>
-  {/each}
-  {#if items.length > 1}<button
-      aria-expanded={expanded}
-      on:click={() => (expanded = !expanded)}
-      >{expanded ? "접기" : "나머지 " + (items.length - 1) + "건 보기"}</button
-    >{/if}
+  </SourceGroup>
 </section>
 
 <style>
@@ -65,30 +58,16 @@
     border-left: 1px solid var(--fl-line);
     min-width: 0;
   }
-  .feed header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 0 0 6px;
-    border-bottom: 1px solid var(--fl-line);
-  }
-  .feed h4,
   .feed p {
     margin: 0;
   }
-  .feed h4 {
-    font-size: 0.9rem;
-    color: var(--fl-ink);
-    font-weight: 650;
-  }
-  .feed header small {
-    font-variant-numeric: tabular-nums;
-  }
   .news {
-    padding: 10px 0;
+    padding: 4px 0 10px;
     overflow-wrap: anywhere;
-    border-bottom: 1px solid var(--fl-line);
+  }
+  .news:not(:first-child) {
+    border-block-start: 1px solid var(--fl-line);
+    padding-block-start: 10px;
   }
   .news strong,
   .news small {
@@ -117,14 +96,6 @@
   .news a:focus-visible {
     color: var(--fl-accent);
     text-decoration: underline;
-  }
-  .feed button {
-    padding: 8px 0;
-    background: none;
-    border: 0;
-    font: 600 0.8rem var(--fl-font, sans-serif);
-    color: var(--fl-accent);
-    cursor: pointer;
   }
   @media (max-width: 760px) {
     .feed {

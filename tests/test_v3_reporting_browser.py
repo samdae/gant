@@ -55,7 +55,7 @@ class ReportingBrowserTests(unittest.TestCase):
             const id=Number(p.split('/').at(-1)), date='2026-11-24T03:00:00Z';
             const items=[{title:'회차 자료 '+id,publisher:'테스트 매체',url:'https://example.org/post',
               published_at:date,first_seen_at:date}];
-            items.push({...items[0],title:"추가 자료 "+id});
+            items.push({...items[0],title:"추가 자료 "+id,url:'https://example.org/more/'+id});
             return json({id,ticker:'NVDA',as_of:date,issues:{status:'available',items},last30days:{status:'uncollected',items:[]}});
           }
           if(p==='/workspace-api/reports/tickers')return json([{ticker:'NVDA',report_count:2,latest_at:'2026-11-24T03:00:00Z'}]);
@@ -130,9 +130,21 @@ class ReportingBrowserTests(unittest.TestCase):
             await wait(()=>q('#cycle-select') && q('.archive') && resolveFirst);
             q('#cycle-select').click(); await wait(()=>q('[role=option][aria-selected=false]'));
             q('[role=option][aria-selected=false]').click(); await wait(()=>q('.archive')?.innerText.includes('회차 자료 7'));
-            if(!q('.archive .source h4')?.textContent.includes('last30days') || q('.archive').innerText.includes('추가 자료 7'))throw Error('archive preview order');
+            const [emptyArchive,newsArchive]=document.querySelectorAll('.archive .source');
+            const expand=newsArchive.querySelector('h4 > button[aria-expanded="false"]');
+            if(!emptyArchive.querySelector('h4')?.textContent.includes('last30days') ||
+               !emptyArchive.textContent.includes('0건') || emptyArchive.querySelector('button') ||
+               !expand?.textContent.includes('뉴스') || !expand.textContent.includes('2건') ||
+               newsArchive.querySelectorAll('button').length!==1 || newsArchive.querySelectorAll('.item').length!==1)throw Error('archive group preview');
             if(!(q('.desk-conclusion').compareDocumentPosition(q('.archive')) & Node.DOCUMENT_POSITION_FOLLOWING))throw Error('conclusion not first');
-            q('.archive button[aria-expanded=false]').click(); await wait(()=>q('.archive').innerText.includes('추가 자료 7'));
+            expand.focus();
+            if(document.activeElement!==expand || expand.tabIndex!==0 || expand.getBoundingClientRect().height<44)throw Error('archive header hit target or focus');
+            expand.click(); await wait(()=>newsArchive.querySelectorAll('.item').length===2);
+            const extra=newsArchive.querySelector('a[href="https://example.org/more/7"]');
+            if(expand.getAttribute('aria-expanded')!=='true' || !extra?.textContent.includes('추가 자료 7') ||
+               extra.target!=='_blank' || !extra.relList.contains('noopener'))throw Error('expanded archive links');
+            expand.click(); await wait(()=>newsArchive.querySelectorAll('.item').length===1);
+            if(expand.getAttribute('aria-expanded')!=='false' || !newsArchive.querySelector('.item').textContent.includes('회차 자료 7'))throw Error('collapse keeps archive preview');
             releaseFirst(); await new Promise(r=>setTimeout(r,100));
             if(q('.archive').innerText.includes('회차 자료 8'))throw Error('stale archive');
             window.holdStats=true;

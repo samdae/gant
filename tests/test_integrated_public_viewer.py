@@ -78,7 +78,9 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             const [first,partial,unissued]=document.querySelectorAll('.register a');
             check(partial.textContent.includes('일부 방법 발행') && !partial.textContent.includes('발행 대기') &&
               unissued.textContent.includes('발행 대기') && first.textContent.includes('채점 완료'),'partial vs unissued');
-            picker.querySelector('.close').click();check(!picker.open,'picker closes');
+            const pickerClosed=new Promise(resolve=>picker.addEventListener('close',resolve,{once:true}));
+            picker.querySelector('.close').click();await pickerClosed;
+            check(!picker.open && document.activeElement.matches('.choose'),'picker closes and restores focus');
             const slider=document.querySelector('.chart .pointer');
             slider.value='0';slider.dispatchEvent(new Event('input',{bubbles:true}));await Promise.resolve();
             check(slider.getAttribute('aria-valuetext').includes('2026-10-28') && slider.getAttribute('aria-valuetext').includes('74,000원'), 'interactive dated close');
@@ -106,8 +108,27 @@ class IntegratedPublicViewerTests(unittest.TestCase):
               document.querySelectorAll('.sources a[href="https://example.org/post"]').length===1 &&
               [...document.querySelectorAll('.sources .feed')].some(el=>el.textContent.includes('수집 경로 미확인') && el.textContent.includes('수집 단계 미상')),
               'mixed sources attributed and deduplicated');
+            const [community,rss,unmatched]=document.querySelectorAll('.sources .feed');
+            const header=feed=>feed.querySelector('h4 > button[aria-expanded]');
+            const articles=feed=>feed.querySelectorAll('.news').length;
+            check(articles(community)===1 && articles(rss)===1 && articles(unmatched)===1 &&
+              !header(unmatched) && unmatched.querySelector('h4').textContent.includes('1건'), 'single source is a static preview');
+            const communityToggle=header(community), rssToggle=header(rss);
+            check(communityToggle.textContent.includes('2건') && rssToggle.textContent.includes('2건') &&
+              community.querySelectorAll('button').length===1 && rss.querySelectorAll('button').length===1 &&
+              communityToggle.getAttribute('aria-controls')!==rssToggle.getAttribute('aria-controls'), 'independent named source lists');
+            communityToggle.focus();communityToggle.click();await wait(()=>articles(community)===2);
+            check(communityToggle.getAttribute('aria-expanded')==='true','community header announces expansion');
+            check(document.activeElement===communityToggle,'source header retains keyboard focus');
+            check(articles(rss)===1 && rssToggle.getAttribute('aria-expanded')==='false', 'RSS preview stays closed');
+            rssToggle.click();await wait(()=>articles(rss)===2);
+            communityToggle.click();await wait(()=>articles(community)===1);
+            check(articles(rss)===2 && rss.querySelector('a[href="https://example.org/update"]') &&
+              community.querySelector('a[href="https://example.org/post"]'), 'collapse keeps first source and sibling state');
             check(document.documentElement.scrollWidth<=innerWidth,'research overflow');
             await visit('#/research/28',()=>document.querySelector('.compare-row b')?.textContent==='0.0%');
+            check(document.querySelectorAll('.sources .feed h4 > button[aria-expanded="false"]').length===2 &&
+              !document.querySelector('.sources a[href="https://example.org/update"]'), 'a new case starts with source previews');
             check(!document.querySelector('.range-summary'),'single probability has no range');
             await visit('#/research/27',()=>document.querySelector('.sources')?.textContent.includes('당시 수집 기록이 없습니다.'));
             check(!document.querySelector('.range-summary') && !document.querySelector('.news') && document.querySelector('.chart .type button:disabled') && document.querySelector('.chart').textContent.includes('종가'), 'genuine empty source and chart');
@@ -165,6 +186,8 @@ class IntegratedPublicViewerTests(unittest.TestCase):
                             "hypothesis":{"currency":"KRW","conditions":[{"id":"breakout","metric":"exit_close","operator":"gt","threshold":75000,"status":"met","observed_value":76000}]},
                             "last30days":{"status":"available","source":"last30days agent export","items":[{"title":"커뮤니티 기록","url":"https://example.org/post","publisher":"커뮤니티"}]},
                             "issues":{"status":"available","items":[{"title":"당시 확인된 공시","publisher":"공시 자료","source":"Google News RSS","url":"https://example.org/release","published_precision":"day","published_day":"2026-11-01"},{"title":"커뮤니티 기록","publisher":"커뮤니티","source":"last30days agent export","url":"https://example.org/post"},{"title":"수집 단계 미상","url":"https://example.org/old"}]}}
+                    detail["last30days"]["items"].append({"title":"후속 토론","url":"https://example.org/discussion","publisher":"커뮤니티"})
+                    detail["issues"]["items"].append({"title":"추가 공시","url":"https://example.org/update","source":"Google News RSS","publisher":"공시 자료"})
                     partial={**row,"id":28,"status":"pending","forecast_probabilities":{"single":0.0}}
                     unissued={**row,"id":27,"status":"pending","forecast_probabilities":{}}
                     if path == "/api/cases":
