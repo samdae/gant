@@ -14,9 +14,13 @@ from tradingagents.scheduler.news_evidence import trade_news_for_close
 
 class TradeNewsAnalystTests(unittest.TestCase):
     def test_codex_tool_turns_receive_the_same_archive_and_only_explicit_refs_survive(self):
+        items = [{"ref": f"N{i}", "title": f"Revenue outlook {{revised}} {i}", "url": f"https://example.org/{i}",
+                  "source": "Google News RSS" if i <= 40 else "last30days agent export", "publisher": "Wire",
+                  "published_at": "2026-11-24T12:00:00+00:00", "first_seen_at": "2026-11-25T09:30:00+00:00"}
+                 for i in range(1, 81)]
+        items[-1]["published_day"] = "2026-11-23"
         packet = {"version": 1, "ticker": "WMT", "status": "available", "as_of": "2026-11-25T21:00:00+00:00",
-                  "items": [{"ref": "N1", "title": "Revenue outlook {revised}", "url": "https://example.org/1"},
-                            {"ref": "N2", "title": "Store incident", "url": "https://example.org/2"}]}
+                  "items": items}
         state = {"trade_date": "2026-11-25", "company_of_interest": "WMT", "news_evidence": packet,
                  "messages": [HumanMessage("WMT")]}
         with patch("tradingagents.llm_clients.codex_client.Codex") as sdk:
@@ -26,7 +30,7 @@ class TradeNewsAnalystTests(unittest.TestCase):
             tool_call = {"name": "get_news", "arguments": json.dumps({
                 "query": "WMT", "start_date": "2026-11-19", "end_date": "2026-11-25"})}
             replies = [{"content": "", "calls": [tool_call]},
-                       {"content": "Outlook merits review [N1]. Invalid [N99].", "calls": []}]
+                       {"content": "Outlook merits review [N1]. Second source [N80]. Invalid [N99].", "calls": []}]
             thread.run.side_effect = [Mock(final_response=json.dumps(a), status=Mock(value="completed")) for a in replies]
             node = create_news_analyst(ChatCodex())
             first = node(state)
@@ -34,17 +38,22 @@ class TradeNewsAnalystTests(unittest.TestCase):
             ai = first["messages"][0]
             state["messages"].extend([ai, ToolMessage(content="Separate news", tool_call_id=ai.tool_calls[0]["id"])])
             result = node(state)
-            self.assertEqual(result["news_analyst_cited"], ["N1"])
+            self.assertEqual(result["news_analyst_cited"], ["N1", "N80"])
             for start, turn in zip(client.thread_start.call_args_list, thread.run.call_args_list):
                 self.assertNotIn("Revenue outlook", start.kwargs["base_instructions"])
                 messages = json.loads(turn.args[0])
                 self.assertEqual(messages[0]["type"], "human")
-                self.assertEqual(json.loads(messages[0]["data"]["content"].split("\n", 1)[1]), packet)
+                sent = json.loads(messages[0]["data"]["content"].split("\n", 1)[1])
+                self.assertNotIn("https://example.org/", turn.args[0])
+                self.assertEqual(sent, {**packet, "items": [
+                    {k: v for k, v in row.items() if k != "url"} for row in items
+                ]})
+            self.assertEqual(packet["items"][-1]["url"], "https://example.org/80")
         manager = Mock()
         debate = dict.fromkeys(("history", "aggressive_history", "conservative_history", "neutral_history",
                                 "current_aggressive_response", "current_conservative_response", "current_neutral_response"), "")
         create_risk_manager(manager)({**result, "risk_debate_state": {**debate, "count": 3}, "trader_investment_plan": ""})
-        self.assertIn("Eligible archive references cited by the analyst: [N1].", manager.invoke.call_args.args[0])
+        self.assertIn("Eligible archive references cited by the analyst: [N1], [N80].", manager.invoke.call_args.args[0])
 
     @patch("tradingagents.scheduler.news_evidence.read_trade_news")
     def test_cutoff_follows_the_price_exchange_including_short_sessions(self, read_news):

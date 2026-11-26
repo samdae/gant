@@ -176,9 +176,10 @@ class LedgerDatabaseTests(unittest.TestCase):
             '```strategy_json\n{"action":"HOLD","forecast_5s":{"p_up":0.62}}\n```'
         )
         snapshot = {"version": 1, "ticker": ticker, "as_of": "2026-01-02T21:00:00+00:00",
-                    "status": "available", "items": [{"ref": "N1"}, {"ref": "N2"}]}
+                    "status": "available", "items": [{"ref": f"N{i}", "url": f"https://example.org/{i}"}
+                                                       for i in range(1, 81)]}
         scheduler.graph.propagate.return_value = (
-            {"news_analyst_cited": ["N1"], "final_trade_decision": "Material guidance [N1]. Unknown [N90]. [N2]"},
+            {"news_analyst_cited": ["N1", "N80"], "final_trade_decision": "Material guidance [N80]. Unknown [N90]. [N2]"},
             signal,
         )
         scheduler.summary_agent = Mock()
@@ -213,7 +214,7 @@ class LedgerDatabaseTests(unittest.TestCase):
         evidence = self.db.get_connection().execute(
             "SELECT news_evidence FROM reports WHERE id=%s", (report["id"],)
         ).fetchone()["news_evidence"]
-        self.assertEqual(evidence, {**snapshot, "analyst_cited": ["N1"], "decision_cited": ["N1"]})
+        self.assertEqual(evidence, {**snapshot, "analyst_cited": ["N1", "N80"], "decision_cited": ["N80"]})
         self.assertIsNone(report["position_id"])
         self.assertEqual(forecast_probability(report["pipeline_strategy"]), 0.62)
         self.assertEqual(json.loads(report["pipeline_strategy"])["forecast_5s"]["market_data_date"], "2026-01-02")

@@ -31,10 +31,24 @@ class ScheduledSourcesTest(unittest.TestCase):
             self.assertEqual(command[-5:], ["tradingagents.forecast_lab.trade_news", "--ticker", "WMT", "--as-of", cutoff])
             self.assertEqual((payload, timeout), ("start\n", READ_TIMEOUT))
             self.assertNotIn("FORECAST_LAB_DSN", run.call_args.kwargs["env"])
+            # A full horizon can exceed the old message size even with valid article fields.
+            rows = []
+            for source in ("last30days agent export", "Google News RSS"):
+                for _ in range(40):
+                    n = len(rows) + 1
+                    rows.append({"ref": f"N{n}", "source": source, "title": "가" * 490, "publisher": "매체",
+                                 "url": "https://example.org/" + "a" * 1000 + str(n),
+                                 "published_at": item["published_at"], "first_seen_at": item["first_seen_at"]})
+            full = {**packet, "status": "available", "items": rows}
+            run.return_value = json.dumps(full, ensure_ascii=False)
+            self.assertGreater(len(run.return_value.encode("utf8")), 128 * 1024)
+            self.assertEqual(read_trade_news("WMT", "us", cutoff), full)
             invalid_items = [
                 [{**item, "first_seen_at": cutoff}], [{**item, "published_at": "2025-01-01T00:00:00Z"}],
                 [{**item, "published_day": "2025-02-24"}], [{**item, "ref": "N77"}],
                 [item, {**item, "ref": "N2"}],
+                [*rows, {**rows[-1], "ref": "N81", "url": "https://example.org/81"}],
+                [{**rows[0], "source": "Google News RSS"}, *rows[1:]],
             ]
             for wrong in ([{**packet, "items": rows} for rows in invalid_items]
                           + [{**packet, "ticker": "KO"}, {**packet, "as_of": "2025-03-02T12:00:00Z"}]):

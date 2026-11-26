@@ -15,6 +15,7 @@ COLLECTOR_ROOT = "GANT_LAST30DAYS_COLLECTOR_ROOT"
 COLLECTION_TIMEOUT = 110
 MODEL_TURN_RESERVE = 300
 READ_TIMEOUT = 12
+NEWS_PER_SOURCE = 40  # The v3 archive's result limit for each source.
 # Trade schedules also accept Yahoo's hyphenated dollar pairs (e.g. BTC-USD).
 SYMBOL_PATTERNS = {"us": r"[A-Z][A-Z0-9]{0,9}(?:[.-][A-Z0-9]{1,5})?", "kr": r"[0-9]{6}\.(?:KS|KQ)"}
 
@@ -66,7 +67,7 @@ def _trade_news_rows(packet, cutoff):
     sources = {"Google News RSS": 0, "last30days agent export": 0}
     urls = set()
     items = packet["items"]
-    if not isinstance(items, list) or len(items) > 16:
+    if not isinstance(items, list) or len(items) > NEWS_PER_SOURCE * len(sources):
         raise ValueError("Invalid news archive size")
     for index, row in enumerate(items, 1):
         if not isinstance(row, dict) or set(row) - {
@@ -75,7 +76,7 @@ def _trade_news_rows(packet, cutoff):
             raise ValueError("Invalid news archive item")
         source = row["source"]
         url = urlsplit(row["url"])
-        if (row["ref"] != f"N{index}" or source not in sources or sources[source] >= 8
+        if (row["ref"] != f"N{index}" or source not in sources or sources[source] >= NEWS_PER_SOURCE
                 or not isinstance(row["title"], str) or not 0 < len(row["title"].strip()) <= 500
                 or not isinstance(row["publisher"], str) or not 0 < len(row["publisher"].strip()) <= 160
                 or url.scheme != "https" or not url.hostname or url.username or url.password
@@ -108,7 +109,7 @@ def read_trade_news(ticker, market, as_of):
             raise ValueError("Future decision time")
         raw = _archive_command(ticker, market, "tradingagents.forecast_lab.trade_news",
                                ["--as-of", result["as_of"]], READ_TIMEOUT, "trade news archive")
-        if len(raw.encode("utf8")) > 128 * 1024:
+        if len(raw.encode("utf8")) > 1024 * 1024:
             raise ValueError("Oversized news archive")
         packet = json.loads(raw)
         if (type(packet["version"]) is not int or packet["version"] != 1
