@@ -53,6 +53,14 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             node.remove();
             return value;
           }
+          function lightnessOverWhite(rgb) {
+            const [r,g,b,alpha=1]=rgb.match(/[0-9.]+/g).map(Number);
+            const linear=channel=>{
+              const s=(channel*alpha+255*(1-alpha))/255;
+              return s<=0.04045 ? s/12.92 : ((s+0.055)/1.055)**2.4;
+            };
+            return 0.2126*linear(r)+0.7152*linear(g)+0.0722*linear(b);
+          }
           try {
             await wait(()=>document.querySelector('.workspace'));
             await wait(()=>document.querySelector('#page-reports'));
@@ -90,8 +98,24 @@ class IntegratedPublicViewerTests(unittest.TestCase):
             const picker=document.querySelector('.research-desk dialog');
             check(!picker.open,'compact picker initially closed');
             document.querySelector('.choose').click();
-            check(picker.open && getComputedStyle(picker).backgroundColor===material('--fl-surface')[0] &&
-              getComputedStyle(picker).colorScheme==='light','light reading surface in picker');
+            const pickerStyle=getComputedStyle(picker);
+            if(location.pathname.startsWith('/v4/')){
+              const [fill,image]=material('--fl-glass-raised');
+              const useBlur=CSS.supports('backdrop-filter','blur(1px)') &&
+                !matchMedia('(prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active)').matches;
+              check(picker.open && pickerStyle.colorScheme==='dark' && pickerStyle.backgroundColor===fill &&
+                pickerStyle.backgroundImage===image,'dark raised glass in picker');
+              check(useBlur ? pickerStyle.backdropFilter.includes('blur(') && image!=='none' :
+                pickerStyle.backdropFilter==='none' && image==='none','picker glass follows transparency preference');
+              // A white backdrop gives each translucent dark stop its lightest possible color.
+              const stops=image==='none' ? [fill] : image.match(/rgba?[(][^)]+[)]/g);
+              const foreground=lightnessOverWhite(pickerStyle.color);
+              check(stops?.length && stops.every(stop=>(foreground+0.05)/(lightnessOverWhite(stop)+0.05)>=4.5),
+                'readable picker text over raised glass');
+            }else{
+              check(picker.open && pickerStyle.backgroundColor===material('--fl-surface')[0] &&
+                pickerStyle.colorScheme==='light','light reading surface in picker');
+            }
             const marketPicker=picker.querySelector('[role="combobox"]');
             const press=async (control,key)=>{
               control.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));

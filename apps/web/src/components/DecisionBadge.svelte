@@ -62,4 +62,10 @@
   .hold::before {
     height: 2px;
   }
+  :global(.gant-v4) .signal {
+    background: var(--fl-surface-subtle);
+  }
+  :global(.gant-v4) .hold {
+    color: var(--fl-hold);
+  }
 </style>

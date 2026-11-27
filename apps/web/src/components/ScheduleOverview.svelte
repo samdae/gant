@@ -4,11 +4,11 @@
   export let loading: boolean;
   export let error: string;
   const phases = [
-    { key:"done", label:"완료", color:"#77516c" },
-    { key:"running", label:"실행 중", color:"#22685b" },
-    { key:"pending", label:"대기", color:"#b39682" },
-    { key:"skipped", label:"건너뜀", color:"#877d87" },
-    { key:"failed", label:"실패", color:"#b0433a" },
+    { key:"done", label:"완료", color:"var(--schedule-done, #77516c)" },
+    { key:"running", label:"실행 중", color:"var(--schedule-running, #22685b)" },
+    { key:"pending", label:"대기", color:"var(--schedule-pending, #b39682)" },
+    { key:"skipped", label:"건너뜀", color:"var(--schedule-skipped, #877d87)" },
+    { key:"failed", label:"실패", color:"var(--schedule-failed, #b0433a)" },
   ] as const;
   $: ready = !loading && !error && summary && Number.isFinite(summary.total);
   $: asOf = ready && summary?.as_of ? new Date(summary.as_of) : null;
@@ -42,6 +42,18 @@
   .session-lead span { margin-left:5px; color:var(--fl-muted); font-size:1rem; }
   time, dt { color:#65545e; font-size:.78rem; }
   .schedule-track { display:flex; overflow:hidden; gap:2px; height:7px; border-radius:5px; background:#d8c8c9; }
+  :global(.gant-v4) .session {
+    --schedule-done: var(--fl-ink);
+    --schedule-running: var(--fl-accent);
+    --schedule-pending: var(--fl-hold);
+    --schedule-skipped: var(--fl-muted);
+    --schedule-failed: var(--fl-negative);
+    background: var(--fl-feature);
+    border-color: var(--fl-line);
+  }
+  :global(.gant-v4) .session :is(time,dt) { color: var(--fl-muted); }
+  :global(.gant-v4) .schedule-track { background: var(--fl-line); }
+  :global(.gant-v4) .session dl div+div { border-color: var(--fl-line); }
   dl { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); margin:0; }
   dl div+div { border-left:1px solid #d9c9ce; padding-left:clamp(4px,1vw,14px); }
   dt { display:flex; align-items:center; gap:4px; white-space:nowrap; }

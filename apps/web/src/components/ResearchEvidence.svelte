@@ -482,6 +482,20 @@
   .case-tabs button { min-width:82px; min-height:38px; padding:6px 15px; cursor:pointer; color:var(--fl-muted); border:0; border-radius:10px; background:transparent; font:640 .86rem var(--fl-font); }
   .case-tabs button[aria-selected=true] { color:var(--fl-accent-hover); background:var(--fl-surface); box-shadow:0 1px 4px #67495926; }
   .case-tabs button:hover { color:var(--fl-accent); }
+  :global(.gant-v4) .company {
+    background: var(--fl-feature);
+    border-color: var(--fl-line);
+  }
+  :global(.gant-v4) .headline, :global(.gant-v4) .headline > div + div {
+    border-color: var(--fl-line);
+  }
+  :global(.gant-v4) .probability-line { background: var(--fl-line); }
+  :global(.gant-v4) .probability-line::after { border-color: var(--fl-muted); }
+  :global(.gant-v4) .case-tabs button[aria-selected=true] {
+    color: var(--fl-selected-ink);
+    background: var(--fl-selected-bg);
+    box-shadow: inset 0 0 0 1px var(--fl-line);
+  }
   [role=tabpanel]:focus:not(:focus-visible) { outline:0; }
   .headline .risk strong { font-size:clamp(1.15rem,1.7vw,1.6rem); color:var(--fl-ink); }
   .headline .outcome,.headline .risk strong { align-self:center; }

@@ -1,24 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64">
   <defs>
     <clipPath id="tile"><rect width="64" height="64" rx="15"/></clipPath>
-    <linearGradient id="water" x2=".83" y2="1" gradientUnits="objectBoundingBox">
-      <stop stop-color="#b98fa6"/><stop offset=".44" stop-color="#814669"/><stop offset="1" stop-color="#42273d"/>
+    <linearGradient id="silver" x2="74%" y2="100%">
+      <stop stop-color="#f1f1f1"/><stop offset=".47" stop-color="#dedede"/><stop offset="1" stop-color="#c9c9c9"/>
     </linearGradient>
-    <linearGradient id="lens" x2=".4" y2="1" gradientUnits="objectBoundingBox">
-      <stop stop-color="#f8e7ed" stop-opacity=".7"/><stop offset="1" stop-color="#e9acbc" stop-opacity=".08"/>
-    </linearGradient>
-    <linearGradient id="pearl" x2=".65" y2="1" gradientUnits="objectBoundingBox">
-      <stop stop-color="#fffef5"/><stop offset=".54" stop-color="#fff4ed"/><stop offset="1" stop-color="#ebc3cf"/>
+    <linearGradient id="rim" x2="20%" y2="100%">
+      <stop stop-color="#fff"/><stop offset=".5" stop-color="#f3f3f3"/><stop offset="1" stop-color="#858585"/>
     </linearGradient>
   </defs>
   <g clip-path="url(#tile)">
-    <rect width="64" height="64" fill="url(#water)"/>
-    <path d="M-4 4Q10-1 28-2L65-2V9C43 4 35 13 29 23 20 38 10 40-3 42Z" fill="url(#lens)"/>
-    <path d="M-3 42c16-1 24-8 32-20S47 6 66 9" fill="none" stroke="#ffe1e9" stroke-opacity=".49" stroke-width=".45"/>
-    <rect x=".65" y=".65" width="62.7" height="62.7" rx="14.35" fill="none" stroke="#f1d2de" stroke-opacity=".52" stroke-width=".9"/>
+    <rect width="64" height="64" fill="url(#silver)"/>
+    <path d="M-3 33C15 33 22 26 30 17S52 4 67 6V-2H-3Z" fill="#fff" opacity=".13"/>
+    <rect id="edge" x=".65" y=".65" width="62.7" height="62.7" rx="14.35" fill="none" stroke="url(#rim)" stroke-opacity=".65" stroke-width=".9"/>
     <g transform="translate(7.5 7.4) scale(1.24)">
-      <path transform="translate(0 .8)" fill="#43253b" fill-opacity=".6" d="M5 19 17 6h17l-4 5H19L10 21v7h8l6-7h-7l4-5h12l-1 7-11 11H5z"/>
-      <path fill="url(#pearl)" d="M5 19 17 6h17l-4 5H19L10 21v7h8l6-7h-7l4-5h12l-1 7-11 11H5z"/>
+      <path fill="#101010" d="M5 19 17 6h17l-4 5H19L10 21v7h8l6-7h-7l4-5h12l-1 7-11 11H5z"/>
     </g>
   </g>
 </svg>

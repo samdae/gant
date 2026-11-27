@@ -3,6 +3,7 @@ import "./styles/application-tokens.css";
 import "./styles/console-workspace.css";
 import "./styles/folio-workspace.css";
 import "./styles/application-controls.css";
+import "./styles/v4-theme.css";
 import App from "./App.svelte";
 
 import { isForecastLab } from "./lib/workspace";

@@ -179,9 +179,9 @@
 }
 .workspace .op-page .op-primary,
 .workspace .op-page .op-title .op-primary {
-  background: var(--fl-accent);
-  color: var(--fl-on-accent);
-  border-color: var(--fl-accent);
+  background: var(--fl-action-bg, var(--fl-accent));
+  color: var(--fl-action-ink, var(--fl-on-accent));
+  border-color: var(--fl-action-border, var(--fl-accent));
 }
 .guide-index {
   padding: 12px 0;

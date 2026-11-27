@@ -2,7 +2,7 @@
 
 [v3 리포트](https://v3.daehun.app/#/reports) · [엔비디아 예측 사례](https://v3.daehun.app/#/research/35) · [v2 메인](https://daehun.app/)
 
-## GANT v4 · 공개 뷰어
+## GANT v4 · 검정·비취 공개 뷰어
 
 [리포트 열기](https://v3.daehun.app/v4/#/reports) · [연구 사례](https://v3.daehun.app/v4/#/research) · [대시보드](https://v3.daehun.app/v4/#/dashboard)
 

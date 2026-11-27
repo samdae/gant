@@ -1,11 +1,31 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, copyFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, copyFile, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { once } from "node:events";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
 import { activate, previewServer, publish } from "../../../scripts/v4-preview.mjs";
+
+test("v4 browser and installed app share a black launch surface", async t => {
+  const root = new URL("../", import.meta.url);
+  const vite = await createServer({
+    root: fileURLToPath(root), mode: "v4", logLevel: "silent",
+    server: { middlewareMode: true, hmr: false, preTransformRequests: false, watch: null },
+  });
+  t.after(() => vite.close());
+  const shell = await readFile(new URL("index.html", root), "utf8");
+  const html = await vite.transformIndexHtml("/v4/", shell);
+  const manifest = JSON.parse(await readFile(new URL("v4-pwa/gant.webmanifest", root), "utf8"));
+
+  assert.equal(manifest.background_color, "#000000");
+  assert.equal(manifest.theme_color, manifest.background_color);
+  assert.equal(html.match(/<meta name="theme-color" content="([^"]+)"/)?.[1], manifest.theme_color);
+  assert.match(html, /<meta name="color-scheme" content="dark"/);
+  assert.match(html, /href="\/v4\/gant\.webmanifest"/);
+  assert.match(html, /href="\/v4\/apple-touch-icon\.png"/);
+});
 
 test("v4 serves independent install assets and switches complete releases", async t => {
   const dir = await mkdtemp(join(tmpdir(), "gant-v4-release-"));

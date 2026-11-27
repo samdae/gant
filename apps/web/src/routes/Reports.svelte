@@ -249,6 +249,7 @@
   .report-kind {display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:999px;background:var(--fl-surface-subtle);border:1px solid var(--fl-line);}
   .report-kind button {cursor:pointer;color:var(--fl-muted);background:transparent;border:0;font:650 .89rem var(--fl-font);white-space:nowrap;}
   .report-kind button[aria-pressed="true"] {background:var(--fl-ink);color:var(--fl-on-accent);}
+  :global(.gant-v4) .report-kind button[aria-pressed="true"] {background:var(--fl-selected-bg);color:var(--fl-selected-ink);box-shadow:inset 0 0 0 1px var(--fl-line);}
   .report-filter .desk-search {max-width:240px;}
   .publication-header {display:flex;align-items:center;justify-content:space-between;gap:8px 18px;flex-wrap:wrap;padding:clamp(16px,2vw,26px) clamp(14px,2.5vw,28px) 10px;}
   .directory-title {display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 12px;}
@@ -260,6 +261,10 @@
   .distribution-legend b {color:var(--fl-ink);font-weight:650;}
   .distribution-buy {background:#33836c;} .distribution-sell {background:#bd5f63;}
   .distribution-hold {background:#967335;} .distribution-,.distribution-unavailable {background:#918b90;}
+  :global(.gant-v4) .distribution-buy {background:var(--fl-positive);}
+  :global(.gant-v4) .distribution-sell {background:var(--fl-negative);}
+  :global(.gant-v4) .distribution-hold {background:var(--fl-hold);}
+  :global(.gant-v4) :is(.distribution-,.distribution-unavailable) {background:var(--fl-muted);}
   .publication-decision small {display:block;color:var(--fl-muted);font-size:.74rem;}
   .comparison-filter {display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--fl-line);padding:0 clamp(14px,2.5vw,28px);}
   .comparison-filter button {font:600 .82rem var(--fl-font);border:0;border-bottom:2px solid transparent;color:var(--fl-muted);background:transparent;border-radius:0;cursor:pointer;min-height:44px;padding:0 3px;}

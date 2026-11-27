@@ -276,6 +276,7 @@
   .range-dialog::backdrop {
     background: var(--bg-modal);
   }
+  :global(.gant-v4) .range-dialog { color-scheme: dark; }
   .range-dialog header,
   .range-dialog footer,
   .navigation {
@@ -312,9 +313,10 @@
     background: var(--fl-surface-subtle);
   }
   .range-dialog button[aria-pressed="true"] {
-    color: var(--fl-on-accent);
-    background: var(--fl-accent);
+    color: var(--fl-selected-ink, var(--fl-on-accent));
+    background: var(--fl-selected-bg, var(--fl-accent));
   }
+  :global(.gant-v4) .range-dialog button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--fl-accent); }
   .range-dialog button:focus-visible,
   .range-trigger:focus-visible,
   .year input:focus-visible {

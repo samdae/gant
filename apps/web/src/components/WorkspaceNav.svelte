@@ -305,7 +305,7 @@
     color:var(--fl-ink); background:var(--fl-surface); border:1px solid var(--fl-line); border-radius:12px;
   }
   .phone-tabs { display:none; }
-  dialog { border:1px solid var(--fl-glass-edge); box-shadow:var(--fl-glass-shadow); backdrop-filter:var(--fl-glass-blur); }
+  dialog { border:1px solid var(--fl-glass-edge); box-shadow:var(--fl-glass-shadow); -webkit-backdrop-filter:var(--fl-glass-blur); backdrop-filter:var(--fl-glass-blur); }
   dialog {
     position: fixed;
     inset: max(9px, env(safe-area-inset-top)) max(9px, env(safe-area-inset-right)) max(9px, env(safe-area-inset-bottom)) auto;
@@ -424,6 +424,28 @@
   }
   @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
     .phone-tabs { background:#372638; backdrop-filter:none; }
+  }
+  :global(.gant-v4) .context-bar {
+    border-color: var(--fl-glass-edge);
+    box-shadow: var(--fl-glass-shadow);
+  }
+  :global(.gant-v4) .public-lamp { background: var(--fl-positive); }
+  :global(.gant-v4) .phone-tabs {
+    color: #d4d4d4;
+    background: var(--fl-glass);
+    border-color: var(--fl-glass-edge);
+    box-shadow: var(--fl-glass-shadow);
+  }
+  :global(.gant-v4) .phone-tabs::before {
+    background: #292929;
+    box-shadow: inset 0 1px 1px rgb(255 255 255 / 16%), inset 0 -1px 1px rgb(255 255 255 / 5%);
+  }
+  :global(.gant-v4) .phone-tabs :is(a,button) { color: inherit; }
+  :global(.gant-v4) .phone-tabs :is([aria-current],.active) { color: var(--fl-selected-ink); }
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) and (prefers-contrast: no-preference) {
+    :global(.gant-v4) .phone-tabs::after {
+      background: radial-gradient(120px at var(--rim-x, 15%) var(--rim-y, 0px), #fff 10%, rgb(255 255 255 / 60%) 38%, transparent);
+    }
   }
   @media (forced-colors: active) {
     .phone-tabs :is([aria-current],.active), .public-lamp { outline: 2px solid Highlight; outline-offset: -2px; }

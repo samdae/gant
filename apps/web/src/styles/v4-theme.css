@@ -1,0 +1,75 @@
+/* V4's reading surfaces stay opaque. Translucency is reserved for overlay controls. */
+html.gant-v4 {
+  color-scheme: dark;
+  --fl-tap-highlight: rgb(255 255 255 / 10%);
+  --fl-bg: #000;
+  --fl-backdrop: #0d0d0d;
+  --fl-surface: #0d0d0d;
+  --fl-surface-subtle: #151515;
+  --fl-ink: #f2f2f2;
+  --fl-muted: #b0b0b0;
+  --fl-line: #333;
+  --fl-accent: #78ddb1;
+  --fl-on-accent: #0c0c0c;
+  --fl-accent-hover: #a3eacd;
+  --fl-accent-soft: #242424;
+  --fl-selected-bg: var(--fl-accent-soft);
+  --fl-selected-ink: var(--fl-accent);
+  --fl-action-bg: #252525;
+  --fl-action-ink: var(--fl-accent);
+  --fl-action-border: var(--fl-line);
+  --fl-feature: #101010;
+  --fl-feature-ink: #f5f5f5;
+  --fl-feature-muted: #aaa;
+  --fl-forecast: var(--fl-accent);
+  --fl-forecast-soft: var(--fl-surface-subtle);
+  --fl-nav: var(--fl-feature);
+  --fl-chart-bg: var(--fl-surface);
+  --fl-chart-line: var(--fl-accent);
+  --fl-chart-volume: #888;
+  --fl-positive: #88d9ae;
+  --fl-negative: #f3a095;
+  --fl-negative-soft: var(--fl-surface-subtle);
+  --fl-buy: #8cddb5;
+  --fl-hold: #e5c998;
+  --fl-sell: #f6a49c;
+  --fl-glass: #101010;
+  --fl-glass-raised: #1a1a1a;
+  --fl-glass-edge: #414141;
+  --fl-glass-blur: none;
+  --fl-glass-shadow: inset 0 1px 0 rgb(255 255 255 / 10%), 0 12px 32px -12px rgb(0 0 0 / 58%);
+  --fl-shadow: 0 4px 16px -8px rgb(0 0 0 / 48%);
+  --primary-border: var(--fl-line);
+  --bg-modal: rgb(0 0 0 / 50%);
+  scrollbar-color: #606060 var(--fl-bg);
+}
+
+html.gant-v4 :is(input, select, textarea) { color-scheme: dark; }
+html.gant-v4 ::selection { background: #35433c; color: #fff; }
+html.gant-v4 .workspace :is(.page, .modal-overlay, dialog, .retro-modal-overlay) {
+  --border-strong: #606060;
+  --warn: #dec28c;
+  --warn-bg: var(--fl-surface-subtle);
+  --warn-light: var(--fl-surface-subtle);
+  --warn-border: var(--fl-line);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html.gant-v4 {
+    --fl-glass: linear-gradient(153deg, rgb(32 32 32 / 85%), rgb(15 15 15 / 79%) 42%, rgb(9 9 9 / 82%));
+    --fl-glass-raised: linear-gradient(153deg, rgb(36 36 36 / 88%), rgb(19 19 19 / 89%));
+    --fl-glass-edge: rgb(255 255 255 / 21%);
+    --fl-glass-blur: blur(20px) saturate(70%);
+    --fl-glass-shadow: inset 0 1px 1px rgb(255 255 255 / 18%), inset 0 -1px 1px rgb(255 255 255 / 5%), 0 10px 28px -10px rgb(0 0 0 / 58%);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  html.gant-v4 {
+    --fl-glass: #101010;
+    --fl-glass-raised: #191919;
+    --fl-glass-edge: #777;
+    --fl-glass-blur: none;
+    --fl-glass-shadow: none;
+  }
+}

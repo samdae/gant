@@ -388,8 +388,8 @@
     cursor: pointer;
   }
   button[aria-pressed="true"] {
-    background: var(--fl-accent);
-    color: var(--fl-on-accent, white);
+    background: var(--fl-selected-bg, var(--fl-accent));
+    color: var(--fl-selected-ink, var(--fl-on-accent, white));
   }
   .interactive {
     position: relative;
@@ -409,6 +409,9 @@
   svg .area {
     fill: color-mix(in srgb,var(--fl-chart-line) 11%, transparent);
     stroke: none;
+  }
+  :global(.gant-v4) svg .area {
+    fill: color-mix(in srgb, var(--fl-ink) 6%, transparent);
   }
   circle {
     fill: var(--fl-chart-line, #d5f65e);

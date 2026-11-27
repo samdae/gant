@@ -354,6 +354,17 @@
   dialog::backdrop {
     background: rgb(18 44 42 / .32);
   }
+  :global(.gant-v4) dialog {
+    color-scheme: dark;
+    background: var(--fl-glass-raised);
+    backdrop-filter: var(--fl-glass-blur);
+    -webkit-backdrop-filter: var(--fl-glass-blur);
+    border-color: var(--fl-glass-edge);
+    box-shadow: var(--fl-glass-shadow);
+  }
+  :global(.gant-v4) dialog::backdrop {
+    background: var(--bg-modal);
+  }
   dialog header,
   .row-meta {
     display: flex;

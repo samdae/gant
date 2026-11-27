@@ -60,13 +60,13 @@ export default defineConfig(({ mode }) => {
         },
         transformIndexHtml(html) {
           const iconBase = v4 ? "/v4/" : "/";
-          const tint = v4 ? "#f4f1ec" : "#18191b";
-          const scheme = v4 ? "light" : "dark";
+          const tint = v4 ? "#000000" : "#18191b";
+          const workspaceClass = v4 ? "gant-workspace gant-v4" : "gant-workspace";
           const access = v4 ? '<meta name="forecast-console-access" content="public-readonly">' : "";
           return html
-            .replace('<html lang="en">', '<html lang="ko" class="gant-workspace">')
+            .replace('<html lang="en">', `<html lang="ko" class="${workspaceClass}">`)
             .replace(/(<meta name="viewport"\s+content=")[^"]*/, '$1width=device-width, initial-scale=1, viewport-fit=cover')
-            .replace('<meta name="theme-color" content="#0d0f13" />', `<meta name="theme-color" content="${tint}" />\n  <meta name="color-scheme" content="${scheme}" />`)
+            .replace('<meta name="theme-color" content="#0d0f13" />', `<meta name="theme-color" content="${tint}" />\n  <meta name="color-scheme" content="dark" />`)
             .replace("</head>", `${access}<link rel="manifest" href="${iconBase}gant.webmanifest" crossorigin="use-credentials" />\n<link rel="apple-touch-icon" sizes="180x180" href="${iconBase}apple-touch-icon.png" />\n</head>`)
             .replace("<title>GANT</title>", v4 ? "<title>GANT v4 · 예측 연구실</title>" : "<title>GANT &middot; Forecast Lab</title>")
             .replace(/<link\b[^>]*https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*>\s*/g, "");

@@ -95,6 +95,7 @@
   }
   nav a :global(svg) { flex: none; color: var(--fl-nav-muted); }
   @media (hover: hover) { nav a:hover { background: rgb(255 255 255 / 60%); } }
+  @media (hover: hover) { :global(.gant-v4) nav a:hover { background: var(--fl-selected-bg); } }
   nav a[aria-current] {
     color: var(--fl-accent-hover);
     background: var(--fl-accent-soft);
