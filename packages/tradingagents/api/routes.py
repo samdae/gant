@@ -1452,15 +1452,36 @@ async def get_schedule_summary():
     conn = scheduler.db.get_connection()
     now = datetime.now(timezone.utc)
     start_of_day = now.astimezone(ZoneInfo("Asia/Seoul")).replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    # ScheduleEventRepository writes host-local ISO timestamps without an offset.
+    # Match those boundaries in the same database session timezone as the writer.
+    event_start = start_of_day.astimezone().replace(tzinfo=None).isoformat()
+    event_end = end_of_day.astimezone().replace(tzinfo=None).isoformat()
 
     rows = conn.execute(
         """
+        WITH today_jobs AS (
+            SELECT j.status, c.ticker
+            FROM schedule_jobs j
+            JOIN schedule_configs c ON c.id = j.schedule_config_id
+            WHERE j.created_at >= %s AND j.created_at < %s
+        ), skipped_tickers AS (
+            SELECT DISTINCT e.ticker
+            FROM schedule_job_events e
+            WHERE e.created_at >= %s::timestamptz AND e.created_at < %s::timestamptz
+              AND e.schedule_job_id IS NULL AND e.agent = 'system' AND e.status = 'skipped'
+              AND e.ticker <> ''
+              AND NOT EXISTS (SELECT 1 FROM today_jobs j WHERE j.ticker = e.ticker)
+        ), outcomes AS (
+            SELECT status FROM today_jobs
+            UNION ALL
+            SELECT 'skipped' FROM skipped_tickers
+        )
         SELECT status, COUNT(*) AS count
-        FROM schedule_jobs
-        WHERE created_at >= %s
+        FROM outcomes
         GROUP BY status
         """,
-        (start_of_day,),
+        (start_of_day, end_of_day, event_start, event_end),
     ).fetchall()
 
     counts = {"done": 0, "failed": 0, "skipped": 0, "running": 0, "pending": 0}

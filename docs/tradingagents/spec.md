@@ -241,7 +241,7 @@ Market Analyst → [Msg Clear] → Social Analyst → [Msg Clear]
   - `/positions/closed` — 청산 포지션 목록 (outcome, return_pct, currency 포함) (FR-046)
   - `/position/{id}/graph` — OHLC 일봉 차트 데이터 (yfinance, 캐시 지원)
   - `/schedules` — 스케줄 목록
-  - `/schedules/summary` — 오늘 스케줄 실행 요약 (done/failed/skipped/running)
+  - `/schedules/summary` — 한국시간 오늘의 완료·실패·건너뜀·진행·대기 건수. 시세가 없거나 갱신되지 않아 분석 회차를 만들기 전에 종료한 종목도 건너뜀에 포함한다. 같은 날 같은 종목의 건너뜀 기록은 한 번만 센다. 그날 실제 분석 회차가 있으면 회차의 현재 상태를 집계하므로 재시도에 성공한 회차는 완료 한 건으로 표시된다.
   - `/schedules/{ticker}/cycles` — 특정 티커 분석 사이클 이력
   - `/schedules/{ticker}/cycles/{schedule_id}/events` — 사이클별 에이전트 이벤트 (FR-037)
   - `/reports` — 보고서 목록 (ticker/position_id 필터)

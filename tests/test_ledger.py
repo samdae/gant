@@ -52,6 +52,76 @@ class LedgerDatabaseTests(unittest.TestCase):
         cls.addClassCleanup(cls.db.close)
         cls.db.init_schema()
 
+    def test_schedule_summary_counts_each_skipped_ticker_once_across_retry(self):
+        from datetime import UTC, datetime, timedelta
+        from zoneinfo import ZoneInfo
+        from fastapi.testclient import TestClient
+        from tradingagents.api.app import app
+
+        kst = ZoneInfo("Asia/Seoul")
+        start = datetime(2040, 11, 27, tzinfo=kst)
+        end = start + timedelta(days=1)
+        now = end - timedelta(microseconds=1)
+        conn = self.db.get_connection()
+        client = TestClient(app)
+        self.addCleanup(client.close)
+
+        def event(ticker, when, *, job=None, agent="system", status="skipped"):
+            # The event writer supplies a host-local wall time without an offset.
+            conn.execute(
+                """INSERT INTO schedule_job_events
+                   (ticker, schedule_job_id, agent, status, message, created_at)
+                   VALUES (%s, %s, %s, %s, 'No new market data since 2040-11-25', %s)""",
+                (ticker, job, agent, status, when.astimezone().replace(tzinfo=None)),
+            )
+
+        with (
+            conn.transaction(force_rollback=True),
+            patch("tradingagents.api.app.scheduler", db=self.db),
+            patch.object(self.db, "get_connection", return_value=conn),
+            patch("tradingagents.api.routes.datetime") as clock,
+        ):
+            clock.now.return_value = now.astimezone(UTC)
+            conn.execute("SET LOCAL TIME ZONE 'UTC'")
+            config_repo = ScheduleConfigRepository(self.db)
+            btc = config_repo.create("BTC-USD", 1, commit=False)
+            job = conn.execute(
+                """INSERT INTO schedule_jobs (schedule_config_id, scheduled_cycle, status, created_at)
+                   VALUES (%s, 4, 'failed', %s) RETURNING id""", (btc, start)
+            ).fetchone()["id"]
+            for i in range(13):
+                ticker = f"ETF{i}"
+                config_repo.create(ticker, 1, commit=False)
+                event(ticker, start if i == 0 else now)
+            event("ETF1", now)
+            event("BTC-USD", now, job=job)
+            event("BTC-USD", now)
+            for ticker, when in (("PREV", start - timedelta(microseconds=1)), ("NEXT", end)):
+                config_id = config_repo.create(ticker, 1, commit=False)
+                event(ticker, when)
+                other_job = conn.execute(
+                    """INSERT INTO schedule_jobs (schedule_config_id, scheduled_cycle, status, created_at)
+                       VALUES (%s, 1, 'running', %s) RETURNING id""", (config_id, when)
+                ).fetchone()["id"]
+                if ticker == "PREV":
+                    event(ticker, now, job=other_job)
+            for ticker in ("NON_SYSTEM", "NON_SKIP"):
+                config_repo.create(ticker, 1, commit=False)
+            event("NON_SYSTEM", now, agent="News Analyst")
+            event("NON_SKIP", now, status="running")
+
+            jobs = ScheduleJobRepository(self.db)
+            for status in ("failed", "running", "done"):
+                with self.subTest(status=status):
+                    jobs.update_status(job, status, commit=False)
+                    response = client.get("/schedules/summary")
+                    self.assertEqual(response.status_code, 200)
+                    summary = response.json()
+                    summary.pop("as_of")
+                    expected = dict(total=14, skipped=13, pending=0, running=0, failed=0, done=0)
+                    expected[status] = 1
+                    self.assertEqual(summary, expected)
+
     def test_stop_loss_sell_and_failure_rollback(self):
         scheduler = object.__new__(TickerScheduler)
         scheduler.db = self.db

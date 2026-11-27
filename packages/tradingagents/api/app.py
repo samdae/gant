@@ -209,8 +209,8 @@ async def _queue_worker():
 
             if graph:
                 graph.set_status_callback(
-                    lambda agent, status, msg, t=ticker: broadcast_status(
-                        t, agent, status, msg
+                    lambda agent, status, msg, ticker=ticker, job_id=job_id: broadcast_status(
+                        ticker, agent, status, msg, schedule_job_id=job_id
                     )
                 )
 
