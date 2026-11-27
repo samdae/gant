@@ -40,9 +40,10 @@
     panel.style.maxHeight = Math.max(24, Math.min(288, flip ? above : below)) + "px";
     panel.style.minWidth = Math.min(width - margin * 2, bounds.width) + "px";
     panel.style.maxWidth = width - margin * 2 + "px";
-    const x = panelAlign === "end" ? bounds.right - panel.offsetWidth : bounds.left;
-    panel.style.left = Math.max(left + margin, Math.min(x, left + width - margin - panel.offsetWidth)) + "px";
-    panel.style.top = (flip ? bounds.top - gap - panel.offsetHeight : bounds.bottom + gap) + "px";
+    const panelBounds = panel.getBoundingClientRect();
+    const x = panelAlign === "end" ? bounds.right - panelBounds.width : bounds.left;
+    panel.style.left = Math.max(left + margin, Math.min(x, left + width - margin - panelBounds.width)) + "px";
+    panel.style.top = (flip ? bounds.top - gap - panelBounds.height : bounds.bottom + gap) + "px";
   }
 
   function attach(node: HTMLDivElement) {

@@ -132,7 +132,7 @@
           ? "전체 통화"
           : $currencyFilter}
       </p>
-      <div class="review-switch" role="group" aria-label="포지션 상태">
+      <div class="review-switch segmented-control" role="group" aria-label="포지션 상태">
         <button aria-pressed={tab === "active"} on:click={() => (tab = "active")}
           ><span>보유 중</span>{#if !loading && !error}<small>{activeCount}</small>{/if}</button
         >

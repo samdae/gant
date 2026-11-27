@@ -79,24 +79,21 @@
 <section class="chart" aria-label="동결된 가격 차트">
   <header>
     <h3>발행 전 시세</h3>
-    <div class="type" aria-label="시세 표시 방식">
-      <button aria-pressed={!candles} on:click={() => (requestedMode = "line")}
-        >라인</button
-      >
-      <button
-        aria-pressed={candles}
-        disabled={!canCandle}
-        on:click={() => (requestedMode = "candle")}>캔들</button
-      >
-    </div>
-    <div aria-label="차트 기간">
-      {#each [5, 20, 0] as n}<button
-          aria-pressed={sessions === n}
-          on:click={() => {
-            sessions = n;
-            selection = null;
-          }}>{n ? n + "일" : "전체"}</button
-        >{/each}
+    <div class="chart-controls">
+      <div role="group" aria-label="시세 표시 방식">
+        <button aria-pressed={!candles} on:click={() => (requestedMode = "line")}>라인</button>
+        <button aria-pressed={candles} disabled={!canCandle}
+          on:click={() => (requestedMode = "candle")}>캔들</button>
+      </div>
+      <div role="group" aria-label="차트 기간">
+        {#each [5, 20, 0] as n}
+          <button aria-pressed={sessions === n}
+            on:click={() => {
+              sessions = n;
+              selection = null;
+            }}>{n ? n + "일" : "전체"}</button>
+        {/each}
+      </div>
     </div>
   </header>
   {#if series.length}
@@ -293,8 +290,11 @@
   .volume-bar.selected-volume {
     fill: var(--fl-accent);
   }
-  .chart .type {
-    margin-left: auto;
+  .chart-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
   }
   .bar-values {
     display: flex;
@@ -332,7 +332,7 @@
   .volume-note {
     padding: 4px 0;
   }
-  .chart header > div {
+  .chart-controls > div {
     display: flex;
     align-items: center;
     gap: 1px;
@@ -352,6 +352,7 @@
     flex-wrap: wrap;
   }
   .chart header {
+    align-items: center;
     justify-content: space-between;
   }
   h3,
@@ -390,6 +391,16 @@
   button[aria-pressed="true"] {
     background: var(--fl-selected-bg, var(--fl-accent));
     color: var(--fl-selected-ink, var(--fl-on-accent, white));
+  }
+  @media (forced-colors: active) {
+    :global(.gant-v4) .chart-controls button[aria-pressed="true"] {
+      forced-color-adjust: none;
+      background: Highlight;
+      color: HighlightText;
+    }
+    :global(.gant-v4) .chart-controls button:focus-visible {
+      outline-color: ButtonText;
+    }
   }
   .interactive {
     position: relative;
@@ -461,10 +472,6 @@
     padding-top: 5px;
   }
   @media (max-width: 620px) {
-    .chart .type {
-      border: 0;
-      padding-left: 0;
-    }
     button {
       min-width: 36px;
       min-height: 36px;

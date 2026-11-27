@@ -287,7 +287,7 @@
   .mobile-brand b { font:800 22px/1 var(--fl-font); letter-spacing:-.065em; }
   .desk-tabs { align-self:stretch; gap:2px; }
   .desk-tabs a {
-    position:relative; padding:0 clamp(9px,1.3vw,18px); color:var(--fl-muted); font-size:.88rem;
+    position:relative; min-height:var(--fl-control-height,42px); padding:0 clamp(9px,1.3vw,18px); color:var(--fl-muted); font-size:.88rem;
     font-weight:620; text-decoration:none; border-radius:9px;
   }
   .desk-tabs a[aria-current] { color:var(--fl-accent); }

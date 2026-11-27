@@ -478,8 +478,13 @@
   .probability-line { display:block; width:100%; position:relative; height:4px; margin-top:3px; border-radius:5px; background:#d8c4d0; }
   .probability-line > i { display:block; height:100%; border-radius:inherit; background:var(--fl-forecast); }
   .probability-line::after { content:""; position:absolute; left:50%; top:-2px; height:8px; border-left:1px solid #755e6b; }
-  .case-tabs { display:flex; gap:4px; padding:4px; width:fit-content; max-width:100%; margin:16px 0; background:var(--fl-surface-subtle); border:1px solid var(--fl-line); border-radius:14px; }
-  .case-tabs button { min-width:82px; min-height:38px; padding:6px 15px; cursor:pointer; color:var(--fl-muted); border:0; border-radius:10px; background:transparent; font:640 .86rem var(--fl-font); }
+  .case-tabs {
+    --tab-radius: 14px;
+    --tab-padding: 4px;
+    display:flex; gap:4px; padding:var(--tab-padding); width:fit-content; max-width:100%; margin:16px 0;
+    background:var(--fl-surface-subtle); border:1px solid var(--fl-line); border-radius:var(--tab-radius);
+  }
+  .case-tabs button { min-width:82px; min-height:38px; padding:6px 15px; cursor:pointer; color:var(--fl-muted); border:0; border-radius:calc(var(--tab-radius) - var(--tab-padding) - 1px); background:transparent; font:640 .86rem var(--fl-font); }
   .case-tabs button[aria-selected=true] { color:var(--fl-accent-hover); background:var(--fl-surface); box-shadow:0 1px 4px #67495926; }
   .case-tabs button:hover { color:var(--fl-accent); }
   :global(.gant-v4) .company {
@@ -495,6 +500,18 @@
     color: var(--fl-selected-ink);
     background: var(--fl-selected-bg);
     box-shadow: inset 0 0 0 1px var(--fl-line);
+  }
+  @media (forced-colors: active) {
+    :global(.gant-v4) .case-tabs button[aria-selected=true] {
+      forced-color-adjust: none;
+      background: Highlight;
+      color: HighlightText;
+      box-shadow: none;
+    }
+    :global(.gant-v4) .case-tabs button:focus-visible {
+      outline: 2px solid ButtonText;
+      outline-offset: 2px;
+    }
   }
   [role=tabpanel]:focus:not(:focus-visible) { outline:0; }
   .headline .risk strong { font-size:clamp(1.15rem,1.7vw,1.6rem); color:var(--fl-ink); }

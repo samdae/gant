@@ -175,7 +175,7 @@
     {/if}
 
     {#if isForecastLab}
-    <div class="review-switch" role="group" aria-label="거래 결과">
+    <div class="review-switch segmented-control" role="group" aria-label="거래 결과">
       <button aria-pressed={filter === "all"} on:click={() => setFilter("all")}
         ><span>전체</span></button
       >

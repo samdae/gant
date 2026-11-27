@@ -377,6 +377,17 @@
   .days .preview-end {
     box-shadow: inset 0 0 0 1px var(--fl-accent);
   }
+  @media (forced-colors: active) {
+    :global(.gant-v4) .days button[aria-pressed="true"] {
+      forced-color-adjust: none;
+      background: Highlight;
+      color: HighlightText;
+      box-shadow: none;
+    }
+    :global(.gant-v4) .days .inside { border-block: 2px solid Highlight; }
+    :global(.gant-v4) .days .preview-end { outline: 2px dashed Highlight; outline-offset: -2px; }
+    :global(.gant-v4) .days button[aria-pressed="true"]:focus-visible { outline-color: HighlightText; }
+  }
   .range-dialog header button,
   .range-dialog footer button {
     min-height: var(--fl-control-height, 40px);

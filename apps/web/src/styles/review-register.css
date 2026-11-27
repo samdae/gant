@@ -215,11 +215,12 @@
 }
 
 .workspace #page-trade :is(.price-panel-label, .price-panel-period, .price-panel-lastdate,
-  .price-panel-stat, .price-panel-change-pct, .price-panel-live, .chart-mode-btn) {
+  .price-panel-stat, .price-panel-change-pct, .price-panel-live),
+.workspace :where(#page-trade) .chart-mode-btn {
   color: var(--fl-muted, #b5b4ad);
 }
 
-.workspace #page-trade .chart-mode-btn:is(:hover, .active) {
+.workspace :where(#page-trade) .chart-mode-btn:is(:hover, .active) {
   color: var(--fl-accent, #d5f65e);
   background: var(--fl-surface-subtle, #27282b);
 }

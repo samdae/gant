@@ -789,8 +789,8 @@
           {chartStats.last !== null ? formatAmount(chartStats.last, ticker) : "-"}
         </div>
         {#if chartStats.count > 0}
-          <div class="chart-mode-toggle">
-            <button class={`chart-mode-btn ${chartMode === "candle" ? "active" : ""}`} on:click={() => (chartMode = "candle")} title="캔들 차트">
+          <div class="chart-mode-toggle segmented-control" role="group" aria-label="차트 유형">
+            <button class={`chart-mode-btn ${chartMode === "candle" ? "active" : ""}`} aria-pressed={chartMode === "candle"} on:click={() => (chartMode = "candle")} title="캔들 차트">
               <svg viewBox="0 0 16 16" width="14" height="14">
                 <rect x="3" y="2" width="4" height="12" rx="0.5" fill="currentColor" opacity="0.25"/>
                 <line x1="5" y1="0" x2="5" y2="2" stroke="currentColor" stroke-width="1.2"/>
@@ -800,7 +800,7 @@
                 <line x1="11" y1="13" x2="11" y2="16" stroke="currentColor" stroke-width="1.2"/>
               </svg>
             </button>
-            <button class={`chart-mode-btn ${chartMode === "line" ? "active" : ""}`} on:click={() => (chartMode = "line")} title="꺾은선 차트">
+            <button class={`chart-mode-btn ${chartMode === "line" ? "active" : ""}`} aria-pressed={chartMode === "line"} on:click={() => (chartMode = "line")} title="꺾은선 차트">
               <svg viewBox="0 0 16 16" width="14" height="14">
                 <polyline points="1,12 5,6 9,9 15,3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
@@ -994,7 +994,7 @@
 
     {/if}
     {#if isForecastLab}
-    <div class="review-switch" role="group" aria-label="거래 상세 보기">
+    <div class="review-switch segmented-control" role="group" aria-label="거래 상세 보기">
       {#if $viewMode === "portfolio"}
         <button aria-pressed={tab === "trades"} on:click={() => (tab = "trades")}
           ><span>거래 내역</span></button

@@ -140,7 +140,7 @@
     {#if isForecastLab}
       <div class="report-filter">
         <h2>리포트</h2>
-        <div class="report-kind" role="group" aria-label="리포트 유형">
+        <div class="report-kind segmented-control" role="group" aria-label="리포트 유형">
           {#each kinds as option}
             <button type="button" aria-pressed={kind === option.value} on:click={() => window.location.hash = option.hash}>{option.label}</button>
           {/each}
@@ -249,7 +249,6 @@
   .report-kind {display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:999px;background:var(--fl-surface-subtle);border:1px solid var(--fl-line);}
   .report-kind button {cursor:pointer;color:var(--fl-muted);background:transparent;border:0;font:650 .89rem var(--fl-font);white-space:nowrap;}
   .report-kind button[aria-pressed="true"] {background:var(--fl-ink);color:var(--fl-on-accent);}
-  :global(.gant-v4) .report-kind button[aria-pressed="true"] {background:var(--fl-selected-bg);color:var(--fl-selected-ink);box-shadow:inset 0 0 0 1px var(--fl-line);}
   .report-filter .desk-search {max-width:240px;}
   .publication-header {display:flex;align-items:center;justify-content:space-between;gap:8px 18px;flex-wrap:wrap;padding:clamp(16px,2vw,26px) clamp(14px,2.5vw,28px) 10px;}
   .directory-title {display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 12px;}
