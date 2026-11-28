@@ -1,17 +1,17 @@
 # TradingAgents Windows 배포 Launchpad
 
-[v3 프리뷰](https://v3.daehun.app/)는 읽기 전용 8025로 연결된다. [메인](https://daehun.app/)은 v2를 서비스한다. v1과 v1 예약 작업은 종료 상태다.
+[메인](https://daehun.app/)과 기존 `research.daehun.app`, `v3.daehun.app` 주소는 모두 v4 공개 화면을 연다. v2가 예약 분석을 실행하고 v3가 공개 조회 API를 제공한다.
 
 ## v4 체크아웃에서 시작할 때
 
-브랜치 `codex/gant-v4`에서는 [v4 배포 런치패드](docs/v4/OPERATIONS.md)를 따른다. 공개 주소는 https://v3.daehun.app/v4/ 이고, Windows 뷰어 기동 후 /v4/data/report-pulse와 기존 공개 API를 각각 확인한다.
+브랜치 `codex/gant-v4`에서는 [v4 배포 런치패드](docs/v4/OPERATIONS.md)를 따른다. Windows 로그인 후 메인 주소에서 리포트를 열고 `/v4/data/report-pulse`와 공개 조회 API 응답을 확인한다.
 
 ## v3 체크아웃에서 시작할 때
 
 현재 브랜치가 **codex/gant-v3**이면 [v3 Windows 운영 절차](docs/v3/OPERATIONS.md)를 따른다. 개발 서비스는 8024·8025, 전용 PostgreSQL은 55436을 사용한다. 아래의 외부 호스트, 예약 작업, 데이터 이전 절차는 v1·v2 운영 기록이다.
 
 
-[공개 콘솔](https://research.daehun.app/)과 [관리용 콘솔](https://lab.daehun.app/)은 같은 화면 번들을 사용한다. 방문자는 로그인 없이 모의계좌와 리포트를 조회하고 관리자는 이메일 인증 후 설정을 변경한다. 이 브랜치의 연구실은 전용 DB와 별도 웹 포트를 사용한다. 연구실을 시작·백업·복구하려면 [Windows 연구실 운영 문서](docs/forecast-lab/OPERATIONS.md)를 따른다. 아래 절차는 기존 공개 사이트에 적용한다.
+[관리용 콘솔](https://lab.daehun.app/)은 Cloudflare Access 인증 후 사용한다. 연구실과 DB의 시작·백업·복구는 [Windows 연구실 운영 문서](docs/forecast-lab/OPERATIONS.md)를 따른다. 아래에는 이전 배포 이력이 포함되어 있다.
 
 이 저장소를 처음 여는 운영자와 LLM을 위한 배포·복구 절차다. Windows PowerShell에서 실행한다. 기준 경로는 C:\Users\samda\dev\TradingAgents다. 경로와 포트는 아래 실측값을 출발점으로 삼고 실행 직전에 다시 확인한다.
 

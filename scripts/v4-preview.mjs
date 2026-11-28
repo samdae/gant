@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 import { pulsePath, pulseMiddleware } from "./v4-report-pulse.mjs";
 
 const prefix = "/v4/";
+const bookmarkRoot = new URL("../packages/tradingagents/forecast_lab/web/", import.meta.url);
+const researchBookmarks = new Map([
+  ["/research", "workspace-bookmark.html"], ["/research/", "workspace-bookmark.html"],
+  ["/research/index.html", "workspace-bookmark.html"],
+  ["/research/workspace-bookmark.js", "workspace-bookmark.js"],
+]);
 const assetName = /^[\w.-]+-[\w-]{8,}\.(?:js|css|svg|png|webp|avif|woff2)$/;
 const releaseId = /^[a-f0-9]{64}$/;
 const installFiles = new Set([
@@ -98,15 +104,29 @@ export function previewServer(runtime, readPulse) {
       return stop(405);
     }
     const path = req.url.split("?", 1)[0];
+    const search = req.url.slice(path.length);
+    if (path === "/" || path === "/index.html") {
+      // Omitting the fragment lets the browser carry the original hash route to v4.
+      res.setHeader("Location", prefix + search);
+      return stop(307);
+    }
     if (path === pulsePath) return servePulse(req, res);
-    if (path === "/v4") { res.setHeader("Location", prefix); return stop(308); }
-    if (!path.startsWith(prefix)) return stop(404);
-    const relative = path.slice(prefix.length) || "index.html";
+    if (path === "/v4") { res.setHeader("Location", prefix + search); return stop(308); }
+    const bookmark = researchBookmarks.get(path);
+    if (bookmark === "workspace-bookmark.html") {
+      const match = /^\?case=([1-9]\d{0,15})$/.exec(search);
+      if (match) { res.setHeader("Location", prefix + "#/research/" + match[1]); return stop(307); }
+    }
+    if (!bookmark && !path.startsWith(prefix)) return stop(404);
+    const relative = bookmark || path.slice(prefix.length) || "index.html";
     const asset = relative.startsWith("assets/") && assetName.test(relative.slice(7));
-    if (!asset && !installFiles.has(relative)) return stop(404);
+    if (!bookmark && !asset && !installFiles.has(relative)) return stop(404);
     try {
       let file;
-      if (asset) {
+      if (bookmark) {
+        // This navigation shim translates legacy #results and #observe in the browser.
+        file = new URL(bookmark, bookmarkRoot);
+      } else if (asset) {
         file = join(runtime, relative);
       } else {
         const revision = await readFile(join(runtime, "current"), "utf8");
@@ -114,7 +134,7 @@ export function previewServer(runtime, readPulse) {
         file = join(runtime, "releases", revision, relative);
       }
       const bytes = await readFile(file);
-      res.setHeader("Content-Type", mimeTypes[extname(file)]);
+      res.setHeader("Content-Type", mimeTypes[extname(relative)]);
       res.setHeader("Content-Length", bytes.length);
       res.setHeader("Cache-Control", asset ? "public, max-age=31536000, immutable" : "no-cache");
       if (relative === "gant-sw.js") res.setHeader("Service-Worker-Allowed", prefix);

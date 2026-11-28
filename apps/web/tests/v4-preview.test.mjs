@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { once } from "node:events";
 import { test } from "node:test";
+import { runInNewContext } from "node:vm";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { activate, previewServer, publish } from "../../../scripts/v4-preview.mjs";
@@ -25,6 +26,41 @@ test("v4 browser and installed app share a black launch surface", async t => {
   assert.match(html, /<meta name="color-scheme" content="dark"/);
   assert.match(html, /href="\/v4\/gant\.webmanifest"/);
   assert.match(html, /href="\/v4\/apple-touch-icon\.png"/);
+});
+
+test("public entry URLs carry hash routes and translate research bookmarks", async t => {
+  const server = previewServer();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => server.close());
+  const base = "http://127.0.0.1:" + server.address().port;
+  const request = (path, method = "GET") => fetch(base + path, { method, redirect: "manual" });
+  for (const path of ["/", "/index.html"]) {
+    const res = await request(path + "?view=public#/reports/btc-usd", "HEAD");
+    assert.equal(res.status, 307);
+    assert.equal(res.headers.get("Location"), "/v4/?view=public");
+    assert.equal(res.headers.get("Cache-Control"), "no-store");
+  }
+  assert.equal((await request("/research/?case=35")).headers.get("Location"), "/v4/#/research/35");
+  const shim = "/research/workspace-bookmark.js";
+  for (const path of ["/research", "/research/", "/research/index.html", "/research/?embedded=1"]) {
+    const res = await request(path);
+    assert.equal(res.status, 200);
+    assert.ok((await res.text()).includes(shim));
+  }
+  const script = await (await request(shim)).text();
+  for (const [hash, search, expected] of [
+    ["#observe", "?market=kr", "/#/observe?market=kr"],
+    ["#results", "?from_date=2026-11-20", "/#/results?from_date=2026-11-20"],
+    ["", "?case=35&market=us", "/#/research/35?market=us"],
+    ["", "?case=other", "/#/research"],
+  ]) {
+    let destination;
+    runInNewContext(script, { URLSearchParams, location: { hash, search, replace: url => destination = url } });
+    assert.equal(destination, expected);
+  }
+  assert.equal((await request("/", "POST")).status, 405);
+  assert.equal((await request("/research/lab.js")).status, 404);
 });
 
 test("v4 serves independent install assets and switches complete releases", async t => {

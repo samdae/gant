@@ -1,6 +1,6 @@
 # GANT v4 Windows 배포
 
-[공개 리포트](https://v3.daehun.app/v4/#/reports)는 현재 발행된 연구와 모의매매 기록을 읽는 Liquid Glass UI다. 이 브랜치의 화면·설치·배포 방식을 바꾸면 이 문서와 [화면 설계](../../DESIGN.md)를 같은 변경에 갱신한다.
+[공개 리포트](https://daehun.app/v4/#/reports)는 현재 발행된 연구와 모의매매 기록을 읽는 Liquid Glass UI다. 이 브랜치의 화면·설치·배포 방식을 바꾸면 이 문서와 [화면 설계](../../DESIGN.md)를 같은 변경에 갱신한다.
 
 | 구성 | 위치 및 책임 |
 |---|---|
@@ -8,7 +8,7 @@
 | 화면 서버 | Node.js 기본 HTTP, `127.0.0.1:8035/v4/`, 정적 화면·설치 파일 및 최근 판단 비교 조회 |
 | 게시 디렉터리 | `%LOCALAPPDATA%\TradingAgentsV4\web`, 현재 릴리스는 `current` 한 줄 |
 | 자동 기동 | Windows 작업 스케줄러의 `TradingAgents V4 Preview`, 현재 사용자 로그인 시 실행 |
-| 공개 입구 | 기존 Cloudflare Tunnel의 `v3.daehun.app`에서 `/v4` 경로만 8035로 전달 |
+| 공개 입구 | `daehun.app`, `research.daehun.app`, `v3.daehun.app`에서 UI를 8035로 전달한다. 각 호스트의 루트에서 `/v4/`로 이동한다. |
 | 연구·매매 원본 | 같은 호스트의 `/api/`, `/workspace-api/`, `/public-api/` 조회는 기존 공개 서버 8025. 내부 8024가 v2 발행 기록과 v3 출처 보관소를 조회한다. v2의 8014가 예약·가상매매를 실행한다. |
 
 ## 빌드와 게시
@@ -56,24 +56,28 @@ Windows 뷰어는 고정된 주소 `127.0.0.1:8025`의 공개 리포트 목록�
 
 ## 터널 라우팅
 
-기존 Windows 터널 구성은 `%LOCALAPPDATA%\TradingAgentsDeploy\tunnel.yml`에 있다. 아래 경로 규칙은 같은 호스트의 기본 8025 규칙보다 앞에 있어야 한다. 호스트와 기존 DNS 레코드를 공유한다. 터널 커넥터의 설정 검증·교체 순서는 [v2 운영 문서](../forecast-lab/OPERATIONS.md)를 따른다.
+Windows 터널 구성은 `%LOCALAPPDATA%\TradingAgentsDeploy\tunnel.yml`에 있다. 세 공개 호스트 각각에 아래 두 규칙을 같은 순서로 둔다. 관리자 호스트 `lab.daehun.app`은 기존 8014와 Cloudflare Access의 `originRequest.access` 검증을 사용한다. 마지막에는 기존 `http_status:404` 규칙을 둔다.
 
 ~~~yaml
-  - hostname: v3.daehun.app
-    path: ^/v4(/.*)?$
-    service: http://127.0.0.1:8035
-  - hostname: v3.daehun.app
+  - hostname: daehun.app
+    path: '^/((api|public-api|workspace-api)/.*|(healthz|ready)/?)$'
     service: http://127.0.0.1:8025
+  - hostname: daehun.app
+    service: http://127.0.0.1:8035
 ~~~
 
 원본 데이터·계좌·개인용 콘솔의 기동과 백업은 [v3 운영 문서](../v3/OPERATIONS.md)에 연결된 절차를 사용한다. v4 화면 업데이트는 이 서비스들을 재기동하지 않는다.
+
+재부팅 후 Windows 사용자 로그인으로 `TradingAgents Forecast Lab`, `TradingAgents V3 Preview`, `TradingAgents V4 Preview`, `TradingAgents Public Tunnel`이 자동 기동한다. 복구할 때는 8014와 8025의 `/ready`, 8035의 `/v4/`를 먼저 확인하고 응답이 없는 서비스의 등록 작업부터 실행한다. 외부에서는 메인 주소의 307 응답과 최종 리포트·연구 사례 상세 조회를 확인한다.
+
+터널 규칙을 바꿀 때는 같은 디렉터리에 설정 사본을 만들고 `cloudflared tunnel --config <후보파일> ingress validate`와 `ingress rule <URL>`로 공개·관리자 경로를 대조한다. 적용은 이 설정 파일로 실행 중인 커넥터만 교체하고 등록 작업 `TradingAgents Public Tunnel`을 실행한다. 2026-11-28 전환 직전 설정은 같은 디렉터리의 `tunnel-before-v4-only-20261128-234039.yml`이다. 라우팅을 복구할 때는 이 사본을 `tunnel.yml`로 복원한 뒤 같은 커넥터를 재기동한다.
 
 ## 화면과 설치 확인
 
 1. 로컬 정적 서버의 `/v4/`와 `/v4/gant.webmanifest`가 200인지 확인한다. 공개 주소에서는 리포트 목록과 회사별 회차·뉴스 출처를 열고, 개발자 도구에서 조회 요청이 같은 출처의 루트 API로 가는지 확인한다. 8035만 단독 열면 원본 API는 제공되지 않는다.
 2. 공개 v4의 매니페스트 `id`, `scope`는 `/v4/`, 시작 URL은 `/v4/#/reports`다. 네 가지 일반·마스크형 아이콘과 Apple touch 아이콘을 열 수 있어야 한다. `/v4/gant-sw.js`의 `Service-Worker-Allowed`는 `/v4/`이며 루트에서 설치한 v3와 별도의 앱이다.
    HTML의 `theme-color`, 매니페스트의 `theme_color`와 `background_color`는 모두 `#000000`이다. 스크롤한 리포트에서 전체 메뉴를 열고, 연구 사례의 시장 목록과 날짜 달력도 열어 글래스 표면을 확인한다. 투명도 줄이기 환경에서는 같은 창들이 불투명한 검정 표면으로 표시된다.
-3. 같은 호스트의 루트에서 v3를 열고 기존 번들과 데이터를 확인한다. 원본 준비 상태는 `http://127.0.0.1:8025/ready`를 조회한다. 로컬에서 통합 화면을 개발할 때는 `npm --prefix apps/web run dev:v4 -- --host 127.0.0.1`로 Vite를 열고 표시된 주소의 `/v4/`에 들어간다. 로컬 개발 서버의 API 요청은 8025로 전달된다.
+3. 세 공개 호스트의 루트가 모두 v4로 연결되는지, 기존 `/#/research`와 `/research/?case=<사례 ID>`가 해당 화면으로 이동하는지 확인한다. 원본 준비 상태는 `http://127.0.0.1:8025/ready`를 조회한다. 로컬 개발 서버는 `npm --prefix apps/web run dev:v4 -- --host 127.0.0.1`로 열고 표시된 주소의 `/v4/`에 접속한다.
 
 ## 이전 화면 복구
 
@@ -114,3 +118,7 @@ Chromium에서 320·393·768·1440px로 실제 공개 데이터가 있는 화면
 ~~~powershell
 uv run --no-project --with playwright scripts/check-v4-segment-layout.py https://v3.daehun.app/v4/
 ~~~
+
+## 공개 진입점 통합
+
+2026년 11월 28일 서버 버전 `gant-v4-preview.5`로 세 공개 호스트의 진입점을 통합했다. 정적 화면은 직전 배포본을 사용한다. 로그인 후 터널과 단일 운영 스케줄러가 자동 기동한 것을 확인했고, 공개 브라우저에서 월마트 리포트 1334번과 연구 사례 92번을 열어 검증했다.
